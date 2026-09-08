@@ -71,7 +71,7 @@ SESSION_SELECT = f"""
          cp.start_rated_range_km, cp.end_rated_range_km,
          agg.power_max, agg.is_fast,
          g.name AS geofence_name, a.name AS address_name,
-         a.city, a.formatted_address
+         a.city, a.display_name
     FROM charging_processes cp
     {AGG_LATERAL}
     LEFT JOIN addresses a ON a.id = cp.address_id
@@ -103,7 +103,7 @@ def session_row(r: dict) -> dict:
         "date": fdate(r["start_date"]),
         "location": r["geofence_name"] or r["address_name"] or "未知位置",
         "city": r["city"],
-        "address": r["formatted_address"],
+        "address": r["display_name"],
         "start_soc": r["start_battery_level"],
         "end_soc": r["end_battery_level"],
         "energy_added": energy_added,
@@ -209,7 +209,7 @@ def get_sessions(offset: int = 0, limit: int = 50,
     if q:
         params["q"] = f"%{q}%"
         conds.append("(coalesce(g.name,'') || ' ' || coalesce(a.name,'') || ' ' || "
-                     "coalesce(a.city,'') || ' ' || coalesce(a.formatted_address,'')) ILIKE %(q)s")
+                     "coalesce(a.city,'') || ' ' || coalesce(a.display_name,'')) ILIKE %(q)s")
     where = " AND ".join(conds)
     total = query(f"""
         SELECT count(*) AS n FROM charging_processes cp {AGG_LATERAL}
@@ -238,10 +238,12 @@ def get_session(session_id: int):
           FROM charges WHERE charging_process_id = %(id)s ORDER BY date
     """, {"id": session_id})
     start = rows[0]["start_date"]
+    def clean(s):
+        return s if s and s != "<invalid>" else None
     cable = next((s["conn_charge_cable"] for s in samples if s["conn_charge_cable"]), None)
-    brand = next((s["fast_charger_brand"] for s in samples if s["fast_charger_brand"]), None)
-    ctype = next((s["fast_charger_type"] for s in samples
-                  if s["fast_charger_type"] and s["fast_charger_type"] != "<invalid>"), None)
+    brand = clean(next((s["fast_charger_brand"] for s in samples if s["fast_charger_brand"]), None))
+    ctype = clean(next((s["fast_charger_type"] for s in samples
+                        if s["fast_charger_type"]), None))
     detail.update({
         "start_rated_range": fnum(rows[0]["start_rated_range_km"]),
         "end_rated_range": fnum(rows[0]["end_rated_range_km"]),
