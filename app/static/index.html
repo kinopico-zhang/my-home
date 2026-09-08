@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>充电记录 · Tesla</title>
+<style>
+/* ---------- 设计令牌: iOS 暗色 + dataviz 校验系列色 ----------
+   系列色集 #1fa349 #3987e5 #c98500 #9085e9 #d95926 (槽序 绿-蓝-黄-紫-橙)
+   已通过 dataviz 六项校验 (暗色, 表面 #1c1c1e): 亮度带/彩度/CVD 分离/
+   常态视觉下限/对比度全部通过。实体对应: 绿=SOC, 蓝=功率·电量, 黄=费用,
+   紫=电压, 橙=电流。文字一律用文本色, 不用系列色。 */
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-3: #3a3a3c;
+  --ink-1: #f5f5f7;
+  --ink-2: rgba(235,235,245,.62);
+  --ink-3: rgba(235,235,245,.32);
+  --hairline: rgba(255,255,255,.09);
+  --nav-bg: rgba(10,10,12,.72);
+  --green: #1fa349;    /* SOC */
+  --grid: #2c2c2a;     /* 图表网格线 (细实线) */
+  --chart-ink: #c3c2b7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg); color: var(--ink-1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+               "Helvetica Neue", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45;
+  min-height: 100vh; min-height: 100dvh;
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+/* ---------- 顶部导航 (毛玻璃) ---------- */
+header {
+  position: sticky; top: 0; z-index: 50;
+  padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--hairline);
+}
+.nav-row { display: flex; align-items: baseline; gap: 10px; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.car-pill { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+/* 筛选: 一行, 在所有图表之上 (同一数据切片) */
+.filters { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
+.filters::-webkit-scrollbar { display: none; }
+.seg {
+  display: flex; flex: none; background: rgba(118,118,128,.24);
+  border-radius: 9px; padding: 2px;
+}
+.seg button {
+  padding: 5px 13px; border-radius: 7px; font-size: 13px; font-weight: 500;
+  color: var(--ink-2); transition: background .18s, color .18s;
+}
+.seg button.on { background: #636366; color: #fff; font-weight: 600; }
+.chips { display: flex; gap: 7px; flex: none; align-items: center; }
+.chip {
+  padding: 5px 11px; border-radius: 999px; font-size: 12.5px; white-space: nowrap;
+  color: var(--ink-2); border: 1px solid var(--hairline); transition: all .18s;
+}
+.chip.on { background: rgba(57,135,229,.20); color: #7db3f0; border-color: rgba(57,135,229,.35); }
+
+main { max-width: 1200px; margin: 0 auto; }
+
+/* ---------- 统计卡片横滑行 ---------- */
+.snap-row {
+  display: flex; gap: 10px; overflow-x: auto;
+  scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+  padding: 12px 14px 6px; scrollbar-width: none;
+}
+.snap-row::-webkit-scrollbar { display: none; }
+.snap-row > * { scroll-snap-align: start; flex: none; }
+.stat {
+  min-width: 148px; background: var(--surface); border-radius: 16px;
+  padding: 12px 14px; border: 1px solid var(--hairline);
+}
+.stat .lb { font-size: 12px; color: var(--ink-2); }
+.stat .val { font-size: 25px; font-weight: 650; letter-spacing: -.5px; margin-top: 3px; }
+.stat .val small { font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 3px; letter-spacing: 0; }
+.stat .sub { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+
+/* ---------- 图表卡片 ---------- */
+.charts-grid { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 14px 4px; scrollbar-width: none; }
+.charts-grid::-webkit-scrollbar { display: none; }
+@media (min-width: 900px) {
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: visible; }
+}
+.chart-card {
+  flex: none; width: min(86vw, 430px); scroll-snap-align: start;
+  background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
+  padding: 13px 10px 10px 14px;
+}
+.chart-card .cc-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px 0; }
+.chart-card .cc-title { font-size: 14px; font-weight: 650; }
+.chart-card .cc-sub { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+.mini-seg { display: flex; background: rgba(118,118,128,.24); border-radius: 8px; padding: 2px; }
+.mini-seg button { padding: 3px 9px; border-radius: 6px; font-size: 11px; color: var(--ink-2); }
+.mini-seg button.on { background: #636366; color: #fff; }
+.chart-box { height: 232px; }
+.chart-table { font-size: 12px; max-height: 232px; overflow-y: auto; }
+.chart-table table { width: 100%; border-collapse: collapse; }
+.chart-table th, .chart-table td { text-align: right; padding: 5px 8px; font-variant-numeric: tabular-nums; }
+.chart-table th { color: var(--ink-3); font-weight: 500; position: sticky; top: 0; background: var(--surface); }
+.chart-table td:first-child, .chart-table th:first-child { text-align: left; padding-left: 4px; }
+.chart-table tbody tr + tr { border-top: 1px solid var(--grid); }
+.chart-table td { color: var(--chart-ink); }
+
+/* ---------- 瀑布流 ---------- */
+.sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
+.sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
+.count-badge { font-size: 12px; color: var(--ink-3); }
+#masonry { display: flex; gap: 10px; padding: 8px 14px 10px; align-items: flex-start; transition: opacity .25s; }
+#masonry.dim { opacity: .45; pointer-events: none; }
+.m-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.card-s {
+  background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
+  padding: 12px 13px; cursor: pointer; overflow: hidden;
+  transition: transform .15s, background .15s;
+}
+.card-s:active { transform: scale(.975); background: #232326; }
+@media (hover: hover) { .card-s:hover { border-color: rgba(255,255,255,.2); } }
+.cs-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.cs-date { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+.tag {
+  display: inline-flex; align-items: center; gap: 3px; flex: none;
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+}
+.tag-fast { color: #f0b13d; background: rgba(237,161,0,.14); }
+.tag-slow { color: #7db3f0; background: rgba(57,135,229,.14); }
+.cs-loc {
+  font-size: 14.5px; font-weight: 600; line-height: 1.32; margin: 7px 0 10px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.soc-track { position: relative; height: 6px; border-radius: 3px; background: var(--surface-2); }
+.soc-track i { position: absolute; top: 0; bottom: 0; background: var(--green); border-radius: 3px; }
+.soc-lbl { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink-3); margin-top: 4px; }
+.soc-lbl .gain { color: var(--ink-2); }
+.cs-energy { font-size: 23px; font-weight: 650; letter-spacing: -.4px; margin: 9px 0 1px; }
+.cs-energy small { font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 3px; letter-spacing: 0; }
+.cs-cost { font-size: 13px; font-weight: 600; margin-top: 3px; }
+.cs-cost .pp { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-left: 7px; }
+.cs-cost.none { color: var(--ink-3); font-weight: 400; }
+.cs-sub { font-size: 11px; color: var(--ink-3); margin-top: 5px; }
+
+/* ---------- 加载态 ---------- */
+.tail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 0 40px; }
+.tail[hidden] { display: none; }
+.spin {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--surface-3); border-top-color: #9a9aa0;
+  animation: rot .8s linear infinite;
+}
+@keyframes rot { to { transform: rotate(360deg); } }
+.endnote { font-size: 12px; color: var(--ink-3); }
+.empty {
+  text-align: center; color: var(--ink-3); padding: 60px 20px; font-size: 14px;
+}
+.err-box { text-align: center; padding: 40px 20px; }
+.err-box p { color: var(--ink-2); margin-bottom: 14px; font-size: 13.5px; }
+.retry {
+  padding: 8px 22px; border-radius: 12px; background: var(--surface-2);
+  color: var(--ink-1); font-weight: 600; font-size: 13.5px;
+}
+
+/* ---------- 详情 Sheet (iOS 底部弹层) ---------- */
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55);
+  opacity: 0; pointer-events: none; transition: opacity .3s;
+}
+.sheet-backdrop.on { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+  margin: 0 auto; max-width: 640px; max-height: 92vh; max-height: 92dvh;
+  background: var(--surface); border-radius: 20px 20px 0 0;
+  border: 1px solid var(--hairline); border-bottom: 0;
+  display: flex; flex-direction: column;
+  transform: translateY(105%);
+  transition: transform .38s cubic-bezier(.32,.72,0,1);
+  box-shadow: 0 -12px 48px rgba(0,0,0,.5);
+}
+.sheet.on { transform: translateY(0); }
+.sheet-grab-zone { padding: 7px 0 3px; touch-action: none; }
+.sheet-grab { width: 36px; height: 5px; border-radius: 3px; background: #48484a; margin: 0 auto; }
+.sheet-head { position: relative; padding: 6px 18px 13px; border-bottom: 1px solid var(--hairline); }
+.sheet-head h3 { font-size: 17px; font-weight: 700; padding-right: 36px; letter-spacing: -.2px; }
+.sheet-head .sh-loc { font-size: 13px; color: var(--ink-2); margin-top: 2px; padding-right: 36px; }
+.sheet-head .sh-row { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.sheet-close {
+  position: absolute; top: 4px; right: 12px; width: 30px; height: 30px;
+  border-radius: 50%; background: rgba(255,255,255,.09);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--ink-2);
+}
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px calc(30px + env(safe-area-inset-bottom)); }
+.st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.st { background: #232326; border-radius: 12px; padding: 9px 12px; }
+.st .lb { font-size: 11px; color: var(--ink-2); }
+.st .val { font-size: 16.5px; font-weight: 650; margin-top: 2px; letter-spacing: -.2px; }
+.st .val small { font-size: 11px; font-weight: 500; color: var(--ink-2); }
+.sh-chart-title { font-size: 13px; font-weight: 650; margin: 16px 0 6px; display: flex; justify-content: space-between; align-items: center; }
+.sh-chart-title:first-child { margin-top: 2px; }
+#chart-soc { height: 168px; }
+#chart-pw { height: 188px; }
+.sh-addr { font-size: 11.5px; color: var(--ink-3); margin-top: 14px; line-height: 1.5; }
+.sheet .spin { margin: 40px auto; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-row">
+    <h1>充电记录</h1>
+    <span class="car-pill" id="car-pill">Tesla</span>
+  </div>
+  <div class="filters">
+    <div class="seg" id="seg-type">
+      <button data-v="all" class="on">全部</button>
+      <button data-v="fast">⚡ 快充</button>
+      <button data-v="slow">🔌 慢充</button>
+    </div>
+    <div class="chips" id="chips-range">
+      <button class="chip on" data-v="all">全部</button>
+      <button class="chip" data-v="30d">近30天</button>
+      <button class="chip" data-v="90d">近90天</button>
+      <button class="chip" data-v="ytd">今年</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="snap-row" id="stats-row"></div>
+
+  <div class="charts-grid" id="charts-grid">
+    <div class="chart-card">
+      <div class="cc-head">
+        <div>
+          <div class="cc-title">月度趋势</div>
+          <div class="cc-sub" id="monthly-sub">充电量与费用</div>
+        </div>
+        <div class="mini-seg" id="monthly-view">
+          <button data-v="chart" class="on">图表</button>
+          <button data-v="table">表格</button>
+        </div>
+      </div>
+      <div class="chart-box" id="chart-monthly-kwh"></div>
+      <div class="chart-box" id="chart-monthly-cost" style="height:118px"></div>
+      <div class="chart-table" id="table-monthly" hidden></div>
+    </div>
+    <div class="chart-card">
+      <div class="cc-head">
+        <div>
+          <div class="cc-title">常去充电点</div>
+          <div class="cc-sub">按充电次数</div>
+        </div>
+        <div class="mini-seg" id="loc-view">
+          <button data-v="chart" class="on">图表</button>
+          <button data-v="table">表格</button>
+        </div>
+      </div>
+      <div class="chart-box" id="chart-loc"></div>
+      <div class="chart-table" id="table-loc" hidden></div>
+    </div>
+  </div>
+
+  <div class="sec-head">
+    <h2>充电记录</h2>
+    <span class="count-badge" id="count-badge"></span>
+  </div>
+  <div id="masonry"></div>
+
+  <div class="tail" id="tail" hidden>
+    <div class="spin" id="loader-spin" hidden></div>
+    <div class="endnote" id="endnote" hidden>· 已经到底啦 ·</div>
+    <div class="empty" id="empty" hidden>该筛选条件下没有充电记录</div>
+    <div class="err-box" id="errbox" hidden>
+      <p id="errmsg">加载失败</p>
+      <button class="retry" id="retry">重试</button>
+    </div>
+  </div>
+</main>
+
+<div class="sheet-backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-grab-zone" id="grab-zone"><div class="sheet-grab"></div></div>
+  <div class="sheet-head">
+    <h3 id="sh-date"></h3>
+    <div class="sh-loc" id="sh-loc"></div>
+    <div class="sh-row" id="sh-row"></div>
+    <button class="sheet-close" id="sheet-close">✕</button>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+</div>
+
+<script src="/static/echarts.min.js"></script>
+<script>
+"use strict";
+/* ============================ 工具 ============================ */
+const $ = (s, el) => (el || document).querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = n => String(n).padStart(2, "0");
+
+/* "2026-09-07 23:50" → 本地 Date (服务端已转北京时间; 手动解析, 兼容 iOS Safari) */
+function parseLocal(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : new Date(s);
+}
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+function fmtCardDate(s) {
+  const d = parseLocal(s);
+  return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEK[d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDur(min) {
+  if (min == null) return "—";
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h}小时${m ? m + "分" : ""}` : `${m}分钟`;
+}
+function fmtMinAxis(v) {
+  if (v >= 60) { const h = Math.floor(v / 60), m = Math.round(v % 60); return m ? `${h}h${m}m` : `${h}h`; }
+  return `${Math.round(v)}m`;
+}
+const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
+const money = v => v == null ? "—" : "¥" + Number(v).toFixed(2).replace(/\.?0+$/, "");
+const moneyInt = v => v == null ? "—" : "¥" + Math.round(v).toLocaleString("zh-CN");
+const thousands = v => Math.round(v).toLocaleString("zh-CN");
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+/* ============================ 状态 ============================ */
+const PAGE = 24;
+const state = { type: "all", range: "all", offset: 0, total: 0, loading: false, done: false, err: null };
+const detailCache = new Map();
+const hasEcharts = typeof echarts !== "undefined";
+
+function rangeParams() {
+  if (state.range === "all") return {};
+  const now = new Date();
+  if (state.range === "ytd") return { from: `${now.getFullYear()}-01-01` };
+  const d = new Date(now.getTime() - (state.range === "30d" ? 30 : 90) * 864e5);
+  return { from: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` };
+}
+function sessionParams(extra) {
+  const p = new URLSearchParams({ type: state.type, ...rangeParams(), ...(extra || {}) });
+  return p.toString();
+}
+
+/* ============================ 统计卡片 ============================ */
+async function loadSummary() {
+  const s = await getJSON("/api/summary?" + sessionParams());
+  const months = s.first_date && s.last_date ?
+    (parseLocal(s.last_date + " 00:00").getFullYear() * 12 + parseLocal(s.last_date + " 00:00").getMonth()) -
+    (parseLocal(s.first_date + " 00:00").getFullYear() * 12 + parseLocal(s.first_date + " 00:00").getMonth()) + 1 : 1;
+  const fastPct = s.sessions ? Math.round(s.fast_sessions / s.sessions * 100) : 0;
+  const cards = [
+    { lb: "充电次数", val: thousands(s.sessions), sub: months > 1 ? `月均 ${Math.round(s.sessions / months)} 次` : "" },
+    { lb: "总充电量", val: thousands(s.energy_used || s.energy_added), unit: "kWh", sub: `表计口径` },
+    { lb: "总费用", val: moneyInt(s.cost), sub: s.first_date ? `${s.first_date.replace(/-/g, "/")} 起` : "" },
+    { lb: "平均电价", val: s.price_per_kwh == null ? "—" : "¥" + s.price_per_kwh.toFixed(3), unit: "/kWh", sub: "按表计电量" },
+    { lb: "快充占比", val: fastPct + "%", sub: `快充 ${s.fast_sessions} 次` },
+    { lb: "充电时长", val: num(s.duration_min / 60, 1), unit: "小时", sub: s.range_gain ? `≈ ${thousands(s.range_gain)} km 续航` : "" },
+  ];
+  $("#stats-row").innerHTML = cards.map(c => `
+    <div class="stat">
+      <div class="lb">${esc(c.lb)}</div>
+      <div class="val">${c.val}${c.unit ? `<small>${c.unit}</small>` : ""}</div>
+      ${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ""}
+    </div>`).join("");
+}
+
+/* ============================ 图表 ============================ */
+const chartText = { axis: "#898781", ink: "#c3c2b7" };
+const tooltipStyle = {
+  backgroundColor: "rgba(28,28,30,.95)", borderWidth: 0, padding: [7, 10],
+  textStyle: { color: "#f5f5f7", fontSize: 12 },
+};
+const monthlyKwEl = $("#chart-monthly-kwh"), monthlyCostEl = $("#chart-monthly-cost"), locEl = $("#chart-loc");
+let chMonthlyKw, chMonthlyCost, chLoc;
+let monthlyData = [], locData = [];
+
+function shortMonth(ym) { return ym.slice(2).replace("-", "/"); }
+function truncateName(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
+
+function renderMonthly() {
+  if (!hasEcharts || !monthlyData.length) return;
+  const months = monthlyData.map(d => d.month);
+  const kw = monthlyData.map(d => Math.round((d.energy_used || 0) * 10) / 10);
+  const cost = monthlyData.map(d => d.cost == null ? 0 : d.cost);
+  const total = monthlyData.reduce((a, d) => a + (d.cost || 0), 0);
+  $("#monthly-sub").textContent = `共 ${months.length} 个月 · 合计 ${moneyInt(total)}`;
+
+  if (!chMonthlyKw) {
+    chMonthlyKw = echarts.init(monthlyKwEl);
+    chMonthlyCost = echarts.init(monthlyCostEl);
+    echarts.connect([chMonthlyKw, chMonthlyCost]);
+  }
+  const xBase = {
+    type: "category", data: months,
+    axisTick: { show: false },
+    axisLine: { lineStyle: { color: "#383835" } },
+  };
+  chMonthlyKw.setOption({
+    animationDuration: 250,
+    grid: { left: 6, right: 8, top: 10, bottom: 2, containLabel: true },
+    tooltip: { ...tooltipStyle, trigger: "axis", axisPointer: { type: "shadow" } },
+    xAxis: { ...xBase, axisLabel: { show: false } },
+    yAxis: { type: "value", splitLine: { lineStyle: { color: "#2c2c2a" } },
+             axisLabel: { color: chartText.axis, fontSize: 10 } },
+    series: [{ type: "bar", name: "充电量", data: kw, barMaxWidth: 16,
+               itemStyle: { color: "#3987e5", borderRadius: [4, 4, 0, 0] } }],
+  });
+  chMonthlyCost.setOption({
+    animationDuration: 250,
+    grid: { left: 6, right: 8, top: 8, bottom: 0, containLabel: true },
+    tooltip: { ...tooltipStyle, trigger: "axis",
+               axisPointer: { type: "line", lineStyle: { color: "#898781" } } },
+    xAxis: { ...xBase, axisLabel: { color: chartText.axis, fontSize: 10,
+              interval: months.length > 14 ? 1 : 0, formatter: shortMonth } },
+    yAxis: { type: "value", splitLine: { lineStyle: { color: "#2c2c2a" } },
+             axisLabel: { color: chartText.axis, fontSize: 10,
+                          formatter: v => v >= 1000 ? (v / 1000) + "k" : v } },
+    series: [{ type: "line", name: "费用", data: cost, showSymbol: false,
+               lineStyle: { color: "#c98500", width: 2 },
+               itemStyle: { color: "#c98500" } }],
+  });
+  // 表格视图 (图表的 WCAG 等价物)
+  $("#table-monthly").innerHTML = `<table>
+    <thead><tr><th>月份</th><th>kWh</th><th>费用</th><th>次数</th></tr></thead>
+    <tbody>${monthlyData.map(d => `<tr>
+      <td>${esc(d.month)}</td><td>${num(d.energy_used)}</td>
+      <td>${money(d.cost)}</td><td>${d.sessions}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function renderLocations() {
+  if (!hasEcharts || !locData.length) return;
+  const top = locData.slice(0, 7);
+  const rest = locData.slice(7);
+  const rows = rest.length
+    ? [...top, { location: "其他", sessions: rest.reduce((a, d) => a + d.sessions, 0),
+                 energy_used: rest.reduce((a, d) => a + (d.energy_used || 0), 0),
+                 cost: rest.reduce((a, d) => a + (d.cost || 0), 0),
+                 fast_sessions: rest.reduce((a, d) => a + d.fast_sessions, 0) }] : top;
+  if (!chLoc) chLoc = echarts.init(locEl);
+  chLoc.setOption({
+    animationDuration: 250,
+    grid: { left: 6, right: 44, top: 6, bottom: 0, containLabel: true },
+    tooltip: { ...tooltipStyle, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const d = locData.find(x => x.location === ps[0].name) ||
+                  rows.find(x => x.location === ps[0].name);
+        return `<b>${esc(ps[0].name)}</b><br/>次数 ${d.sessions} · 快充 ${d.fast_sessions}` +
+               `<br/>电量 ${num(d.energy_used)} kWh<br/>费用 ${money(d.cost)}`;
+      } },
+    xAxis: { type: "value", splitLine: { lineStyle: { color: "#2c2c2a" } },
+             axisLabel: { color: chartText.axis, fontSize: 10 } },
+    yAxis: { type: "category", inverse: true,
+             data: rows.map(d => truncateName(d.location, 7)),
+             axisTick: { show: false }, axisLine: { lineStyle: { color: "#383835" } },
+             axisLabel: { color: chartText.ink, fontSize: 10.5, width: 76,
+                          overflow: "truncate" } },
+    series: [{ type: "bar", data: rows.map(d => d.sessions), barMaxWidth: 14,
+               itemStyle: { color: "#3987e5", borderRadius: [0, 4, 4, 0] },
+               label: { show: true, position: "right", color: chartText.ink,
+                        fontSize: 10.5, formatter: "{c} 次" } }],
+  });
+  $("#table-loc").innerHTML = `<table>
+    <thead><tr><th>地点</th><th>次数</th><th>kWh</th><th>费用</th></tr></thead>
+    <tbody>${locData.map(d => `<tr>
+      <td>${esc(truncateName(d.location, 10))}</td><td>${d.sessions}</td>
+      <td>${num(d.energy_used)}</td><td>${money(d.cost)}</td></tr>`).join("")}</tbody></table>`;
+}
+
+async function loadCharts() {
+  const [monthly, locations] = await Promise.all([
+    getJSON("/api/monthly?" + sessionParams()),
+    getJSON("/api/locations?" + sessionParams()),
+  ]);
+  monthlyData = monthly; locData = locations;
+  renderMonthly(); renderLocations();
+}
+
+/* 图表/表格切换 */
+function bindViewToggle(segId, chartEls, tableEl) {
+  $(segId).addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    $(segId + " .on").classList.remove("on"); b.classList.add("on");
+    const table = b.dataset.v === "table";
+    chartEls.forEach(el => el.hidden = table);
+    tableEl.hidden = !table;
+    if (!table) chartEls.forEach(el => { const c = echarts.getInstanceByDom(el); c && c.resize(); });
+  });
+}
+bindViewToggle("#monthly-view", [monthlyKwEl, monthlyCostEl], $("#table-monthly"));
+bindViewToggle("#loc-view", [locEl], $("#table-loc"));
+
+/* ============================ 瀑布流 ============================ */
+const masonryEl = $("#masonry");
+let mCols = [], cardEls = [];
+
+function colCount(w) { return w >= 1100 ? 4 : w >= 720 ? 3 : 2; }
+function buildColumns(force) {
+  const n = colCount(masonryEl.clientWidth);
+  if (!force && mCols.length === n) return;
+  mCols = Array.from({ length: n }, () => {
+    const c = document.createElement("div");
+    c.className = "m-col"; masonryEl.appendChild(c); return c;
+  });
+  cardEls.forEach(el => shortestCol().appendChild(el));
+}
+function shortestCol() {
+  return mCols.reduce((a, b) => (a.offsetHeight <= b.offsetHeight ? a : b));
+}
+function clearCards() { mCols.forEach(c => (c.innerHTML = "")); cardEls = []; }
+
+function renderCard(it) {
+  const el = document.createElement("article");
+  el.className = "card-s"; el.dataset.id = it.id;
+  const costLine = it.cost != null
+    ? `<div class="cs-cost">${money(it.cost)}${it.price_per_kwh != null
+        ? `<span class="pp">¥${it.price_per_kwh.toFixed(2)}/kWh</span>` : ""}</div>`
+    : `<div class="cs-cost none">费用未记录</div>`;
+  el.innerHTML = `
+    <div class="cs-top">
+      <span class="cs-date">${esc(fmtCardDate(it.start))}</span>
+      <span class="tag ${it.is_fast ? "tag-fast" : "tag-slow"}">${it.is_fast ? "⚡ 快充" : "🔌 慢充"}</span>
+    </div>
+    <h3 class="cs-loc">${esc(it.location)}</h3>
+    <div class="soc-track"><i style="left:${it.start_soc}%;width:${Math.max(it.end_soc - it.start_soc, 2)}%"></i></div>
+    <div class="soc-lbl"><span>${it.start_soc}%</span><span class="gain">+${it.end_soc - it.start_soc}</span><span>${it.end_soc}%</span></div>
+    <div class="cs-energy">${num(it.energy_added ?? it.energy_used)}<small>kWh</small></div>
+    ${costLine}
+    <div class="cs-sub">${fmtDur(it.duration_min)} · 峰值 ${it.power_max ?? "—"} kW${it.outside_temp != null ? ` · ${num(it.outside_temp, 0)}°C` : ""}</div>`;
+  return el;
+}
+
+const tailEl = $("#tail");
+function setTail() {
+  tailEl.hidden = state.total === 0 && !state.loading && state.done;
+  $("#loader-spin").hidden = !state.loading;
+  $("#endnote").hidden = !(state.done && state.total > 0);
+  $("#empty").hidden = !(state.done && state.total === 0 && !state.err);
+  $("#errbox").hidden = !state.err;
+  $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
+}
+
+async function loadMore(reset) {
+  if (state.loading || (state.done && !reset)) return;
+  state.loading = true; state.err = null; setTail();
+  try {
+    const d = await getJSON("/api/sessions?" + sessionParams({ offset: state.offset, limit: PAGE }));
+    if (reset) clearCards();
+    state.total = d.total; state.offset += d.items.length;
+    if (state.offset >= d.total) state.done = true;
+    d.items.forEach(it => { const el = renderCard(it); cardEls.push(el); shortestCol().appendChild(el); });
+  } catch (e) {
+    state.err = "数据加载失败: " + e.message;
+  }
+  state.loading = false; setTail();
+}
+
+/* 懒加载: 触底前 800px 预加载下一页 */
+new IntersectionObserver(es => {
+  if (es[0].isIntersecting) loadMore(false);
+}, { rootMargin: "800px" }).observe(tailEl);
+
+/* 列数变化时重排 (保持时间顺序) */
+let resizeTimer;
+new ResizeObserver(() => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const n = colCount(masonryEl.clientWidth);
+    if (n !== mCols.length) {
+      masonryEl.querySelectorAll(".m-col").forEach(c => c.remove());
+      buildColumns(true);
+    }
+    [chMonthlyKw, chMonthlyCost, chLoc].forEach(c => c && c.resize());
+  }, 120);
+}).observe(document.body);
+
+/* ============================ 筛选 ============================ */
+async function refetch() {
+  state.offset = 0; state.total = 0; state.done = false; state.err = null;
+  masonryEl.classList.add("dim");
+  await Promise.allSettled([loadSummary().catch(showErr), loadCharts().catch(showErr)]);
+  await loadMore(true);
+  masonryEl.classList.remove("dim");
+}
+function showErr(e) { $("#errmsg").textContent = "数据加载失败: " + e.message; $("#errbox").hidden = false; }
+
+$("#seg-type").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || b.classList.contains("on")) return;
+  $("#seg-type .on").classList.remove("on"); b.classList.add("on");
+  state.type = b.dataset.v; refetch();
+});
+$("#chips-range").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || b.classList.contains("on")) return;
+  $("#chips-range .on").classList.remove("on"); b.classList.add("on");
+  state.range = b.dataset.v; refetch();
+});
+$("#retry").addEventListener("click", () => { state.err = null; $("#errbox").hidden = true; refetch(); });
+
+masonryEl.addEventListener("click", e => {
+  const card = e.target.closest(".card-s");
+  if (card) openSheet(+card.dataset.id);
+});
+
+/* ============================ 详情 Sheet ============================ */
+const sheet = $("#sheet"), backdrop = $("#backdrop"), sheetBody = $("#sheet-body");
+let chSoc, chPw, pwMode = "kw", sheetOpen = false;
+const PW_SERIES = {
+  kw:       { name: "功率", color: "#3987e5", unit: "kW", key: "kw" },
+  voltage:  { name: "电压", color: "#9085e9", unit: "V",  key: "voltage" },
+  current:  { name: "电流", color: "#d95926", unit: "A",  key: "current" },
+};
+
+function openSheet(id) {
+  sheetOpen = true;
+  sheet.classList.add("on"); backdrop.classList.add("on");
+  sheetBody.innerHTML = `<div class="spin"></div>`;
+  loadDetail(id);
+}
+function closeSheet() {
+  sheetOpen = false;
+  sheet.classList.remove("on"); backdrop.classList.remove("on");
+  [chSoc, chPw].forEach(c => { c && echarts.dispose(c); }); chSoc = chPw = null;
+}
+backdrop.addEventListener("click", closeSheet);
+$("#sheet-close").addEventListener("click", closeSheet);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && sheetOpen) closeSheet(); });
+
+/* 下滑关闭 */
+(() => {
+  const zone = $("#grab-zone");
+  let y0 = null, dy = 0;
+  zone.addEventListener("touchstart", e => { y0 = e.touches[0].clientY; dy = 0; }, { passive: true });
+  zone.addEventListener("touchmove", e => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sheet.style.transition = "none";
+    sheet.style.transform = `translateY(${dy}px)`;
+  }, { passive: true });
+  zone.addEventListener("touchend", () => {
+    sheet.style.transition = ""; sheet.style.transform = "";
+    if (dy > 110) closeSheet();
+    y0 = null;
+  });
+})();
+
+async function loadDetail(id) {
+  let d;
+  try {
+    d = detailCache.get(id) || await getJSON(`/api/sessions/${id}`);
+    detailCache.set(id, d);
+  } catch (e) {
+    sheetBody.innerHTML = `<div class="err-box"><p>加载失败: ${esc(e.message)}</p></div>`;
+    return;
+  }
+  if (!sheetOpen) return;
+  const rangeGain = d.end_rated_range != null && d.start_rated_range != null
+    ? d.end_rated_range - d.start_rated_range : null;
+  $("#sh-date").textContent = fmtCardDate(d.start);
+  $("#sh-loc").textContent = d.city ? `${d.location} · ${d.city}` : d.location;
+  $("#sh-row").innerHTML = `
+    <span class="tag ${d.is_fast ? "tag-fast" : "tag-slow"}">${d.is_fast ? "⚡ 快充" : "🔌 慢充"}</span>
+    <span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.cable || "—")}</span>
+    ${d.charger_type ? `<span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.charger_type)}</span>` : ""}`;
+  sheetBody.innerHTML = `
+    <div class="st-grid">
+      <div class="st"><div class="lb">充入电量</div><div class="val">${num(d.energy_added)}<small> kWh</small></div></div>
+      <div class="st"><div class="lb">表计电量</div><div class="val">${num(d.energy_used)}<small> kWh</small></div></div>
+      <div class="st"><div class="lb">费用</div><div class="val">${d.cost != null ? money(d.cost) : "—"}</div></div>
+      <div class="st"><div class="lb">电价</div><div class="val">${d.price_per_kwh != null ? "¥" + d.price_per_kwh.toFixed(3) + "<small>/kWh</small>" : "—"}</div></div>
+      <div class="st"><div class="lb">时长</div><div class="val">${fmtDur(d.duration_min)}</div></div>
+      <div class="st"><div class="lb">电量变化</div><div class="val">${d.start_soc}<small>%</small> → ${d.end_soc}<small>%</small></div></div>
+      <div class="st"><div class="lb">峰值功率</div><div class="val">${d.power_max ?? "—"}<small> kW</small></div></div>
+      <div class="st"><div class="lb">续航增加</div><div class="val">${rangeGain != null ? "+" + num(rangeGain, 0) : "—"}<small> km</small></div></div>
+    </div>
+    <div class="sh-chart-title">电量 %</div>
+    <div id="chart-soc"></div>
+    <div class="sh-chart-title">
+      <span>充电曲线</span>
+      <div class="mini-seg" id="pw-seg">
+        <button data-v="kw" class="on">功率</button>
+        <button data-v="voltage">电压</button>
+        <button data-v="current">电流</button>
+      </div>
+    </div>
+    <div id="chart-pw"></div>
+    <div class="sh-addr">${esc(d.address || "")}${d.outside_temp != null ? ` · 平均气温 ${num(d.outside_temp, 0)}°C` : ""}</div>`;
+
+  $("#pw-seg").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    $("#pw-seg .on").classList.remove("on"); b.classList.add("on");
+    pwMode = b.dataset.v; renderPwChart(d);
+  });
+
+  requestAnimationFrame(() => {
+    if (!hasEcharts) return;
+    chSoc = echarts.init($("#chart-soc"));
+    chPw = echarts.init($("#chart-pw"));
+    echarts.connect([chSoc, chPw]);
+    const cv = d.curve, xBase = {
+      type: "value", min: 0,
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: chartText.axis, fontSize: 10, formatter: fmtMinAxis },
+      splitLine: { lineStyle: { color: "#2c2c2a" } },
+    };
+    chSoc.setOption({
+      animationDuration: 250,
+      grid: { left: 6, right: 8, top: 10, bottom: 0, containLabel: true },
+      tooltip: { ...tooltipStyle, trigger: "axis",
+                 axisPointer: { type: "cross", lineStyle: { color: "#898781" },
+                                crossStyle: { color: "#5a5a5e" } },
+                 formatter: ps => `${fmtMinAxis(ps[0].axisValue)} · 电量 <b>${ps[0].value}%</b>` },
+      xAxis: xBase,
+      yAxis: { type: "value", min: 0, max: 100,
+               splitLine: { lineStyle: { color: "#2c2c2a" } },
+               axisLabel: { color: chartText.axis, fontSize: 10, formatter: "{value}%" } },
+      series: [{ type: "line", data: cv.soc, showSymbol: false, sampling: "lttb",
+                 lineStyle: { color: "#1fa349", width: 2 },
+                 itemStyle: { color: "#1fa349" },
+                 areaStyle: { color: "rgba(31,163,73,.10)" } }],
+    });
+    renderPwChart(d);
+  });
+}
+
+function renderPwChart(d) {
+  if (!chPw) return;
+  const s = PW_SERIES[pwMode], cv = d.curve, data = cv[s.key];
+  const yMax = Math.max(...data, 1);
+  chPw.setOption({
+    animationDuration: 250,
+    grid: { left: 6, right: 8, top: 10, bottom: 0, containLabel: true },
+    tooltip: { ...tooltipStyle, trigger: "axis",
+               axisPointer: { type: "cross", lineStyle: { color: "#898781" },
+                              crossStyle: { color: "#5a5a5e" } },
+               formatter: ps => {
+                 const i = ps[0].dataIndex;
+                 return `${fmtMinAxis(ps[0].axisValue)} · ${s.name} <b>${ps[0].value} ${s.unit}</b>` +
+                        (cv.energy[i] != null ? `<br/>累计 ${num(cv.energy[i])} kWh` : "");
+               } },
+    xAxis: { type: "value", min: 0,
+             axisLine: { show: false }, axisTick: { show: false },
+             axisLabel: { color: chartText.axis, fontSize: 10, formatter: fmtMinAxis },
+             splitLine: { lineStyle: { color: "#2c2c2a" } } },
+    yAxis: { type: "value", min: 0, max: Math.ceil(yMax * 1.08),
+             splitLine: { lineStyle: { color: "#2c2c2a" } },
+             axisLabel: { color: chartText.axis, fontSize: 10 } },
+    series: [{ type: "line", data, showSymbol: false, sampling: "lttb",
+               lineStyle: { color: s.color, width: 2 },
+               itemStyle: { color: s.color },
+               areaStyle: { color: s.color + "1a" } }],
+  }, { replaceMerge: ["series"] });
+}
+
+/* ============================ 启动 ============================ */
+(async () => {
+  buildColumns(true);
+  try {
+    const cars = await getJSON("/api/car");
+    if (cars[0]) $("#car-pill").textContent = `${cars[0].model} · ${cars[0].name}`;
+  } catch (e) { /* 车辆信息失败不阻塞 */ }
+  if (!hasEcharts) $("#charts-grid").style.display = "none";
+  await refetch();
+})();
+</script>
+</body>
+</html>
