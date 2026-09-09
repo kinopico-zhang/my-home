@@ -119,16 +119,21 @@ charging = APIRouter(prefix="/tesla/charging/api")
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
+    is_api = path.startswith("/tesla/") and "/api/" in path
     # 放行: 登录页 / 登录登出接口 / 静态资源
     if path in ("/tesla/login", "/tesla/api/login", "/tesla/api/logout") \
             or path.startswith("/tesla/static/"):
-        return await call_next(request)
-    if path.startswith("/tesla/") and "/api/" in path:
-        if not _authed(request):
-            return JSONResponse({"detail": "未登录"}, status_code=401)
-    elif path.startswith("/tesla") and not _authed(request):
-        return RedirectResponse("/tesla/login", status_code=302)
-    return await call_next(request)
+        resp = await call_next(request)
+    elif is_api and not _authed(request):
+        resp = JSONResponse({"detail": "未登录"}, status_code=401)
+    elif path.startswith("/tesla") and not is_api and not _authed(request):
+        resp = RedirectResponse("/tesla/login", status_code=302)
+    else:
+        resp = await call_next(request)
+    if is_api:
+        # API 数据 (如 map config) 禁止缓存, 否则配置更新后浏览器仍用旧响应
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 class Creds(BaseModel):
@@ -138,7 +143,7 @@ class Creds(BaseModel):
 
 @app.get("/tesla/login", response_class=HTMLResponse)
 def login_page():
-    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+    return _page("login.html")
 
 
 @app.post("/tesla/api/login")
@@ -618,6 +623,13 @@ def get_tracks(frm: Optional[str] = Query(None, alias="from"),
 
 # ---------------------------------------------------------------- 静态页面
 
+def _page(fname: str) -> FileResponse:
+    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (no-cache), 更新即时生效。"""
+    resp = FileResponse(os.path.join(STATIC_DIR, fname))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 @app.get("/")
 def root():
     return RedirectResponse("/tesla", status_code=302)
@@ -630,12 +642,12 @@ def tesla_home():
 
 @app.get("/tesla/charging")
 def charging_page():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return _page("index.html")
 
 
 @app.get("/tesla/map")
 def map_page():
-    return FileResponse(os.path.join(STATIC_DIR, "map.html"))
+    return _page("map.html")
 
 
 app.include_router(charging)

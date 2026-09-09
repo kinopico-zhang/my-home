@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import time
 
+from fastapi.testclient import TestClient
+
 import app.main as m
 
 
@@ -109,3 +111,13 @@ def test_pages_served_after_login(auth):
         r = auth.get(path)
         assert r.status_code == 200, path
         assert marker in r.text, path
+
+
+def test_cache_control_headers(auth):
+    """API 响应禁止缓存 (配置更新要即时生效), 页面允许缓存但必须重新校验。"""
+    assert auth.get("/tesla/map/api/config?_=1").headers["cache-control"] == "no-store"
+    # 未登录的 401 API 响应同样禁缓存
+    anon = TestClient(m.app)
+    assert anon.get("/tesla/map/api/config").headers["cache-control"] == "no-store"
+    for path in ("/tesla/charging", "/tesla/map", "/tesla/login"):
+        assert auth.get(path).headers["cache-control"] == "no-cache", path
