@@ -222,7 +222,7 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const PAGE_V = "v6";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
+const PAGE_V = "v7";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
 
 /* ---------- 诊断探针: 浏览器端异常/高德请求失败自动回传服务端日志 ---------- */
 let diagCount = 0;
@@ -388,6 +388,24 @@ function renderTracks(list) {
 const DETAIL_ZOOM = 13;
 function bandOf(z) { return z >= 15 ? 15 : z >= 14 ? 14 : z >= DETAIL_ZOOM ? 13 : null; }
 
+let boundsFbDiag = false;
+function viewBounds() {
+  // getBounds 在 iOS 手势期间会返回 undefined (官方类型即 Bounds | undefined)
+  // 兜底: 用 中心 + 缩放级别 + 容器尺寸 按 Web 墨卡托公式推算视野
+  const b = map.getBounds();
+  if (b && b.southwest && b.northeast) return b;
+  if (!boundsFbDiag) { boundsFbDiag = true; diag("bounds_fallback", { z: map.getZoom() }); }
+  const c = map.getCenter();
+  if (!c) return null;
+  const z = map.getZoom();
+  const el = document.getElementById("map");
+  const degPx = 360 / (256 * Math.pow(2, z));   // 每像素的经度跨度
+  const wl = (el.clientWidth || 320) * degPx / 2;
+  const hl = (el.clientHeight || 320) * degPx / 2 * Math.cos(c.lat * Math.PI / 180);
+  return { southwest: { lng: c.lng - wl, lat: c.lat - hl },
+           northeast: { lng: c.lng + wl, lat: c.lat + hl } };
+}
+
 function scheduleRefine() {
   if (!map || !mapReady) return;
   clearTimeout(refineTimer);
@@ -415,7 +433,8 @@ function probeRefine() {   // 缩放/平移手势进行中: 视野内一旦有�
       return;
     }
     if (refinePending) return;                    // 已在加载, 提示本来就亮着
-    const b = map.getBounds();
+    const b = viewBounds();
+    if (!b) return;
     const M = 0.02;
     const box = { w: b.southwest.lng - M, e: b.northeast.lng + M,
                   s: b.southwest.lat - M, n: b.northeast.lat + M };
@@ -479,7 +498,8 @@ async function refineVisible() {
     return;
   }
   if (band !== detailBand) { revertDetail(); detailBand = band; }
-  const b = map.getBounds();
+  const b = viewBounds();
+  if (!b) return;
   const M = 0.02;   // 视野外预留 ~2km, 平移时边缘不至于闪回粗线
   const box = { w: b.southwest.lng - M, e: b.northeast.lng + M,
                 s: b.southwest.lat - M, n: b.northeast.lat + M };
