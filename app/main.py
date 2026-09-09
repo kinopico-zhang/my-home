@@ -621,6 +621,17 @@ def get_tracks(frm: Optional[str] = Query(None, alias="from"),
     return {"count": len(tracks), "tracks": tracks}
 
 
+@mapapi.post("/diag")
+async def map_diag(request: Request):
+    """浏览器端诊断上报 (排查地图加载问题), 只写日志不落库。"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    print(f"MAPDIAG {json.dumps(body, ensure_ascii=False)[:800]}", flush=True)
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- 静态页面
 
 def _page(fname: str) -> FileResponse:

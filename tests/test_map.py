@@ -134,6 +134,17 @@ def test_tracks_incremental_append(auth, monkeypatch, tmp_path):
     assert len(cache["tracks"]) == 2
 
 
+def test_diag_endpoint_logs_and_requires_auth(auth, capsys):
+    r = auth.post("/tesla/map/api/diag", json={"stage": "map_complete", "ua": "test"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    assert "MAPDIAG" in capsys.readouterr().out
+    # 未登录 401
+    from fastapi.testclient import TestClient
+    assert TestClient(m.app).post(
+        "/tesla/map/api/diag", json={"stage": "x"}).status_code == 401
+
+
 def test_tracks_date_filtering(auth, monkeypatch):
     tracks = [
         {"id": 1, "date": "2026-01-15", "km": 1, "min": 5, "pts": [[114, 22], [114.1, 22.1]]},
