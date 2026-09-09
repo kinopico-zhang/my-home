@@ -127,6 +127,18 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
   pointer-events: none;   /* 纯提示, 不挡地图操作 */
 }
 
+.zoom-ctl {
+  position: absolute; right: 14px; bottom: calc(env(safe-area-inset-bottom) + 18px);
+  z-index: 30; display: flex; flex-direction: column; gap: 8px;
+}
+.zoom-ctl button {
+  width: 42px; height: 42px; border-radius: 14px; font-size: 23px; line-height: 1;
+  background: rgba(28,28,30,.85); border: 1px solid var(--hairline); color: var(--ink-1);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+.zoom-ctl button:active { background: var(--surface-2); }
+
 /* ---------- 行程信息底部弹层 ---------- */
 .backdrop {
   position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.4);
@@ -205,6 +217,10 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
     <div class="spin spin-s"></div>
     <span id="refine-tip-text">正在加载高精度轨迹…</span>
   </div>
+  <div class="zoom-ctl">
+    <button id="zin" title="放大">+</button>
+    <button id="zout" title="缩小">−</button>
+  </div>
 </main>
 
 <div class="backdrop" id="backdrop"></div>
@@ -222,7 +238,7 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const PAGE_V = "v7";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
+const PAGE_V = "v8";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
 
 /* ---------- 诊断探针: 浏览器端异常/高德请求失败自动回传服务端日志 ---------- */
 let diagCount = 0;
@@ -384,9 +400,10 @@ function renderTracks(list) {
   });
 }
 
-/* ---------- 缩放渐进细化: 13 级以下用粗轨迹, 之上按视野请求高精度点位 ---------- */
-const DETAIL_ZOOM = 13;
-function bandOf(z) { return z >= 15 ? 15 : z >= 14 ? 14 : z >= DETAIL_ZOOM ? 13 : null; }
+/* ---------- 缩放渐进细化: 12 级以下用粗轨迹, 之上按视野请求高精度点位 ---------- */
+const DETAIL_ZOOM = 12;
+function bandOf(z) { return z >= 15 ? 15 : z >= 14 ? 14 : z >= 13 ? 13
+  : z >= DETAIL_ZOOM ? 12 : null; }
 
 let boundsFbDiag = false;
 function viewBounds() {
@@ -424,11 +441,14 @@ function scheduleProbe() {
   clearTimeout(probeTimer);
   probeTimer = setTimeout(probeRefine, 120);   // 手势事件高频, 节流预判
 }
+let probeLowN = 0;
 function probeRefine() {   // 缩放/平移手势进行中: 视野内一旦有未缓存的轨迹, 提前亮提示
   try {
     if (!map) return;
-    const band = bandOf(map.getZoom());
+    const z = map.getZoom();
+    const band = bandOf(z);
     if (band === null) {
+      if (z >= 10 && probeLowN++ < 5) diag("probe_below", { z: Math.round(z * 10) / 10 });
       if (!refinePending) showRefineTip(false);   // 缩回概览档, 无需细化
       return;
     }
@@ -598,18 +618,17 @@ async function boot() {
     for (const ev of ["gesturestart", "gesturechange"]) {
       document.getElementById("map").addEventListener(ev, e => e.preventDefault());
     }
-    // 事件触发诊断 (每类只报一次) + 手势中预判亮提示
-    const evtSeen = {};
-    const trackEvt = (name, val) => {
-      if (evtSeen[name]) return;
-      evtSeen[name] = true;
-      diag("evt_" + name, val || {});
+    // 事件触发诊断 (每类前 N 次上报) + 手势中预判亮提示
+    const evtN = {};
+    const trackEvt = (name, val, times = 1) => {
+      evtN[name] = (evtN[name] || 0) + 1;
+      if (evtN[name] <= times) diag("evt_" + name, val || {});
     };
     map.on("zoomstart", () => { trackEvt("zoomstart"); scheduleProbe(); });
-    map.on("zoomchange", () => { trackEvt("zoomchange", { z: Math.round(map.getZoom() * 10) / 10 }); scheduleProbe(); });
+    map.on("zoomchange", () => { trackEvt("zoomchange", { z: Math.round(map.getZoom() * 10) / 10 }, 10); scheduleProbe(); });
     map.on("mapmove", () => { trackEvt("mapmove"); scheduleProbe(); });
     map.on("dragging", () => { trackEvt("dragging"); scheduleProbe(); });
-    map.on("zoomend", () => { trackEvt("zoomend", { z: Math.round(map.getZoom() * 10) / 10 }); probeRefine(); scheduleRefine(); });
+    map.on("zoomend", () => { trackEvt("zoomend", { z: Math.round(map.getZoom() * 10) / 10 }, 15); probeRefine(); scheduleRefine(); });
     map.on("moveend", () => { trackEvt("moveend"); probeRefine(); scheduleRefine(); });
     diag("map_created");
     setTimeout(() => {
@@ -637,6 +656,8 @@ $("#retry").addEventListener("click", () => refresh(false));
 $("#recheck").addEventListener("click", () => location.reload());
 $("#backdrop").addEventListener("click", closeSheet);
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+$("#zin").addEventListener("click", () => map && map.zoomIn());
+$("#zout").addEventListener("click", () => map && map.zoomOut());
 $("#logout").addEventListener("click", async () => {
   try { await fetch("/tesla/api/logout", { method: "POST" }); } catch (e) {}
   location.href = "/tesla/login";
