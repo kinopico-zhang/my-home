@@ -219,6 +219,67 @@ main { max-width: 1200px; margin: 0 auto; }
 #chart-pw { height: 188px; }
 .sh-addr { font-size: 11.5px; color: var(--ink-3); margin-top: 14px; line-height: 1.5; }
 .sheet .spin { margin: 40px auto; display: block; }
+
+/* ---------- 费用编辑弹窗 (iOS alert 风格) ---------- */
+.alert-backdrop {
+  position: fixed; inset: 0; z-index: 120; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  opacity: 0; pointer-events: none; transition: opacity .22s;
+}
+.alert-backdrop.on { opacity: 1; pointer-events: auto; }
+.alert {
+  width: min(300px, 86vw); border-radius: 14px; overflow: hidden; text-align: center;
+  background: rgba(44,44,46,.94);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  border: 1px solid var(--hairline);
+  transform: scale(1.05); transition: transform .22s;
+}
+.alert-backdrop.on .alert { transform: scale(1); }
+.al-title { padding: 17px 16px 2px; font-size: 16px; font-weight: 650; }
+.al-msg { padding: 3px 16px 12px; font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.al-field {
+  display: flex; align-items: center; gap: 4px; margin: 0 16px 6px;
+  background: rgba(118,118,128,.24); border-radius: 10px; padding: 9px 12px;
+}
+.al-field .cur { color: var(--ink-2); font-size: 15px; }
+.al-field input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+  color: var(--ink-1); font-size: 17px; font-weight: 600;
+  text-align: center; caret-color: #3987e5;
+}
+.al-field input.shake { animation: shake .35s; }
+@keyframes shake {
+  20% { transform: translateX(-7px); } 40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); } 80% { transform: translateX(3px); }
+}
+.al-err { min-height: 16px; font-size: 12px; color: #ff6961; padding: 0 16px; }
+.al-clear {
+  display: block; width: 100%; padding: 9px 0 11px;
+  font-size: 12.5px; color: #ff6961;
+}
+.al-btns { display: flex; border-top: 1px solid var(--hairline); }
+.al-btn { flex: 1; padding: 13px 0; font-size: 15.5px; color: var(--ink-1); }
+.al-btn + .al-btn { border-left: 1px solid var(--hairline); }
+.al-strong { font-weight: 650; color: #7db3f0; }
+.al-btn:active, .al-clear:active { background: rgba(255,255,255,.06); }
+
+/* 卡片费用行 (可点编辑) */
+.cs-cost {
+  display: flex; align-items: baseline; width: 100%;
+  font-size: 13px; font-weight: 600; margin-top: 3px; color: var(--ink-1);
+}
+.cs-cost:active { opacity: .55; }
+.cs-cost .pp { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-left: 7px; }
+.cs-cost .edit-ic { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--ink-3); }
+.cs-cost.none {
+  width: fit-content; align-self: flex-start; margin-top: 6px;
+  font-size: 11.5px; font-weight: 500; color: var(--ink-3);
+  border: 1px dashed rgba(235,235,245,.28); border-radius: 8px; padding: 4px 10px;
+}
+/* Sheet 费用块 (可点编辑) */
+.st-cost { cursor: pointer; }
+.st-cost:active { background: #2a2a2e; }
+.st-cost .lb::after { content: " ✎"; font-size: 10px; color: var(--ink-3); }
 </style>
 </head>
 <body>
@@ -306,6 +367,20 @@ main { max-width: 1200px; margin: 0 auto; }
     <button class="sheet-close" id="sheet-close">✕</button>
   </div>
   <div class="sheet-body" id="sheet-body"></div>
+</div>
+
+<div class="alert-backdrop" id="alert-bd" hidden>
+  <div class="alert" role="dialog" aria-label="编辑充电费用">
+    <div class="al-title">充电费用</div>
+    <div class="al-msg" id="al-msg"></div>
+    <div class="al-field"><span class="cur">¥</span><input id="al-input" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+    <div class="al-err" id="al-err"></div>
+    <button class="al-clear" id="al-clear" hidden>清除费用记录</button>
+    <div class="al-btns">
+      <button class="al-btn" id="al-cancel">取消</button>
+      <button class="al-btn al-strong" id="al-save">保存</button>
+    </div>
+  </div>
 </div>
 
 <script src="/static/echarts.min.js"></script>
@@ -517,6 +592,7 @@ bindViewToggle("#loc-view", [locEl], $("#table-loc"));
 /* ============================ 瀑布流 ============================ */
 const masonryEl = $("#masonry");
 let mCols = [], cardEls = [];
+const itemsById = new Map();
 
 function colCount(w) { return w >= 1100 ? 4 : w >= 720 ? 3 : 2; }
 function buildColumns(force) {
@@ -531,15 +607,15 @@ function buildColumns(force) {
 function shortestCol() {
   return mCols.reduce((a, b) => (a.offsetHeight <= b.offsetHeight ? a : b));
 }
-function clearCards() { mCols.forEach(c => (c.innerHTML = "")); cardEls = []; }
+function clearCards() { mCols.forEach(c => (c.innerHTML = "")); cardEls = []; itemsById.clear(); }
 
 function renderCard(it) {
   const el = document.createElement("article");
   el.className = "card-s"; el.dataset.id = it.id;
   const costLine = it.cost != null
-    ? `<div class="cs-cost">${money(it.cost)}${it.price_per_kwh != null
-        ? `<span class="pp">¥${it.price_per_kwh.toFixed(2)}/kWh</span>` : ""}</div>`
-    : `<div class="cs-cost none">费用未记录</div>`;
+    ? `<button class="cs-cost" data-cost>${money(it.cost)}${it.price_per_kwh != null
+        ? `<span class="pp">¥${it.price_per_kwh.toFixed(2)}/kWh</span>` : ""}<span class="edit-ic">✎</span></button>`
+    : `<button class="cs-cost none" data-cost>＋ 添加费用</button>`;
   el.innerHTML = `
     <div class="cs-top">
       <span class="cs-date">${esc(fmtCardDate(it.start))}</span>
@@ -572,7 +648,10 @@ async function loadMore(reset) {
     if (reset) clearCards();
     state.total = d.total; state.offset += d.items.length;
     if (state.offset >= d.total) state.done = true;
-    d.items.forEach(it => { const el = renderCard(it); cardEls.push(el); shortestCol().appendChild(el); });
+    d.items.forEach(it => {
+      itemsById.set(it.id, it);
+      const el = renderCard(it); cardEls.push(el); shortestCol().appendChild(el);
+    });
   } catch (e) {
     state.err = "数据加载失败: " + e.message;
   }
@@ -621,13 +700,18 @@ $("#chips-range").addEventListener("click", e => {
 $("#retry").addEventListener("click", () => { state.err = null; $("#errbox").hidden = true; refetch(); });
 
 masonryEl.addEventListener("click", e => {
+  const costBtn = e.target.closest("[data-cost]");
+  if (costBtn) {
+    editCost(itemsById.get(+costBtn.closest(".card-s").dataset.id));
+    return;
+  }
   const card = e.target.closest(".card-s");
   if (card) openSheet(+card.dataset.id);
 });
 
 /* ============================ 详情 Sheet ============================ */
 const sheet = $("#sheet"), backdrop = $("#backdrop"), sheetBody = $("#sheet-body");
-let chSoc, chPw, pwMode = "kw", sheetOpen = false;
+let chSoc, chPw, pwMode = "kw", sheetOpen = false, currentDetailId = null;
 const PW_SERIES = {
   kw:       { name: "功率", color: "#3987e5", unit: "kW", key: "kw" },
   voltage:  { name: "电压", color: "#9085e9", unit: "V",  key: "voltage" },
@@ -641,13 +725,17 @@ function openSheet(id) {
   loadDetail(id);
 }
 function closeSheet() {
-  sheetOpen = false;
+  sheetOpen = false; currentDetailId = null;
   sheet.classList.remove("on"); backdrop.classList.remove("on");
   [chSoc, chPw].forEach(c => { c && echarts.dispose(c); }); chSoc = chPw = null;
 }
 backdrop.addEventListener("click", closeSheet);
 $("#sheet-close").addEventListener("click", closeSheet);
-document.addEventListener("keydown", e => { if (e.key === "Escape" && sheetOpen) closeSheet(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!alertBd.hidden) closeAlert();
+  else if (sheetOpen) closeSheet();
+});
 
 /* 下滑关闭 */
 (() => {
@@ -677,6 +765,7 @@ async function loadDetail(id) {
     return;
   }
   if (!sheetOpen) return;
+  currentDetailId = id;
   const rangeGain = d.end_rated_range != null && d.start_rated_range != null
     ? d.end_rated_range - d.start_rated_range : null;
   $("#sh-date").textContent = fmtCardDate(d.start);
@@ -689,8 +778,8 @@ async function loadDetail(id) {
     <div class="st-grid">
       <div class="st"><div class="lb">充入电量</div><div class="val">${num(d.energy_added)}<small> kWh</small></div></div>
       <div class="st"><div class="lb">表计电量</div><div class="val">${num(d.energy_used)}<small> kWh</small></div></div>
-      <div class="st"><div class="lb">费用</div><div class="val">${d.cost != null ? money(d.cost) : "—"}</div></div>
-      <div class="st"><div class="lb">电价</div><div class="val">${d.price_per_kwh != null ? "¥" + d.price_per_kwh.toFixed(3) + "<small>/kWh</small>" : "—"}</div></div>
+      <div class="st st-cost" id="st-cost-tile"><div class="lb">费用</div><div class="val" id="st-cost-val">${d.cost != null ? money(d.cost) : "—"}</div></div>
+      <div class="st"><div class="lb">电价</div><div class="val" id="st-price-val">${d.price_per_kwh != null ? "¥" + d.price_per_kwh.toFixed(3) + "<small>/kWh</small>" : "—"}</div></div>
       <div class="st"><div class="lb">时长</div><div class="val">${fmtDur(d.duration_min)}</div></div>
       <div class="st"><div class="lb">电量变化</div><div class="val">${d.start_soc}<small>%</small> → ${d.end_soc}<small>%</small></div></div>
       <div class="st"><div class="lb">峰值功率</div><div class="val">${d.power_max ?? "—"}<small> kW</small></div></div>
@@ -775,7 +864,98 @@ function renderPwChart(d) {
   }, { replaceMerge: ["series"] });
 }
 
-/* ============================ 启动 ============================ */
+/* ============================ 费用编辑 ============================ */
+const alertBd = $("#alert-bd"), alInput = $("#al-input");
+let editing = null, saving = false;
+
+function editCost(it) {
+  if (!it) return;
+  editing = it;
+  $("#al-msg").textContent = `${it.date} · ${it.location}`;
+  $("#al-err").textContent = "";
+  $("#al-clear").hidden = it.cost == null;
+  alertBd.hidden = false;
+  requestAnimationFrame(() => {
+    alertBd.classList.add("on");
+    alInput.value = it.cost != null ? it.cost : "";
+    setTimeout(() => { alInput.focus(); alInput.select(); }, 80);
+  });
+}
+
+function closeAlert() {
+  alertBd.classList.remove("on");
+  setTimeout(() => { alertBd.hidden = true; }, 230);
+  editing = null; saving = false;
+}
+
+async function saveCost() {
+  if (!editing || saving) return;
+  const raw = alInput.value.trim().replace(/[¥￥,，\s]/g, "");
+  let cost = null;
+  if (raw !== "") {
+    cost = parseFloat(raw);
+    if (!isFinite(cost) || cost < 0 || cost > 100000) {
+      $("#al-err").textContent = "请输入 0 ~ 100000 之间的金额";
+      alInput.classList.remove("shake");
+      void alInput.offsetWidth;
+      alInput.classList.add("shake");
+      return;
+    }
+  }
+  saving = true;
+  try {
+    const r = await fetch(`/api/sessions/${editing.id}/cost`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cost }),
+    });
+    if (r.status === 401) { location.replace("/login"); return; }
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+    const d = await r.json();
+    applyCostUpdate(editing.id, d.cost, d.price_per_kwh);
+    closeAlert();
+  } catch (e) {
+    $("#al-err").textContent = "保存失败: " + e.message;
+    saving = false;
+  }
+}
+
+function applyCostUpdate(id, cost, ppk) {
+  const it = itemsById.get(id);
+  if (it) {
+    it.cost = cost; it.price_per_kwh = ppk;
+    const old = cardEls.find(el => +el.dataset.id === id);
+    if (old) {
+      const nw = renderCard(it);
+      old.replaceWith(nw);
+      cardEls[cardEls.indexOf(old)] = nw;
+    }
+  }
+  const det = detailCache.get(id);
+  if (det) { det.cost = cost; det.price_per_kwh = ppk; }
+  if (sheetOpen && currentDetailId === id) {
+    const cv = $("#st-cost-val"), pv = $("#st-price-val");
+    if (cv) cv.textContent = cost != null ? money(cost) : "—";
+    if (pv) pv.textContent = ppk != null ? "¥" + ppk.toFixed(3) : "—";
+  }
+  loadSummary().catch(() => {});   // 统计与图表静默刷新
+  loadCharts().catch(() => {});
+}
+
+$("#al-cancel").addEventListener("click", closeAlert);
+$("#al-save").addEventListener("click", saveCost);
+$("#al-clear").addEventListener("click", () => { alInput.value = ""; saveCost(); });
+alertBd.addEventListener("click", e => { if (e.target === alertBd) closeAlert(); });
+alInput.addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Enter") saveCost();
+});
+sheetBody.addEventListener("click", e => {
+  if (e.target.closest("#st-cost-tile") && currentDetailId != null)
+    editCost(detailCache.get(currentDetailId));
+});
+
+
 $("#logout").addEventListener("click", async () => {
   try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
   location.href = "/login";

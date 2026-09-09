@@ -54,6 +54,7 @@ app/static/echarts.min.js
 | `GET /api/summary?from&to` | 汇总统计 (次数/电量/费用/均价/快充占比…) |
 | `GET /api/sessions?offset&limit&type&from&to&q&sort` | 充电记录分页列表 |
 | `GET /api/sessions/{id}` | 详情 + 充电曲线采样 (SOC/功率/电压/电流) |
+| `PATCH /api/sessions/{id}/cost` | 更新/添加/清除费用 (`{"cost": 25.5}`, `null` 为清除), 写回 TeslaMate 库 |
 | `GET /api/monthly?from&to` | 按月聚合 |
 | `GET /api/locations?from&to` | 按地点聚合 |
 
