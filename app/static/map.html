@@ -238,7 +238,7 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const PAGE_V = "v9";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
+const PAGE_V = "v10";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
 
 /* ---------- 诊断探针: 浏览器端异常/高德请求失败自动回传服务端日志 ---------- */
 let diagCount = 0;
@@ -300,6 +300,7 @@ let detailCache = new Map();      // 档位 → Map(id → {box, pts})
 let renderGen = 0;                // 渲染代号: 切换筛选时作废进行中的批次
 let detailSeq = 0;                // 作废在途的细化请求
 let refineTimer = null;
+let fullCache = new Map();        // id → 全精度 pts (点过的轨迹单独全取, 永不降级)
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -494,7 +495,8 @@ function revertDetail() {   // 缩回 13 级以下 / 切档: 细化线还原为�
   detailBand = null;
 }
 
-function applyDetail(id, pts) {   // 用高精度线替换该行程的粗线
+function applyDetail(id, pts, force) {   // 用高精度线替换该行程的粗线
+  if (!force && fullCache.has(id)) return;   // 该轨迹已是全精度, 不降级
   const t = tracksById.get(id);
   if (!t) return;
   const old = detailLines.get(id);
@@ -512,6 +514,29 @@ function applyDetail(id, pts) {   // 用高精度线替换该行程的粗线
   if (id === selectedId) {        // 该线正被选中: 高亮转移到细化线
     selected = line;
     line.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+  }
+}
+
+async function refineSelected(t) {
+  // 点击的轨迹单独全精度重取: 单条 ~1-2s, 点过的缓存复用
+  if (fullCache.has(t.id)) {
+    if (selectedId === t.id) applyDetail(t.id, fullCache.get(t.id), true);
+    return;
+  }
+  refinePending++;
+  showRefineTip(true);
+  $("#refine-tip-text").textContent = "正在加载选中轨迹…";
+  try {
+    const d = await getJSON("/tesla/map/api/tracks/detail?ids=" + t.id +
+      "&zoom=15&w=-180&s=-90&e=180&n=90");   // 全球框 = 整条轨迹, 单条预算 → 全精度
+    if (d.tracks.length) {
+      fullCache.set(t.id, d.tracks[0].pts);
+      if (selectedId === t.id) applyDetail(t.id, d.tracks[0].pts, true);
+    }
+  } catch (e) { /* 静默失败, 细化线仍在 */ }
+  finally {
+    refinePending--;
+    if (!refinePending) showRefineTip(false);
   }
 }
 
@@ -568,6 +593,7 @@ function selectTrack(line, t) {
   selected = line;
   selectedId = t.id;
   line.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+  refineSelected(t);
   map.setFitView([line], false, [70, 70, 70, 240]);
   $("#sh-date").textContent = t.date;
   $("#sh-km").innerHTML = t.km + "<small>km</small>";
