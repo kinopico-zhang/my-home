@@ -644,7 +644,7 @@ SELECT p.drive_id, p.longitude, p.latitude
  ORDER BY p.drive_id, rn
 """
 
-DETAIL_PER_DRIVE = {13: 150, 14: 400}   # 13/14 级每条上限; 15 级以上全精度
+DETAIL_PER_DRIVE = {12: 150, 13: 300, 14: 600}   # 12-14 级每条上限; 15 级以上全精度
 DETAIL_MAX_IDS = 80
 
 
