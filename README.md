@@ -1,7 +1,11 @@
 # myteslamate — Tesla 充电记录展示
 
 读取 QNAP 上 `teslamate_cn` (TeslaMate) 的 PostgreSQL 数据, 用手机友好的
-iOS 风格页面展示充电记录: 瀑布流卡片 + 懒加载, 点击卡片查看充电曲线。
+iOS 风格页面展示充电记录与行驶足迹: 充电页瀑布流卡片 + 懒加载 + 充电曲线,
+足迹页高德地图轨迹回放。
+
+所有页面挂在 `/tesla` 前缀下: `/tesla/charging` (充电记录) 和
+`/tesla/map` (足迹地图), 各页面 API 独立子路径 (`/tesla/charging/api/*`)。
 
 ## 鉴权
 
@@ -17,7 +21,7 @@ iOS 风格页面展示充电记录: 瀑布流卡片 + 懒加载, 点击卡片查
 ## 运行
 
 ```sh
-./run.sh                 # http://NAS_IP:8500
+./run.sh                 # http://NAS_IP:8500/tesla
 PORT=9000 ./run.sh       # 换端口
 ```
 
@@ -31,9 +35,11 @@ export UV_CACHE_DIR=../python-env/uv-cache UV_PYTHON_INSTALL_DIR=../python-env/u
 ## 结构
 
 ```
-app/main.py          FastAPI: API + 静态页面
-app/db.py            定位 teslamate_cn 的 postgres 容器 (docker inspect), 连接池
-app/static/index.html  单页前端 (iOS 暗色风格, ECharts 本地化)
+app/main.py            FastAPI: API + 静态页面 (/tesla 路由)
+app/db.py              定位 teslamate_cn 的 postgres 容器 (docker inspect), 连接池
+app/static/index.html  充电记录页 (iOS 暗色风格, ECharts 本地化)
+app/static/login.html  登录页 (iOS 弹窗风格, 支持查看密码 / 失败原因)
+app/static/map.html    足迹地图页 (高德地图)
 app/static/echarts.min.js
 ```
 
@@ -48,15 +54,19 @@ app/static/echarts.min.js
 
 ## API
 
+登录接口 (无需鉴权): `POST /tesla/api/login` / `POST /tesla/api/logout`。
+
+充电记录 API (前缀 `/tesla/charging/api`):
+
 | 路径 | 说明 |
 |---|---|
-| `GET /api/car` | 车辆信息 |
-| `GET /api/summary?from&to` | 汇总统计 (次数/电量/费用/均价/快充占比…) |
-| `GET /api/sessions?offset&limit&type&from&to&q&sort` | 充电记录分页列表 |
-| `GET /api/sessions/{id}` | 详情 + 充电曲线采样 (SOC/功率/电压/电流) |
-| `PATCH /api/sessions/{id}/cost` | 更新/添加/清除费用 (`{"cost": 25.5}`, `null` 为清除), 写回 TeslaMate 库 |
-| `GET /api/monthly?from&to` | 按月聚合 |
-| `GET /api/locations?from&to` | 按地点聚合 |
+| `GET /car` | 车辆信息 |
+| `GET /summary?from&to` | 汇总统计 (次数/电量/费用/均价/快充占比…) |
+| `GET /sessions?offset&limit&type&from&to&q&sort` | 充电记录分页列表 |
+| `GET /sessions/{id}` | 详情 + 充电曲线采样 (SOC/功率/电压/电流) |
+| `PATCH /sessions/{id}/cost` | 更新/添加/清除费用 (`{"cost": 25.5}`, `null` 为清除), 写回 TeslaMate 库 |
+| `GET /monthly?from&to` | 按月聚合 |
+| `GET /locations?from&to` | 按地点聚合 |
 
 `from`/`to` 为北京时间日期 (`YYYY-MM-DD`); `type` = fast / slow。
 

@@ -52,11 +52,19 @@ header {
 h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 .car-pill { font-size: 12px; color: var(--ink-2); font-weight: 500; }
 .logout-btn {
-  margin-left: auto; align-self: center; font-size: 12px; color: var(--ink-3);
+  align-self: center; font-size: 12px; color: var(--ink-3);
   padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
   transition: color .15s;
 }
 .logout-btn:active { color: var(--ink-1); }
+/* 页面切换: 充电记录 / 足迹地图 */
+.tabs { margin-left: auto; align-self: center; display: flex; gap: 6px; }
+.tabs a {
+  font-size: 12px; color: var(--ink-2); padding: 4px 11px;
+  border-radius: 999px; border: 1px solid var(--hairline);
+  text-decoration: none; transition: all .15s;
+}
+.tabs a.on { color: var(--ink-1); background: var(--surface-2); }
 /* 筛选: 一行, 在所有图表之上 (同一数据切片) */
 .filters { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
 .filters::-webkit-scrollbar { display: none; }
@@ -288,6 +296,10 @@ main { max-width: 1200px; margin: 0 auto; }
   <div class="nav-row">
     <h1>充电记录</h1>
     <span class="car-pill" id="car-pill">Tesla</span>
+    <nav class="tabs">
+      <a class="on" href="/tesla/charging">充电</a>
+      <a href="/tesla/map">足迹</a>
+    </nav>
     <button id="logout" class="logout-btn" title="退出登录">退出</button>
   </div>
   <div class="filters">
@@ -383,7 +395,7 @@ main { max-width: 1200px; margin: 0 auto; }
   </div>
 </div>
 
-<script src="/static/echarts.min.js"></script>
+<script src="/tesla/static/echarts.min.js"></script>
 <script>
 "use strict";
 /* ============================ 工具 ============================ */
@@ -418,7 +430,7 @@ const thousands = v => Math.round(v).toLocaleString("zh-CN");
 
 async function getJSON(url) {
   const r = await fetch(url);
-  if (r.status === 401) { location.replace("/login"); throw new Error("未登录"); }
+  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();
 }
@@ -443,7 +455,7 @@ function sessionParams(extra) {
 
 /* ============================ 统计卡片 ============================ */
 async function loadSummary() {
-  const s = await getJSON("/api/summary?" + sessionParams());
+  const s = await getJSON("/tesla/charging/api/summary?" + sessionParams());
   const months = s.first_date && s.last_date ?
     (parseLocal(s.last_date + " 00:00").getFullYear() * 12 + parseLocal(s.last_date + " 00:00").getMonth()) -
     (parseLocal(s.first_date + " 00:00").getFullYear() * 12 + parseLocal(s.first_date + " 00:00").getMonth()) + 1 : 1;
@@ -568,8 +580,8 @@ function renderLocations() {
 
 async function loadCharts() {
   const [monthly, locations] = await Promise.all([
-    getJSON("/api/monthly?" + sessionParams()),
-    getJSON("/api/locations?" + sessionParams()),
+    getJSON("/tesla/charging/api/monthly?" + sessionParams()),
+    getJSON("/tesla/charging/api/locations?" + sessionParams()),
   ]);
   monthlyData = monthly; locData = locations;
   renderMonthly(); renderLocations();
@@ -644,7 +656,7 @@ async function loadMore(reset) {
   if (state.loading || (state.done && !reset)) return;
   state.loading = true; state.err = null; setTail();
   try {
-    const d = await getJSON("/api/sessions?" + sessionParams({ offset: state.offset, limit: PAGE }));
+    const d = await getJSON("/tesla/charging/api/sessions?" + sessionParams({ offset: state.offset, limit: PAGE }));
     if (reset) clearCards();
     state.total = d.total; state.offset += d.items.length;
     if (state.offset >= d.total) state.done = true;
@@ -758,7 +770,7 @@ document.addEventListener("keydown", e => {
 async function loadDetail(id) {
   let d;
   try {
-    d = detailCache.get(id) || await getJSON(`/api/sessions/${id}`);
+    d = detailCache.get(id) || await getJSON(`/tesla/charging/api/sessions/${id}`);
     detailCache.set(id, d);
   } catch (e) {
     sheetBody.innerHTML = `<div class="err-box"><p>加载失败: ${esc(e.message)}</p></div>`;
@@ -904,12 +916,12 @@ async function saveCost() {
   }
   saving = true;
   try {
-    const r = await fetch(`/api/sessions/${editing.id}/cost`, {
+    const r = await fetch(`/tesla/charging/api/sessions/${editing.id}/cost`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cost }),
     });
-    if (r.status === 401) { location.replace("/login"); return; }
+    if (r.status === 401) { location.replace("/tesla/login"); return; }
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
     const d = await r.json();
     applyCostUpdate(editing.id, d.cost, d.price_per_kwh);
@@ -957,13 +969,13 @@ sheetBody.addEventListener("click", e => {
 
 
 $("#logout").addEventListener("click", async () => {
-  try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
-  location.href = "/login";
+  try { await fetch("/tesla/api/logout", { method: "POST" }); } catch (e) {}
+  location.href = "/tesla/login";
 });
 (async () => {
   buildColumns(true);
   try {
-    const cars = await getJSON("/api/car");
+    const cars = await getJSON("/tesla/charging/api/car");
     if (cars[0]) $("#car-pill").textContent = `${cars[0].model} · ${cars[0].name}`;
   } catch (e) { /* 车辆信息失败不阻塞 */ }
   if (!hasEcharts) $("#charts-grid").style.display = "none";

@@ -50,6 +50,12 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
   color: var(--ink-1); font: inherit; caret-color: #3987e5;
 }
 .field input::placeholder { color: var(--ink-3); }
+.eye-btn {
+  flex: none; border: 0; background: none; padding: 4px 2px; margin: -4px -2px;
+  color: var(--ink-3); cursor: pointer; display: flex; align-items: center;
+}
+.eye-btn:active { color: var(--ink-1); }
+.eye-btn svg { width: 20px; height: 20px; display: block; }
 .btn {
   width: 100%; padding: 13px; margin-top: 14px; border: 0; border-radius: 12px;
   background: #3987e5; color: #fff; font-size: 16px; font-weight: 600;
@@ -81,6 +87,18 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
     <div class="field">
       <label for="pass">密码</label>
       <input id="pass" name="password" type="password" autocomplete="current-password" required>
+      <button type="button" class="eye-btn" id="eye" aria-label="显示密码">
+        <svg id="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <svg id="eye-slash" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden>
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+      </button>
     </div>
     <button class="btn" id="btn" type="submit">登 录</button>
     <div class="err" id="err"></div>
@@ -92,13 +110,24 @@ const form = document.getElementById("form");
 const errEl = document.getElementById("err");
 const btn = document.getElementById("btn");
 const card = document.getElementById("card");
+const passInput = document.getElementById("pass");
+const eyeBtn = document.getElementById("eye");
+
+// 查看密码: 明文 ↔ 密文, 图标同步切换
+eyeBtn.addEventListener("click", () => {
+  const show = passInput.type === "password";
+  passInput.type = show ? "text" : "password";
+  eyeBtn.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+  document.getElementById("eye-open").hidden = show;
+  document.getElementById("eye-slash").hidden = !show;
+});
 
 form.addEventListener("submit", async e => {
   e.preventDefault();
   errEl.textContent = "";
   btn.disabled = true;
   try {
-    const r = await fetch("/api/login", {
+    const r = await fetch("/tesla/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -106,9 +135,16 @@ form.addEventListener("submit", async e => {
         password: document.getElementById("pass").value,
       }),
     });
-    if (r.ok) { location.replace("/"); return; }
-    const d = await r.json().catch(() => ({}));
-    errEl.textContent = d.detail || "登录失败";
+    if (r.ok) { location.replace("/tesla/charging"); return; }
+    // 优先展示后端给出的原因 (账号密码错误 / 尝试次数过多…), 兜底按状态码
+    const d = await r.json().catch(() => null);
+    let msg;
+    if (d && d.detail) msg = String(d.detail);
+    else if (r.status === 401) msg = "账号或密码错误";
+    else if (r.status === 429) msg = "尝试次数过多, 请稍后再试";
+    else if (r.status === 404) msg = "登录接口不存在, 服务可能未更新";
+    else msg = `登录失败 (HTTP ${r.status})`;
+    errEl.textContent = msg;
     card.classList.remove("shake");
     void card.offsetWidth;
     card.classList.add("shake");
