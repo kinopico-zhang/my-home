@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>充电记录 · Tesla</title>
+<title>充电记录 · My Tesla</title>
 <style>
 /* ---------- 设计令牌: iOS 暗色 + dataviz 校验系列色 ----------
    系列色集 #1fa349 #3987e5 #c98500 #9085e9 #d95926 (槽序 绿-蓝-黄-紫-橙)
@@ -294,7 +294,7 @@ main { max-width: 1200px; margin: 0 auto; }
 
 <header>
   <div class="nav-row">
-    <h1>充电记录</h1>
+    <h1>My Tesla</h1>
     <span class="car-pill" id="car-pill">Tesla</span>
     <nav class="tabs">
       <a class="on" href="/tesla/charging">充电</a>
@@ -838,7 +838,8 @@ async function loadDetail(id) {
       yAxis: { type: "value", min: 0, max: 100,
                splitLine: { lineStyle: { color: "#2c2c2a" } },
                axisLabel: { color: chartText.axis, fontSize: 10, formatter: "{value}%" } },
-      series: [{ type: "line", data: cv.soc, showSymbol: false, sampling: "lttb",
+      series: [{ type: "line", data: cv.minutes.map((t, i) => [t, cv.soc[i]]),
+                 showSymbol: false, sampling: "lttb",
                  lineStyle: { color: "#1fa349", width: 2 },
                  itemStyle: { color: "#1fa349" },
                  areaStyle: { color: "rgba(31,163,73,.10)" } }],
@@ -849,8 +850,8 @@ async function loadDetail(id) {
 
 function renderPwChart(d) {
   if (!chPw) return;
-  const s = PW_SERIES[pwMode], cv = d.curve, data = cv[s.key];
-  const yMax = Math.max(...data, 1);
+  const s = PW_SERIES[pwMode], cv = d.curve, vals = cv[s.key];
+  const yMax = Math.max(...vals, 1);
   chPw.setOption({
     animationDuration: 250,
     grid: { left: 6, right: 8, top: 10, bottom: 0, containLabel: true },
@@ -869,7 +870,8 @@ function renderPwChart(d) {
     yAxis: { type: "value", min: 0, max: Math.ceil(yMax * 1.08),
              splitLine: { lineStyle: { color: "#2c2c2a" } },
              axisLabel: { color: chartText.axis, fontSize: 10 } },
-    series: [{ type: "line", data, showSymbol: false, sampling: "lttb",
+    series: [{ type: "line", data: cv.minutes.map((t, i) => [t, vals[i]]),
+               showSymbol: false, sampling: "lttb",
                lineStyle: { color: s.color, width: 2 },
                itemStyle: { color: s.color },
                areaStyle: { color: s.color + "1a" } }],

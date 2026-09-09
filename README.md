@@ -1,11 +1,13 @@
-# myteslamate — Tesla 充电记录展示
+# myteslamate — My Tesla
 
 读取 QNAP 上 `teslamate_cn` (TeslaMate) 的 PostgreSQL 数据, 用手机友好的
 iOS 风格页面展示充电记录与行驶足迹: 充电页瀑布流卡片 + 懒加载 + 充电曲线,
-足迹页高德地图轨迹回放。
+足迹页高德地图轨迹回放。App 名称: **My Tesla**。
 
 所有页面挂在 `/tesla` 前缀下: `/tesla/charging` (充电记录) 和
-`/tesla/map` (足迹地图), 各页面 API 独立子路径 (`/tesla/charging/api/*`)。
+`/tesla/map` (足迹地图), 各页面 API 独立子路径 (`/tesla/charging/api/*`、
+`/tesla/map/api/*`)。
+
 
 ## 鉴权
 
@@ -25,6 +27,10 @@ iOS 风格页面展示充电记录与行驶足迹: 充电页瀑布流卡片 + �
 PORT=9000 ./run.sh       # 换端口
 ```
 
+`run.sh` 会自动加载同目录 `.env` (见 `.env.example`): 足迹地图需要高德
+开放平台的 Key (`AMAP_KEY` + `AMAP_SECURITY_CODE`, 服务平台选「Web端 JS API」,
+个人开发者免费)。未配置时地图页会显示申请指引。
+
 依赖装在 `.venv` (Python 3.13, 由 `../python-env` 的 uv 创建):
 
 ```sh
@@ -35,12 +41,15 @@ export UV_CACHE_DIR=../python-env/uv-cache UV_PYTHON_INSTALL_DIR=../python-env/u
 ## 结构
 
 ```
-app/main.py            FastAPI: API + 静态页面 (/tesla 路由)
-app/db.py              定位 teslamate_cn 的 postgres 容器 (docker inspect), 连接池
-app/static/index.html  充电记录页 (iOS 暗色风格, ECharts 本地化)
-app/static/login.html  登录页 (iOS 弹窗风格, 支持查看密码 / 失败原因)
-app/static/map.html    足迹地图页 (高德地图)
+app/main.py             FastAPI: API + 静态页面 (/tesla 路由)
+app/db.py               定位 teslamate_cn 的 postgres 容器 (docker inspect), 连接池
+app/static/index.html   充电记录页 (iOS 暗色风格, ECharts 本地化)
+app/static/login.html   登录页 (iOS 弹窗风格, 支持查看密码 / 失败原因)
+app/static/map.html     足迹地图页 (高德地图 JS API 2.0)
+app/static/gcj02.js     WGS-84 → GCJ-02 坐标转换 (高德火星坐标)
 app/static/echarts.min.js
+tests/                  pytest 后端测试 + node 坐标转换测试
+data/tracks_cache.json  轨迹下采样缓存 (自动生成, git 忽略)
 ```
 
 ## 数据源
@@ -68,7 +77,29 @@ app/static/echarts.min.js
 | `GET /monthly?from&to` | 按月聚合 |
 | `GET /locations?from&to` | 按地点聚合 |
 
+足迹地图 API (前缀 `/tesla/map/api`):
+
+| 路径 | 说明 |
+|---|---|
+| `GET /config` | 高德 Key 配置状态 (来自环境变量) |
+| `GET /summary?from&to` | 行程数 / 总里程 / 总时长 |
+| `GET /tracks?from&to` | 全部轨迹 (服务端下采样, 每行程 ≤26 点, WGS-84 坐标) |
+
 `from`/`to` 为北京时间日期 (`YYYY-MM-DD`); `type` = fast / slow。
+
+轨迹性能: positions 表千万行, 全量下采样 ~15s, 结果落盘 `data/` 并按
+新行程 id 增量追加 (常态毫秒级); 启动时后台线程自动预热。
+
+## 测试
+
+```sh
+./run_tests.sh                                  # 全部
+.venv/bin/python -m pytest tests -q             # 后端 (pytest)
+node --test tests/js/gcj02.test.mjs             # 前端坐标转换纯函数
+```
+
+后端测试不依赖真实数据库 (FakePool + patch `query`), 覆盖鉴权/限速/登出
+轮换/中间件/充电 API/费用校验/轨迹缓存增量逻辑。
 
 ## 配色
 
