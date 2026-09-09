@@ -109,6 +109,21 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 }
 .hint-card a { color: #7db3f0; }
 
+.spin-s { width: 14px; height: 14px; border-width: 2px; }
+.refine-tip {
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px);
+  transform: translateX(-50%); z-index: 30;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 999px;
+  background: rgba(28,28,30,.85);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline);
+  font-size: 12.5px; color: var(--ink-2); white-space: nowrap;
+  max-width: calc(100% - 32px);
+  pointer-events: none;   /* 纯提示, 不挡地图操作 */
+}
+
 /* ---------- 行程信息底部弹层 ---------- */
 .backdrop {
   position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.4);
@@ -182,6 +197,10 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
         <button class="retry-btn" id="recheck">重新检测</button>
       </div>
     </div>
+  </div>
+  <div class="refine-tip" id="refine-tip" hidden>
+    <div class="spin spin-s"></div>
+    <span id="refine-tip-text">正在加载高精度轨迹…</span>
   </div>
 </main>
 
@@ -316,6 +335,7 @@ function renderTracks(list) {
     detailSeq++;                       // 作废在途的细化请求
     detailLines.clear();
     detailBand = null;                 // 粗线重画完成后按当前缩放重新细化
+    showRefineTip(false);              // 重渲染阶段由大加载层接管提示
     if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
     selected = null; selectedId = null;
     closeSheet();
@@ -368,6 +388,13 @@ function scheduleRefine() {
   if (!map || !mapReady) return;
   clearTimeout(refineTimer);
   refineTimer = setTimeout(refineVisible, 350);   // 防抖: 缩放/平移稳定后再查
+}
+
+let refinePending = 0;   // 在途细化请求数, 并发/被作废时提示不错乱
+function showRefineTip(on, n) {
+  $("#refine-tip").hidden = !on;
+  if (on) $("#refine-tip-text").textContent =
+    n ? "正在加载视野内 " + n + " 条高精度轨迹…" : "正在加载高精度轨迹…";
 }
 
 function revertDetail() {   // 缩回 13 级以下 / 切档: 细化线还原为粗线
@@ -435,6 +462,8 @@ async function refineVisible() {
     need.push(t.id);            // 没缓存或视野超出已查范围 → 请求
   }
   if (!need.length) return;
+  refinePending++;
+  showRefineTip(true, need.length);
   try {
     const d = await getJSON("/tesla/map/api/tracks/detail?ids=" + need.join(",") +
       "&zoom=" + band + "&w=" + box.w.toFixed(4) + "&s=" + box.s.toFixed(4) +
@@ -446,6 +475,9 @@ async function refineVisible() {
     }
   } catch (err) {
     diag("detail_fail", { msg: String(err && err.message || err).slice(0, 150) });
+  } finally {
+    refinePending--;
+    if (!refinePending) showRefineTip(false);
   }
 }
 
