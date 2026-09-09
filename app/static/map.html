@@ -397,6 +397,34 @@ function showRefineTip(on, n) {
     n ? "正在加载视野内 " + n + " 条高精度轨迹…" : "正在加载高精度轨迹…";
 }
 
+let probeTimer = null;
+function scheduleProbe() {
+  clearTimeout(probeTimer);
+  probeTimer = setTimeout(probeRefine, 120);   // 手势事件高频, 节流预判
+}
+function probeRefine() {   // 缩放/平移手势进行中: 视野内一旦有未缓存的轨迹, 提前亮提示
+  if (!map) return;
+  const band = bandOf(map.getZoom());
+  if (band === null) {
+    if (!refinePending) showRefineTip(false);   // 缩回概览档, 无需细化
+    return;
+  }
+  if (refinePending) return;                    // 已在加载, 提示本来就亮着
+  const b = map.getBounds();
+  const M = 0.02;
+  const box = { w: b.southwest.lng - M, e: b.northeast.lng + M,
+                s: b.southwest.lat - M, n: b.northeast.lat + M };
+  const cache = detailCache.get(band);
+  for (const t of tracks) {
+    if (!t.pts.some(p => p[0] >= box.w && p[0] <= box.e && p[1] >= box.s && p[1] <= box.n)) continue;
+    const c = cache && cache.get(t.id);
+    if (!c || c.box.w > box.w || c.box.e < box.e || c.box.s > box.s || c.box.n < box.n) {
+      showRefineTip(true);   // 有要加载的轨迹 (缓存缺失或视野超出已查范围)
+      return;
+    }
+  }
+}
+
 function revertDetail() {   // 缩回 13 级以下 / 切档: 细化线还原为粗线
   for (const [id, line] of detailLines) {
     map.remove(line);
@@ -437,6 +465,7 @@ function applyDetail(id, pts) {   // 用高精度线替换该行程的粗线
 async function refineVisible() {
   const band = bandOf(map.getZoom());
   if (band === null) {
+    showRefineTip(false);
     if (detailBand !== null) revertDetail();
     return;
   }
@@ -461,7 +490,7 @@ async function refineVisible() {
     }
     need.push(t.id);            // 没缓存或视野超出已查范围 → 请求
   }
-  if (!need.length) return;
+  if (!need.length) { showRefineTip(false); return; }
   refinePending++;
   showRefineTip(true, need.length);
   try {
@@ -535,7 +564,9 @@ async function boot() {
       mapStyle: "amap://styles/dark", zoom: 11, center: [114.05, 22.55],
     });
     map.on("complete", () => { mapReady = true; diag("map_complete"); });
-    map.on("zoomend", scheduleRefine);   // 缩放/平移稳定后按视野细化轨迹
+    map.on("zoomchange", scheduleProbe);   // 手势进行中: 预判是否有轨迹要加载, 提前亮提示
+    map.on("mapmove", scheduleProbe);
+    map.on("zoomend", scheduleRefine);     // 缩放/平移稳定后按视野细化轨迹
     map.on("moveend", scheduleRefine);
     diag("map_created");
     setTimeout(() => {
