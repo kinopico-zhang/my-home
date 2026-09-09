@@ -2,7 +2,7 @@
 
 数据源: teslamate_cn (PostgreSQL, TeslaMate 标准表结构)。
 时间处理: 库内为 UTC 裸时间戳, 对外输出本地时间 (默认 Asia/Shanghai)。
-鉴权: 登录后签发 HMAC 签名的会话 cookie (默认 90 天), 未登录跳转 /login。
+鉴权: 登录后签发 HMAC 签名的会话 cookie (默认 90 天), 未登录跳转 /tesla/login。
 """
 import hashlib
 import hmac
@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
@@ -108,16 +108,22 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Tesla 充电记录", lifespan=lifespan)
 
+# 充电记录页面专属 API (页面: /tesla/charging)
+charging = APIRouter(prefix="/tesla/charging/api")
+
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path in ("/login", "/api/login", "/api/logout") or path.startswith("/static/"):
+    # 放行: 登录页 / 登录登出接口 / 静态资源
+    if path in ("/tesla/login", "/tesla/api/login", "/tesla/api/logout") \
+            or path.startswith("/tesla/static/"):
         return await call_next(request)
-    if not _authed(request):
-        if path.startswith("/api/"):
+    if path.startswith("/tesla/") and "/api/" in path:
+        if not _authed(request):
             return JSONResponse({"detail": "未登录"}, status_code=401)
-        return RedirectResponse("/login", status_code=302)
+    elif path.startswith("/tesla") and not _authed(request):
+        return RedirectResponse("/tesla/login", status_code=302)
     return await call_next(request)
 
 
@@ -126,12 +132,12 @@ class Creds(BaseModel):
     password: str
 
 
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/tesla/login", response_class=HTMLResponse)
 def login_page():
     return FileResponse(os.path.join(STATIC_DIR, "login.html"))
 
 
-@app.post("/api/login")
+@app.post("/tesla/api/login")
 def login(creds: Creds, request: Request, response: JSONResponse):
     ip = request.client.host if request.client else "?"
     if _ip_locked(ip):
@@ -144,11 +150,11 @@ def login(creds: Creds, request: Request, response: JSONResponse):
     _login_fails.pop(ip, None)
     resp = JSONResponse({"ok": True})
     resp.set_cookie("auth", _make_token(), max_age=SESSION_DAYS * 86400,
-                    httponly=True, samesite="lax")
+                    httponly=True, samesite="lax", path="/tesla")
     return resp
 
 
-@app.post("/api/logout")
+@app.post("/tesla/api/logout")
 def logout():
     # 轮换密钥: 登出即吊销所有已签发的会话 (单用户, 等同「所有设备退出」)
     global SECRET
@@ -159,7 +165,7 @@ def logout():
         new_secret + b"|" + AUTH_USER.encode() + b"|" + AUTH_PASS.encode()
     ).digest()
     resp = JSONResponse({"ok": True})
-    resp.delete_cookie("auth")
+    resp.delete_cookie("auth", path="/tesla")
     return resp
 
 
@@ -258,14 +264,14 @@ def query(sql: str, params: dict | None = None) -> list[dict]:
 
 # ---------------------------------------------------------------- API
 
-@app.get("/api/car")
+@charging.get("/car")
 def get_car():
     rows = query("SELECT id, name, model, trim_badging, vin FROM cars")
     return [{"id": r["id"], "name": r["name"], "model": r["model"],
              "trim_badging": r["trim_badging"], "vin": r["vin"]} for r in rows]
 
 
-@app.get("/api/summary")
+@charging.get("/summary")
 def get_summary(frm: Optional[str] = Query(None, alias="from"),
                 to: Optional[str] = Query(None)):
     params = {"tz": LOCAL_TZ.key, "from": frm, "to": to}
@@ -321,7 +327,7 @@ SORT_OPTIONS = {
 }
 
 
-@app.get("/api/sessions")
+@charging.get("/sessions")
 def get_sessions(offset: int = 0, limit: int = 50,
                  sort: str = "date_desc", type_: str = Query("all", alias="type"),
                  q: Optional[str] = None,
@@ -354,7 +360,7 @@ def get_sessions(offset: int = 0, limit: int = 50,
     return {"total": total, "items": [session_row(r) for r in rows]}
 
 
-@app.get("/api/sessions/{session_id}")
+@charging.get("/sessions/{session_id}")
 def get_session(session_id: int):
     rows = query(f"{SESSION_SELECT} WHERE cp.id = %(id)s", {"id": session_id})
     if not rows:
@@ -393,7 +399,7 @@ class CostUpdate(BaseModel):
     cost: Optional[float] = None  # null = 清除费用
 
 
-@app.patch("/api/sessions/{session_id}/cost")
+@charging.patch("/sessions/{session_id}/cost")
 def update_cost(session_id: int, body: CostUpdate):
     """更新 / 添加 / 清除一条充电记录的费用 (写回 TeslaMate 库)。"""
     if body.cost is not None and not (0 <= body.cost <= 100000):
@@ -415,7 +421,7 @@ def update_cost(session_id: int, body: CostUpdate):
             "price_per_kwh": round(body.cost / base, 3) if body.cost is not None and base else None}
 
 
-@app.get("/api/monthly")
+@charging.get("/monthly")
 def get_monthly(frm: Optional[str] = Query(None, alias="from"),
                 to: Optional[str] = Query(None)):
     params = {"tz": LOCAL_TZ.key, "from": frm, "to": to}
@@ -438,7 +444,7 @@ def get_monthly(frm: Optional[str] = Query(None, alias="from"),
              "fast_sessions": r["fast_sessions"]} for r in rows]
 
 
-@app.get("/api/locations")
+@charging.get("/locations")
 def get_locations(frm: Optional[str] = Query(None, alias="from"),
                   to: Optional[str] = Query(None)):
     params = {"tz": LOCAL_TZ.key, "from": frm, "to": to}
@@ -466,8 +472,19 @@ def get_locations(frm: Optional[str] = Query(None, alias="from"),
 # ---------------------------------------------------------------- 静态页面
 
 @app.get("/")
-def index():
+def root():
+    return RedirectResponse("/tesla", status_code=302)
+
+
+@app.get("/tesla")
+def tesla_home():
+    return RedirectResponse("/tesla/charging", status_code=302)
+
+
+@app.get("/tesla/charging")
+def charging_page():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(charging)
+app.mount("/tesla/static", StaticFiles(directory=STATIC_DIR), name="static")
