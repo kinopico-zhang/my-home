@@ -6,7 +6,7 @@ iOS 风格页面展示充电记录: 瀑布流卡片 + 懒加载, 点击卡片查
 ## 运行
 
 ```sh
-./run.sh                 # http://NAS_IP:8300
+./run.sh                 # http://NAS_IP:8500
 PORT=9000 ./run.sh       # 换端口
 ```
 
