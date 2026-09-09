@@ -429,7 +429,7 @@ const moneyInt = v => v == null ? "—" : "¥" + Math.round(v).toLocaleString("z
 const thousands = v => Math.round(v).toLocaleString("zh-CN");
 
 async function getJSON(url) {
-  const r = await fetch(url);
+  const r = await fetch(url, { cache: "no-store" });
   if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();
