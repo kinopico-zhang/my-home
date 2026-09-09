@@ -29,6 +29,7 @@
   --chart-ink: #c3c2b7;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }  /* hidden 属性必须压过 class 的 display 规则 */
 html { -webkit-text-size-adjust: 100%; }
 body {
   background: var(--bg); color: var(--ink-1);

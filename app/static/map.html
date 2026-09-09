@@ -21,6 +21,8 @@
   --blue: #3987e5;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+/* hidden 属性必须压过任何 class 的 display 规则, 否则浮层永远显示 (弹窗根因) */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   background: var(--bg); color: var(--ink-1);
@@ -110,9 +112,9 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 /* ---------- 行程信息底部弹层 ---------- */
 .backdrop {
   position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.4);
-  opacity: 0; transition: opacity .2s;
+  opacity: 0; pointer-events: none; transition: opacity .2s;  /* 隐藏时必须放过点击, 否则挡住地图 */
 }
-.backdrop.show { opacity: 1; }
+.backdrop.show { opacity: 1; pointer-events: auto; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
   background: var(--surface-2); border-radius: 20px 20px 0 0;
@@ -297,29 +299,50 @@ function renderStats(s) {
   $("#st-hours").innerHTML = (s.duration_min / 60).toFixed(1) + "<small>小时</small>";
 }
 
-function clearTracks() {
-  if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
-  selected = null;
-  closeSheet();
-  if (overlays.length) map.remove(overlays);
-  overlays = [];
-}
+let renderGen = 0;   // 渲染代号: 切换筛选时作废进行中的批次
 
+// 分块异步绘制: 1770 条线连坐标换算一次性做完会卡死主线程几秒,
+// 每帧只画一小批, 期间页面可交互, 加载层实时显示进度
 function renderTracks(tracks) {
-  clearTracks();
-  // WGS-84 → GCJ-02 后绘制; 1770 条线一次性批量 add
-  overlays = tracks.map(t => {
-    const path = t.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1]));
-    const line = new AMap.Polyline({
-      path, strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
-      lineJoin: "round", cursor: "pointer", zIndex: 50,
-    });
-    line.on("click", () => selectTrack(line, t));
-    return line;
+  return new Promise(done => {
+    const gen = ++renderGen;
+    if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
+    selected = null;
+    closeSheet();
+    if (overlays.length) map.remove(overlays);
+    overlays = [];
+    const total = tracks.length;
+    if (!total) { done(); return; }
+    showLoading(true, "正在绘制轨迹 0 / " + total + "…");
+    const CHUNK = 50;
+    let i = 0;
+    (function step() {
+      if (gen !== renderGen) { done(); return; }   // 已被新一轮渲染取代
+      const end = Math.min(i + CHUNK, total);
+      const batch = [];
+      for (; i < end; i++) {
+        const t = tracks[i];
+        const path = t.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1]));  // WGS-84 → GCJ-02
+        const line = new AMap.Polyline({
+          path, strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
+          lineJoin: "round", cursor: "pointer", zIndex: 50,
+        });
+        line.on("click", () => selectTrack(line, t));
+        batch.push(line);
+      }
+      map.add(batch);
+      overlays = overlays.concat(batch);
+      if (i < total) {
+        $("#loading-text").textContent = "正在绘制轨迹 " + i + " / " + total + "…";
+        requestAnimationFrame(step);
+      } else {
+        map.setFitView(overlays, false, [40, 40, 40, 40]);
+        showLoading(false);
+        diag("tracks_rendered", { n: overlays.length });
+        done();
+      }
+    })();
   });
-  map.add(overlays);
-  if (overlays.length) map.setFitView(overlays, false, [40, 40, 40, 40]);
-  diag("tracks_rendered", { n: overlays.length });
 }
 
 function selectTrack(line, t) {
@@ -351,12 +374,12 @@ async function refresh(first) {
       getJSON("/tesla/map/api/summary" + p),
     ]);
     renderStats(s);
-    renderTracks(t.tracks);
+    await renderTracks(t.tracks);   // 分块绘制, 结束时自行收起加载层
     if (!t.tracks.length) showError("该时间段没有行驶轨迹");
   } catch (e) {
     showError(e.message);
+    showLoading(false);
   }
-  showLoading(false);
 }
 
 async function boot() {
