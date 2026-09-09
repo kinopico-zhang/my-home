@@ -2,23 +2,98 @@
 
 数据源: teslamate_cn (PostgreSQL, TeslaMate 标准表结构)。
 时间处理: 库内为 UTC 裸时间戳, 对外输出本地时间 (默认 Asia/Shanghai)。
+鉴权: 登录后签发 HMAC 签名的会话 cookie (默认 90 天), 未登录跳转 /login。
 """
+import hashlib
+import hmac
 import os
+import secrets
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
+from pydantic import BaseModel
 
 from .db import make_pool
 
 LOCAL_TZ = ZoneInfo(os.environ.get("TZ_NAME", "Asia/Shanghai"))
 CUR_SYMBOL = os.environ.get("CUR_SYMBOL", "¥")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+# ---------------------------------------------------------------- 鉴权
+AUTH_USER = os.environ.get("AUTH_USER", "admin")
+AUTH_PASS = os.environ.get("AUTH_PASS", "daozi1994")
+SESSION_DAYS = int(os.environ.get("SESSION_DAYS", 90))
+SECRET_FILE = os.path.join(os.path.dirname(__file__), "..", ".session_secret")
+
+# 登录限速: 单 IP 连续失败 5 次锁定 60 秒
+LOGIN_MAX_FAILS = 5
+LOGIN_LOCK_S = 60
+_login_fails: dict = {}
+
+
+def _load_secret() -> bytes:
+    """会话签名密钥, 持久化在 .session_secret (重启不失效)。"""
+    try:
+        data = open(SECRET_FILE, "rb").read().strip()
+        if len(data) >= 32:
+            return data
+    except OSError:
+        pass
+    data = secrets.token_hex(32).encode()
+    with open(SECRET_FILE, "wb") as f:
+        f.write(data)
+    try:
+        os.chmod(SECRET_FILE, 0o600)
+    except OSError:
+        pass
+    return data
+
+
+SECRET = hashlib.sha256(
+    _load_secret() + b"|" + AUTH_USER.encode() + b"|" + AUTH_PASS.encode()
+).digest()
+
+
+def _make_token() -> str:
+    exp = str(int(time.time()) + SESSION_DAYS * 86400)
+    sig = hmac.new(SECRET, exp.encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def _check_token(token: str) -> bool:
+    try:
+        exp, sig = token.split(".", 1)
+        expect = hmac.new(SECRET, exp.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expect, sig) and int(exp) > time.time()
+    except Exception:
+        return False
+
+
+def _authed(request: Request) -> bool:
+    return _check_token(request.cookies.get("auth", ""))
+
+
+def _ip_locked(ip: str) -> bool:
+    rec = _login_fails.get(ip)
+    return bool(rec and rec[1] > time.time())
+
+
+def _record_fail(ip: str):
+    if len(_login_fails) > 10000:  # 防扫描器撑爆内存
+        _login_fails.clear()
+    fails, _ = _login_fails.get(ip, (0, 0))
+    if fails + 1 >= LOGIN_MAX_FAILS:
+        _login_fails[ip] = (0, time.time() + LOGIN_LOCK_S)
+    else:
+        _login_fails[ip] = (fails + 1, 0)
+
 
 pool = None
 
@@ -32,6 +107,60 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Tesla 充电记录", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in ("/login", "/api/login", "/api/logout") or path.startswith("/static/"):
+        return await call_next(request)
+    if not _authed(request):
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "未登录"}, status_code=401)
+        return RedirectResponse("/login", status_code=302)
+    return await call_next(request)
+
+
+class Creds(BaseModel):
+    user: str
+    password: str
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page():
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+
+
+@app.post("/api/login")
+def login(creds: Creds, request: Request, response: JSONResponse):
+    ip = request.client.host if request.client else "?"
+    if _ip_locked(ip):
+        raise HTTPException(429, f"尝试次数过多, 请 {LOGIN_LOCK_S} 秒后再试")
+    ok_user = hmac.compare_digest(creds.user.encode(), AUTH_USER.encode())
+    ok_pass = hmac.compare_digest(creds.password.encode(), AUTH_PASS.encode())
+    if not (ok_user and ok_pass):
+        _record_fail(ip)
+        raise HTTPException(401, "账号或密码错误")
+    _login_fails.pop(ip, None)
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie("auth", _make_token(), max_age=SESSION_DAYS * 86400,
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.post("/api/logout")
+def logout():
+    # 轮换密钥: 登出即吊销所有已签发的会话 (单用户, 等同「所有设备退出」)
+    global SECRET
+    new_secret = secrets.token_hex(32).encode()
+    with open(SECRET_FILE, "wb") as f:
+        f.write(new_secret)
+    SECRET = hashlib.sha256(
+        new_secret + b"|" + AUTH_USER.encode() + b"|" + AUTH_PASS.encode()
+    ).digest()
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("auth")
+    return resp
 
 
 # ---------------------------------------------------------------- helpers

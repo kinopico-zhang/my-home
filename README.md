@@ -3,6 +3,17 @@
 读取 QNAP 上 `teslamate_cn` (TeslaMate) 的 PostgreSQL 数据, 用手机友好的
 iOS 风格页面展示充电记录: 瀑布流卡片 + 懒加载, 点击卡片查看充电曲线。
 
+## 鉴权
+
+所有页面和 API 需要登录 (cookie 会话, 默认 90 天有效):
+
+- 默认账号 `admin` / `daozi1994`, 可用环境变量 `AUTH_USER` / `AUTH_PASS` 覆盖
+- `AUTH_USER=admin AUTH_PASS=xxx ./run.sh` 即可改账号密码 (改密码会踢掉所有旧会话)
+- 登录接口有防爆破: 单 IP 连续失败 5 次锁定 60 秒
+- 「退出」会轮换会话密钥, 所有设备都需要重新登录
+- 注意: 服务走明文 HTTP, 密码与数据在公网传输时可被截获; 建议后续上 HTTPS
+  (或改为只在家庭网络/VPN 内访问)
+
 ## 运行
 
 ```sh
