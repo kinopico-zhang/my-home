@@ -198,7 +198,57 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-let map = null, overlays = [], selected = null;
+
+/* ---------- 诊断探针: 浏览器端异常/高德请求失败自动回传服务端日志 ---------- */
+let diagCount = 0;
+function diag(stage, extra) {
+  if (diagCount++ > 40) return;
+  try {
+    fetch("/tesla/map/api/diag", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify(Object.assign({ stage, ua: navigator.userAgent.slice(0, 100) }, extra)),
+    }).catch(() => {});
+  } catch (e) { /* 探针自身绝不能影响页面 */ }
+}
+window.addEventListener("error", e => diag("window_error",
+  { msg: ((e.message || "") + " @" + (e.filename || "") + ":" + (e.lineno || 0)).slice(0, 300) }));
+window.addEventListener("unhandledrejection", e => diag("promise_rejection",
+  { msg: String((e.reason && e.reason.message) || e.reason || "").slice(0, 300) }));
+(function patchConsole() {
+  for (const lvl of ["error", "warn"]) {
+    const orig = console[lvl].bind(console);
+    console[lvl] = (...args) => {
+      diag("console_" + lvl, { msg: args.map(a => String((a && a.message) || a)).join(" | ").slice(0, 400) });
+      orig(...args);
+    };
+  }
+})();
+(function patchNetwork() {  // 捕获高德请求的真实失败 (状态码 + 响应体)
+  const origFetch = window.fetch.bind(window);
+  window.fetch = function (url, opts) {
+    return origFetch(url, opts).then(r => {
+      if (r.status >= 400 && String(url).includes("amap.com"))
+        diag("amap_fetch_" + r.status, { url: String(url).slice(0, 250) });
+      return r;
+    }).catch(e => {
+      if (String(url).includes("amap.com"))
+        diag("amap_fetch_err", { url: String(url).slice(0, 250), err: String(e).slice(0, 150) });
+      throw e;
+    });
+  };
+  const origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    this.addEventListener("load", () => {
+      if (this.status >= 400 && String(url).includes("amap.com"))
+        diag("amap_xhr_" + this.status,
+             { url: String(url).slice(0, 250), resp: String(this.responseText || "").slice(0, 250) });
+    });
+    return origOpen.call(this, method, url, ...rest);
+  };
+})();
+
+let map = null, overlays = [], selected = null, mapReady = false;
 let range = "all";
 
 async function getJSON(url) {
@@ -225,7 +275,8 @@ function loadAMap(key, securityCode) {
     const s = document.createElement("script");
     s.src = "https://webapi.amap.com/maps?v=2.0&key=" + encodeURIComponent(key);
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error("高德地图脚本加载失败, 请检查网络"));
+    s.onerror = () => { diag("amap_script_fail", { src: s.src.slice(0, 120) });
+                        reject(new Error("高德地图脚本加载失败, 请检查网络")); };
     document.head.appendChild(s);
   });
 }
@@ -268,6 +319,7 @@ function renderTracks(tracks) {
   });
   map.add(overlays);
   if (overlays.length) map.setFitView(overlays, false, [40, 40, 40, 40]);
+  diag("tracks_rendered", { n: overlays.length });
 }
 
 function selectTrack(line, t) {
@@ -311,16 +363,28 @@ async function boot() {
   try {
     // 加时间戳穿透浏览器缓存 (旧响应可能缓存了 amap_key: null)
     const cfg = await getJSON("/tesla/map/api/config?_=" + Date.now());
+    diag("config_ok", { has_key: !!cfg.amap_key, has_scode: !!cfg.security_code });
     if (!cfg.amap_key) {
       $("#keyhint").hidden = false;
       return;
     }
     await loadAMap(cfg.amap_key, cfg.security_code);
+    diag("amap_script_loaded", { ver: (window.AMap && AMap.version) || "?" });
     map = new AMap.Map("map", {
       mapStyle: "amap://styles/dark", zoom: 11, center: [114.05, 22.55],
     });
+    map.on("complete", () => { mapReady = true; diag("map_complete"); });
+    diag("map_created");
+    setTimeout(() => {
+      if (!mapReady) {
+        diag("map_incomplete_15s", { amap: !!window.AMap });
+        showLoading(true, "地图引擎初始化未完成…已自动上报诊断, 请反馈给管理员");
+      }
+    }, 15000);
     await refresh(true);
+    diag("boot_done", { tracks: overlays.length });
   } catch (e) {
+    diag("boot_error", { msg: String(e && e.message || e).slice(0, 300) });
     if (e.message !== "未登录") showError(e.message);
   }
 }
