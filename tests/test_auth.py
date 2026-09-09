@@ -78,7 +78,7 @@ def test_unauthed_pages_redirect_to_login(client):
 def test_unauthed_apis_return_401_json(client):
     for path in ("/tesla/charging/api/summary", "/tesla/charging/api/sessions",
                  "/tesla/map/api/summary", "/tesla/map/api/tracks",
-                 "/tesla/map/api/config"):
+                 "/tesla/map/api/tracks/detail", "/tesla/map/api/config"):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
