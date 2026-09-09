@@ -78,9 +78,10 @@ def test_tracks_cold_cache_queries_everything(auth, monkeypatch, tmp_path):
     assert d["count"] == 1
     assert d["tracks"][0]["id"] == 5
     assert seen["after"] == -1               # 无缓存 → 全量
-    # 结果落盘
+    # 结果落盘 (带算法版本号)
     cache = json.loads((tmp_path / "tracks_cache.json").read_text())
     assert cache["max_id"] == 5
+    assert cache["v"] == m.TRACKS_CACHE_VERSION
     assert cache["tracks"][0]["id"] == 5
 
 
@@ -100,8 +101,8 @@ def test_tracks_warm_memory_cache_skips_query(auth, monkeypatch):
 def test_tracks_disk_cache_used_without_query(auth, monkeypatch, tmp_path):
     track = {"id": 3, "date": "2026-07-01", "km": 1.0, "min": 5,
              "pts": [[114.0, 22.5], [114.1, 22.6]]}
-    (tmp_path / "tracks_cache.json").write_text(
-        json.dumps({"max_id": 3, "tracks": [track]}))
+    (tmp_path / "tracks_cache.json").write_text(json.dumps(
+        {"v": m.TRACKS_CACHE_VERSION, "max_id": 3, "tracks": [track]}))
     monkeypatch.setattr(m, "_drive_max_id", lambda: 3)   # 无新行程
 
     def boom(after):
@@ -111,6 +112,26 @@ def test_tracks_disk_cache_used_without_query(auth, monkeypatch, tmp_path):
     d = auth.get("/tesla/map/api/tracks").json()
     assert d["count"] == 1
     assert d["tracks"][0]["id"] == 3
+
+
+def test_tracks_old_cache_version_triggers_full_rebuild(auth, monkeypatch, tmp_path):
+    """旧版本缓存 (无 v 字段) 必须作废全量重建, 不能直接复用旧采样。"""
+    track = {"id": 1, "date": "2026-01-01", "km": 5.0, "min": 10,
+             "pts": [[114.0, 22.5], [114.1, 22.6]]}
+    (tmp_path / "tracks_cache.json").write_text(
+        json.dumps({"max_id": 3, "tracks": [track]}))    # 无 v → 版本不符
+    monkeypatch.setattr(m, "_drive_max_id", lambda: 3)
+    seen = {}
+
+    def qt(after):
+        seen["after"] = after
+        return [track]
+
+    monkeypatch.setattr(m, "_query_tracks", qt)
+    assert auth.get("/tesla/map/api/tracks").json()["count"] == 1
+    assert seen["after"] == -1                    # 无视磁盘 max_id, 全量重建
+    cache = json.loads((tmp_path / "tracks_cache.json").read_text())
+    assert cache["v"] == m.TRACKS_CACHE_VERSION   # 重建后写入新版本号
 
 
 def test_tracks_incremental_append(auth, monkeypatch, tmp_path):
@@ -143,6 +164,89 @@ def test_diag_endpoint_logs_and_requires_auth(auth, capsys):
     from fastapi.testclient import TestClient
     assert TestClient(m.app).post(
         "/tesla/map/api/diag", json={"stage": "x"}).status_code == 401
+
+
+# ---------------------------------------------------------------- 视野内高精度轨迹
+def detail_row(drive_id, lng, lat):
+    return {"drive_id": drive_id, "longitude": lng, "latitude": lat}
+
+
+def test_group_detail_groups_and_drops_single_points():
+    rows = [
+        detail_row(7, 114.05, 22.55), detail_row(7, 114.06, 22.56),
+        detail_row(9, 114.10, 22.60),  # 单点 → 丢弃
+    ]
+    ts = m._group_detail(rows)
+    assert ts == [{"id": 7, "pts": [[114.05, 22.55], [114.06, 22.56]]}]
+
+
+def test_tracks_detail_endpoint(auth, monkeypatch):
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen["sql"], seen["params"] = sql, params
+        return [detail_row(7, 114.05, 22.55), detail_row(7, 114.06, 22.56)]
+
+    monkeypatch.setattr(m, "query", fake_query)
+    r = auth.get("/tesla/map/api/tracks/detail",
+                 params={"ids": "7,8", "zoom": 13,
+                         "w": 113.9, "s": 22.4, "e": 114.2, "n": 22.7})
+    assert r.status_code == 200
+    assert r.json() == {"count": 1, "tracks": [
+        {"id": 7, "pts": [[114.05, 22.55], [114.06, 22.56]]}]}
+    assert "ANY(%(ids)s)" in seen["sql"]      # 走 drive_id 索引
+    assert "BETWEEN %(w)s AND %(e)s" in seen["sql"]   # 视野框过滤
+    assert seen["params"]["ids"] == [7, 8]
+    assert seen["params"]["per"] == m.DETAIL_PER_DRIVE[13]   # 13 级 → 150 点/条
+    assert seen["params"]["w"] == 113.9
+
+
+def test_tracks_detail_zoom15_is_full_resolution(auth, monkeypatch):
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen.update(params)
+        return []
+
+    monkeypatch.setattr(m, "query", fake_query)
+    r = auth.get("/tesla/map/api/tracks/detail",
+                 params={"ids": "1", "zoom": 15,
+                         "w": 113, "s": 22, "e": 115, "n": 24})
+    assert r.status_code == 200
+    assert seen["per"] == 5000                # 15 级以上不采样
+
+
+def test_tracks_detail_caps_ids_at_80(auth, monkeypatch):
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen["n"] = len(params["ids"])
+        return []
+
+    monkeypatch.setattr(m, "query", fake_query)
+    ids = ",".join(str(i) for i in range(100))
+    r = auth.get("/tesla/map/api/tracks/detail",
+                 params={"ids": ids, "zoom": 13, "w": 113, "s": 22, "e": 115, "n": 24})
+    assert r.status_code == 200
+    assert seen["n"] == m.DETAIL_MAX_IDS == 80
+
+
+def test_tracks_detail_rejects_bad_input(auth, monkeypatch):
+    def boom(sql, params=None):
+        raise AssertionError("参数非法不应查询数据库")
+
+    monkeypatch.setattr(m, "query", boom)
+    base = "/tesla/map/api/tracks/detail"
+    # ids 非数字 → 400
+    assert auth.get(base, params={"ids": "abc", "zoom": 13,
+                                  "w": 113, "s": 22, "e": 115, "n": 24}).status_code == 400
+    # bbox 非法 (w >= e) → 400
+    assert auth.get(base, params={"ids": "1", "zoom": 13,
+                                  "w": 115, "s": 22, "e": 113, "n": 24}).status_code == 400
+    # 空 ids → 200 空结果, 不查库
+    r = auth.get(base, params={"ids": "", "zoom": 13,
+                               "w": 113, "s": 22, "e": 115, "n": 24})
+    assert r.status_code == 200 and r.json()["count"] == 0
 
 
 def test_tracks_date_filtering(auth, monkeypatch):

@@ -250,8 +250,17 @@ window.addEventListener("unhandledrejection", e => diag("promise_rejection",
   };
 })();
 
-let map = null, overlays = [], selected = null, mapReady = false;
+let map = null, overlays = [], selected = null, selectedId = null, mapReady = false;
 let range = "all";
+let tracks = [];                  // 当前筛选后的粗轨迹对象
+let tracksById = new Map();       // id → 粗轨迹对象 (点击信息用)
+let coarseById = new Map();       // id → 粗线 Polyline
+let detailLines = new Map();      // id → 细化线 Polyline (替换粗线)
+let detailBand = null;            // 当前细化档位: null / 13 / 14 / 15
+let detailCache = new Map();      // 档位 → Map(id → {box, pts})
+let renderGen = 0;                // 渲染代号: 切换筛选时作废进行中的批次
+let detailSeq = 0;                // 作废在途的细化请求
+let refineTimer = null;
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -299,19 +308,23 @@ function renderStats(s) {
   $("#st-hours").innerHTML = (s.duration_min / 60).toFixed(1) + "<small>小时</small>";
 }
 
-let renderGen = 0;   // 渲染代号: 切换筛选时作废进行中的批次
-
-// 分块异步绘制: 1770 条线连坐标换算一次性做完会卡死主线程几秒,
+// 分块异步绘制: 上千条线连坐标换算一次性做完会卡死主线程几秒,
 // 每帧只画一小批, 期间页面可交互, 加载层实时显示进度
-function renderTracks(tracks) {
+function renderTracks(list) {
   return new Promise(done => {
     const gen = ++renderGen;
+    detailSeq++;                       // 作废在途的细化请求
+    detailLines.clear();
+    detailBand = null;                 // 粗线重画完成后按当前缩放重新细化
     if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
-    selected = null;
+    selected = null; selectedId = null;
     closeSheet();
     if (overlays.length) map.remove(overlays);
     overlays = [];
-    const total = tracks.length;
+    coarseById = new Map();
+    tracks = list;
+    tracksById = new Map(list.map(t => [t.id, t]));
+    const total = list.length;
     if (!total) { done(); return; }
     showLoading(true, "正在绘制轨迹 0 / " + total + "…");
     const CHUNK = 50;
@@ -321,7 +334,7 @@ function renderTracks(tracks) {
       const end = Math.min(i + CHUNK, total);
       const batch = [];
       for (; i < end; i++) {
-        const t = tracks[i];
+        const t = list[i];
         const path = t.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1]));  // WGS-84 → GCJ-02
         const line = new AMap.Polyline({
           path, strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
@@ -329,6 +342,7 @@ function renderTracks(tracks) {
         });
         line.on("click", () => selectTrack(line, t));
         batch.push(line);
+        coarseById.set(t.id, line);
       }
       map.add(batch);
       overlays = overlays.concat(batch);
@@ -340,14 +354,105 @@ function renderTracks(tracks) {
         showLoading(false);
         diag("tracks_rendered", { n: overlays.length });
         done();
+        scheduleRefine();              // 若已缩放到 13 级以上, 立即细化视野内轨迹
       }
     })();
   });
 }
 
+/* ---------- 缩放渐进细化: 13 级以下用粗轨迹, 之上按视野请求高精度点位 ---------- */
+const DETAIL_ZOOM = 13;
+function bandOf(z) { return z >= 15 ? 15 : z >= 14 ? 14 : z >= DETAIL_ZOOM ? 13 : null; }
+
+function scheduleRefine() {
+  if (!map || !mapReady) return;
+  clearTimeout(refineTimer);
+  refineTimer = setTimeout(refineVisible, 350);   // 防抖: 缩放/平移稳定后再查
+}
+
+function revertDetail() {   // 缩回 13 级以下 / 切档: 细化线还原为粗线
+  for (const [id, line] of detailLines) {
+    map.remove(line);
+    const c = coarseById.get(id);
+    if (c) {
+      map.add(c);
+      if (id === selectedId) {   // 选中高亮转移回粗线
+        selected = c;
+        c.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+      }
+    }
+  }
+  detailLines.clear();
+  detailBand = null;
+}
+
+function applyDetail(id, pts) {   // 用高精度线替换该行程的粗线
+  const t = tracksById.get(id);
+  if (!t) return;
+  const old = detailLines.get(id);
+  if (old) map.remove(old);       // 之前只覆盖旧视野, 现在换成更宽的
+  const c = coarseById.get(id);
+  if (c) map.remove(c);
+  const line = new AMap.Polyline({
+    path: pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
+    strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
+    lineJoin: "round", cursor: "pointer", zIndex: 50,
+  });
+  line.on("click", () => selectTrack(line, t));
+  map.add(line);
+  detailLines.set(id, line);
+  if (id === selectedId) {        // 该线正被选中: 高亮转移到细化线
+    selected = line;
+    line.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+  }
+}
+
+async function refineVisible() {
+  const band = bandOf(map.getZoom());
+  if (band === null) {
+    if (detailBand !== null) revertDetail();
+    return;
+  }
+  if (band !== detailBand) { revertDetail(); detailBand = band; }
+  const b = map.getBounds();
+  const M = 0.02;   // 视野外预留 ~2km, 平移时边缘不至于闪回粗线
+  const box = { w: b.southwest.lng - M, e: b.northeast.lng + M,
+                s: b.southwest.lat - M, n: b.northeast.lat + M };
+  const cache = detailCache.get(band) || new Map();
+  detailCache.set(band, cache);
+  const seq = ++detailSeq;
+  const need = [];
+  let scanned = 0;
+  for (const t of tracks) {
+    if (scanned >= 80) break;    // 与后端 DETAIL_MAX_IDS 对齐
+    if (!t.pts.some(p => p[0] >= box.w && p[0] <= box.e && p[1] >= box.s && p[1] <= box.n)) continue;
+    scanned++;
+    const c = cache.get(t.id);
+    if (c && c.box.w <= box.w && c.box.e >= box.e && c.box.s <= box.s && c.box.n >= box.n) {
+      if (!detailLines.has(t.id)) applyDetail(t.id, c.pts);   // 缓存已覆盖当前视野
+      continue;
+    }
+    need.push(t.id);            // 没缓存或视野超出已查范围 → 请求
+  }
+  if (!need.length) return;
+  try {
+    const d = await getJSON("/tesla/map/api/tracks/detail?ids=" + need.join(",") +
+      "&zoom=" + band + "&w=" + box.w.toFixed(4) + "&s=" + box.s.toFixed(4) +
+      "&e=" + box.e.toFixed(4) + "&n=" + box.n.toFixed(4));
+    if (seq !== detailSeq || band !== detailBand) return;   // 已被新视野/重渲染取代
+    for (const t of d.tracks) {
+      cache.set(t.id, { box, pts: t.pts });
+      applyDetail(t.id, t.pts);
+    }
+  } catch (err) {
+    diag("detail_fail", { msg: String(err && err.message || err).slice(0, 150) });
+  }
+}
+
 function selectTrack(line, t) {
   if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
   selected = line;
+  selectedId = t.id;
   line.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
   map.setFitView([line], false, [70, 70, 70, 240]);
   $("#sh-date").textContent = t.date;
@@ -360,6 +465,7 @@ function selectTrack(line, t) {
 function closeSheet() {
   if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
   selected = null;
+  selectedId = null;
   $("#backdrop").classList.remove("show");
   $("#sheet").classList.remove("show");
 }
@@ -397,6 +503,8 @@ async function boot() {
       mapStyle: "amap://styles/dark", zoom: 11, center: [114.05, 22.55],
     });
     map.on("complete", () => { mapReady = true; diag("map_complete"); });
+    map.on("zoomend", scheduleRefine);   // 缩放/平移稳定后按视野细化轨迹
+    map.on("moveend", scheduleRefine);
     diag("map_created");
     setTimeout(() => {
       if (!mapReady) {

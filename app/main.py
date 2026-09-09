@@ -520,7 +520,9 @@ def map_summary(frm: Optional[str] = Query(None, alias="from"),
 
 
 # 轨迹缓存: 全量下采样要扫千万级行 (~15s), 结果落盘并按 drive id 增量追加。
-# 已完成行程不会变更, 新行程 id 单调递增, 旧缓存无需失效。
+# 已完成行程不会变更, 新行程 id 单调递增, 旧缓存无需失效;
+# 下采样算法变更时版本号 +1, 旧缓存自动作废全量重建。
+TRACKS_CACHE_VERSION = 2
 TRACKS_SQL = """
 WITH p AS (
     SELECT pos.drive_id, pos.date, pos.longitude, pos.latitude,
@@ -533,7 +535,7 @@ WITH p AS (
 SELECT p.drive_id, p.longitude, p.latitude,
        d.start_date, d.distance, d.duration_min
   FROM p JOIN drives d ON d.id = p.drive_id
- WHERE rn = 1 OR rn = cnt OR rn %% greatest((cnt / 25)::int, 1) = 1
+ WHERE rn = 1 OR rn = cnt OR (rn - 1) %% greatest((cnt / 40)::int, 1) = 0
  ORDER BY d.start_date, p.drive_id, p.date
 """
 
@@ -583,7 +585,10 @@ def _load_tracks() -> list[dict]:
             try:
                 with open(_map_cache_file(), encoding="utf-8") as f:
                     data = json.load(f)
-                after, merged = int(data.get("max_id", -1)), data.get("tracks", [])
+                if int(data.get("v", 1)) != TRACKS_CACHE_VERSION:
+                    after, merged = -1, []  # 算法版本不符: 全量重建
+                else:
+                    after, merged = int(data.get("max_id", -1)), data.get("tracks", [])
             except (OSError, ValueError, TypeError):
                 after, merged = -1, []
         new = _query_tracks(after) if after < max_id else []
@@ -595,8 +600,8 @@ def _load_tracks() -> list[dict]:
                 os.makedirs(os.path.dirname(cf), exist_ok=True)
                 tmp = cf + ".tmp"
                 with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump({"max_id": max_id, "tracks": merged},
-                              f, separators=(",", ":"))
+                    json.dump({"v": TRACKS_CACHE_VERSION, "max_id": max_id,
+                               "tracks": merged}, f, separators=(",", ":"))
                 os.replace(tmp, cf)
             except OSError:
                 pass  # 缓存写失败不影响本次响应
@@ -618,6 +623,60 @@ def get_tracks(frm: Optional[str] = Query(None, alias="from"),
         tracks = [t for t in tracks if t["date"] >= frm]
     if to:
         tracks = [t for t in tracks if t["date"] <= to]
+    return {"count": len(tracks), "tracks": tracks}
+
+
+# 视野内高精度轨迹: 粗轨迹 (40 点/条) 供全量概览, 缩放到 13 级以上后
+# 前端把视野内 drive ids + 视野框发来, 按缩放档位逐级加密, 不走全量缓存。
+DETAIL_SQL = """
+WITH p AS (
+    SELECT pos.drive_id, pos.longitude, pos.latitude,
+           row_number() OVER (PARTITION BY pos.drive_id ORDER BY pos.date) AS rn,
+           count(*) OVER (PARTITION BY pos.drive_id) AS cnt
+      FROM positions pos
+     WHERE pos.drive_id = ANY(%(ids)s)
+       AND pos.longitude BETWEEN %(w)s AND %(e)s
+       AND pos.latitude BETWEEN %(s)s AND %(n)s
+)
+SELECT p.drive_id, p.longitude, p.latitude
+  FROM p
+ WHERE rn = 1 OR rn = cnt OR (rn - 1) %% greatest((cnt / %(per)s)::int, 1) = 0
+ ORDER BY p.drive_id, rn
+"""
+
+DETAIL_PER_DRIVE = {13: 150, 14: 400}   # 13/14 级每条上限; 15 级以上全精度
+DETAIL_MAX_IDS = 80
+
+
+def _group_detail(rows: list[dict]) -> list[dict]:
+    """视野内轨迹按行程分组 (SQL 已按 drive_id 排序保证连续)。"""
+    tracks, cur = [], None
+    for r in rows:
+        if cur is None or r["drive_id"] != cur["id"]:
+            cur = {"id": r["drive_id"], "pts": []}
+            tracks.append(cur)
+        cur["pts"].append([round(float(r["longitude"]), 5),
+                           round(float(r["latitude"]), 5)])
+    return [t for t in tracks if len(t["pts"]) >= 2]
+
+
+@mapapi.get("/tracks/detail")
+def get_tracks_detail(ids: str, zoom: int = 15,
+                      w: float = -180.0, s: float = -90.0,
+                      e: float = 180.0, n: float = 90.0):
+    try:
+        id_list = [int(x) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "ids 格式错误")
+    id_list = id_list[:DETAIL_MAX_IDS]
+    if not id_list:
+        return {"count": 0, "tracks": []}
+    if not (-180 <= w < e <= 180 and -90 <= s < n <= 90):
+        raise HTTPException(400, "bbox 参数非法")
+    per = DETAIL_PER_DRIVE.get(zoom, 5000)  # 15 级以上不采样 (5000 为保险上限)
+    rows = query(DETAIL_SQL, {"ids": id_list, "per": per,
+                              "w": w, "s": s, "e": e, "n": n})
+    tracks = _group_detail(rows)
     return {"count": len(tracks), "tracks": tracks}
 
 
