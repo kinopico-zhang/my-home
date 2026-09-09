@@ -6,8 +6,10 @@
 """
 import hashlib
 import hmac
+import json
 import os
 import secrets
+import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -102,11 +104,13 @@ pool = None
 async def lifespan(_: FastAPI):
     global pool
     pool = make_pool()
+    # 后台预热轨迹缓存 (全量下采样 ~15s, 不阻塞启动)
+    threading.Thread(target=_warm_tracks, daemon=True).start()
     yield
     pool.close()
 
 
-app = FastAPI(title="Tesla 充电记录", lifespan=lifespan)
+app = FastAPI(title="My Tesla", lifespan=lifespan)
 
 # 充电记录页面专属 API (页面: /tesla/charging)
 charging = APIRouter(prefix="/tesla/charging/api")
@@ -469,6 +473,149 @@ def get_locations(frm: Optional[str] = Query(None, alias="from"),
              "fast_sessions": r["fast_sessions"]} for r in rows]
 
 
+# ---------------------------------------------------------------- 足迹地图 API (页面: /tesla/map)
+mapapi = APIRouter(prefix="/tesla/map/api")
+
+
+@mapapi.get("/config")
+def map_config():
+    """高德地图 Key (env: AMAP_KEY / AMAP_SECURITY_CODE, 见 .env.example)。"""
+    return {"amap_key": os.environ.get("AMAP_KEY") or None,
+            "security_code": os.environ.get("AMAP_SECURITY_CODE") or None}
+
+
+def drive_range_clause(params: dict) -> str:
+    """按本地日期过滤 drives (与充电 range_clause 同一套时区换算)。"""
+    parts = []
+    if params.get("from"):
+        parts.append("d.start_date >= (%(from)s::date::timestamp "
+                     "AT TIME ZONE %(tz)s AT TIME ZONE 'UTC')")
+    if params.get("to"):
+        parts.append("d.start_date < ((%(to)s::date + 1)::timestamp "
+                     "AT TIME ZONE %(tz)s AT TIME ZONE 'UTC')")
+    return " AND ".join(parts) if parts else "TRUE"
+
+
+@mapapi.get("/summary")
+def map_summary(frm: Optional[str] = Query(None, alias="from"),
+                to: Optional[str] = None):
+    params = {"tz": LOCAL_TZ.key, "from": frm, "to": to}
+    rows = query(f"""
+        SELECT count(*) AS drives, coalesce(sum(distance), 0) AS km,
+               coalesce(sum(duration_min), 0) AS duration_min,
+               min(start_date) AS first_date, max(start_date) AS last_date
+          FROM drives d
+         WHERE d.distance IS NOT NULL AND {drive_range_clause(params)}
+    """, params)
+    r = rows[0]
+    return {"drives": r["drives"], "distance_km": round(float(r["km"]), 1),
+            "duration_min": r["duration_min"],
+            "first_date": fdate(r["first_date"]) if r["first_date"] else None,
+            "last_date": fdate(r["last_date"]) if r["last_date"] else None}
+
+
+# 轨迹缓存: 全量下采样要扫千万级行 (~15s), 结果落盘并按 drive id 增量追加。
+# 已完成行程不会变更, 新行程 id 单调递增, 旧缓存无需失效。
+TRACKS_SQL = """
+WITH p AS (
+    SELECT pos.drive_id, pos.date, pos.longitude, pos.latitude,
+           row_number() OVER (PARTITION BY pos.drive_id ORDER BY pos.date) AS rn,
+           count(*) OVER (PARTITION BY pos.drive_id) AS cnt
+      FROM positions pos
+      JOIN drives d ON d.id = pos.drive_id
+     WHERE d.distance IS NOT NULL AND d.id > %(after_id)s
+)
+SELECT p.drive_id, p.longitude, p.latitude,
+       d.start_date, d.distance, d.duration_min
+  FROM p JOIN drives d ON d.id = p.drive_id
+ WHERE rn = 1 OR rn = cnt OR rn %% greatest((cnt / 25)::int, 1) = 1
+ ORDER BY d.start_date, p.drive_id, p.date
+"""
+
+_tracks_mem: Optional[dict] = None  # {"max_id": int, "tracks": [...]}
+_tracks_lock = threading.Lock()
+
+
+def _map_cache_file() -> str:
+    return os.environ.get("MAP_CACHE_FILE") or \
+        os.path.join(os.path.dirname(__file__), "..", "data", "tracks_cache.json")
+
+
+def _drive_max_id() -> int:
+    return query("SELECT coalesce(max(id), 0) AS m FROM drives "
+                 "WHERE distance IS NOT NULL")[0]["m"]
+
+
+def _group_tracks(rows: list[dict]) -> list[dict]:
+    """把下采样行按行程分组 (SQL 已按 start_date, drive_id 排序保证连续)。"""
+    tracks, cur = [], None
+    for r in rows:
+        if cur is None or r["drive_id"] != cur["id"]:
+            cur = {"id": r["drive_id"], "date": fdate(r["start_date"]),
+                   "km": round(float(r["distance"]), 1) if r["distance"] else 0.0,
+                   "min": r["duration_min"], "pts": []}
+            tracks.append(cur)
+        cur["pts"].append([round(float(r["longitude"]), 5),
+                           round(float(r["latitude"]), 5)])
+    return [t for t in tracks if len(t["pts"]) >= 2]
+
+
+def _query_tracks(after_id: int) -> list[dict]:
+    return _group_tracks(query(TRACKS_SQL, {"after_id": after_id}))
+
+
+def _load_tracks() -> list[dict]:
+    """全量轨迹: 首次全库下采样 (慢), 之后内存/磁盘缓存 + 增量追加新行程。"""
+    global _tracks_mem
+    with _tracks_lock:
+        max_id = _drive_max_id()
+        if _tracks_mem and _tracks_mem["max_id"] >= max_id:
+            return _tracks_mem["tracks"]
+        after, merged = -1, []
+        if _tracks_mem:  # 内存缓存落后 (有新行程): 从内存增量
+            after, merged = _tracks_mem["max_id"], _tracks_mem["tracks"]
+        else:  # 进程首次: 尝试磁盘缓存, 从其 max_id 增量
+            try:
+                with open(_map_cache_file(), encoding="utf-8") as f:
+                    data = json.load(f)
+                after, merged = int(data.get("max_id", -1)), data.get("tracks", [])
+            except (OSError, ValueError, TypeError):
+                after, merged = -1, []
+        new = _query_tracks(after) if after < max_id else []
+        merged = sorted(merged + new, key=lambda t: t["date"])
+        _tracks_mem = {"max_id": max_id, "tracks": merged}
+        if new:  # 有新数据才落盘 (原子替换)
+            try:
+                cf = _map_cache_file()
+                os.makedirs(os.path.dirname(cf), exist_ok=True)
+                tmp = cf + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump({"max_id": max_id, "tracks": merged},
+                              f, separators=(",", ":"))
+                os.replace(tmp, cf)
+            except OSError:
+                pass  # 缓存写失败不影响本次响应
+        return _tracks_mem["tracks"]
+
+
+def _warm_tracks():
+    try:
+        _load_tracks()
+    except Exception:
+        pass  # 预热失败不影响服务, 首次访问会重试
+
+
+@mapapi.get("/tracks")
+def get_tracks(frm: Optional[str] = Query(None, alias="from"),
+               to: Optional[str] = None):
+    tracks = _load_tracks()
+    if frm:
+        tracks = [t for t in tracks if t["date"] >= frm]
+    if to:
+        tracks = [t for t in tracks if t["date"] <= to]
+    return {"count": len(tracks), "tracks": tracks}
+
+
 # ---------------------------------------------------------------- 静态页面
 
 @app.get("/")
@@ -486,5 +633,11 @@ def charging_page():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
+@app.get("/tesla/map")
+def map_page():
+    return FileResponse(os.path.join(STATIC_DIR, "map.html"))
+
+
 app.include_router(charging)
+app.include_router(mapapi)
 app.mount("/tesla/static", StaticFiles(directory=STATIC_DIR), name="static")
