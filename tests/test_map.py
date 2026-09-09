@@ -197,7 +197,8 @@ def test_tracks_detail_endpoint(auth, monkeypatch):
     assert "ANY(%(ids)s)" in seen["sql"]      # 走 drive_id 索引
     assert "BETWEEN %(w)s AND %(e)s" in seen["sql"]   # 视野框过滤
     assert seen["params"]["ids"] == [7, 8]
-    assert seen["params"]["per"] == m.DETAIL_PER_DRIVE[13]   # 13 级 → 150 点/条
+    # 只有 2 条轨迹: 预算均摊后不设限 (全精度)
+    assert seen["params"]["per"] == 5000
     assert seen["params"]["w"] == 113.9
 
 
@@ -213,22 +214,29 @@ def test_tracks_detail_zoom15_is_full_resolution(auth, monkeypatch):
                  params={"ids": "1", "zoom": 15,
                          "w": 113, "s": 22, "e": 115, "n": 24})
     assert r.status_code == 200
-    assert seen["per"] == 5000                # 15 级以上不采样
+    assert seen["per"] == 5000                # 轨迹稀少时接近全精度
 
 
-def test_tracks_detail_caps_ids_at_80(auth, monkeypatch):
+def test_tracks_detail_caps_ids_and_spreads_budget(auth, monkeypatch):
+    """id 上限 150; 密集时总点数预算均摊到每条轨迹 (200 条走 4 路并行)。"""
     seen = {}
 
     def fake_query(sql, params=None):
-        seen["n"] = len(params["ids"])
+        seen.setdefault("ids", []).extend(params["ids"])
+        seen["per"] = params["per"]
+        seen.setdefault("sizes", []).append(len(params["ids"]))
         return []
 
     monkeypatch.setattr(m, "query", fake_query)
-    ids = ",".join(str(i) for i in range(100))
+    ids = ",".join(str(i) for i in range(200))
     r = auth.get("/tesla/map/api/tracks/detail",
-                 params={"ids": ids, "zoom": 13, "w": 113, "s": 22, "e": 115, "n": 24})
+                 params={"ids": ids, "zoom": 12,
+                         "w": 113, "s": 22, "e": 115, "n": 24})
     assert r.status_code == 200
-    assert seen["n"] == m.DETAIL_MAX_IDS == 80
+    assert len(seen["ids"]) == m.DETAIL_MAX_IDS == 150   # 4 份合计仍是 150
+    assert sorted(seen["sizes"]) == [37, 37, 38, 38]     # 均匀拆 4 份
+    # 12 级预算 20000 均摊给 150 条 → 每条 133 点
+    assert seen["per"] == m.DETAIL_BUDGET[12] // 150
 
 
 def test_tracks_detail_rejects_bad_input(auth, monkeypatch):

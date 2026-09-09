@@ -11,6 +11,7 @@ import os
 import secrets
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Optional
@@ -644,8 +645,25 @@ SELECT p.drive_id, p.longitude, p.latitude
  ORDER BY p.drive_id, rn
 """
 
-DETAIL_PER_DRIVE = {12: 150, 13: 300, 14: 600}   # 12-14 级每条上限; 15 级以上全精度
-DETAIL_MAX_IDS = 80
+# 总点数预算制: 轨迹密集的走廊 (百条相交) 每条均摊, 轨迹稀少时接近全精度。
+# 响应体量 = 预算 × ~25B, 上限 ~2MB; 15 级以上预算 80000。
+DETAIL_BUDGET = {12: 20000, 13: 40000, 14: 60000}
+DETAIL_MAX_IDS = 150
+DETAIL_WORKERS = 4
+
+
+def _query_detail(id_list: list[int], per: int, box: dict) -> list[dict]:
+    """视野内高精度点位。瓶颈是 drive_id 索引扫描 (~7k 行/条), 拆 4 份并行查。"""
+    params = {"per": per, "w": box["w"], "s": box["s"], "e": box["e"], "n": box["n"]}
+    if len(id_list) <= 40:
+        return query(DETAIL_SQL, {**params, "ids": id_list})
+    chunks = [id_list[i::DETAIL_WORKERS] for i in range(DETAIL_WORKERS)]
+    with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as ex:
+        parts = list(ex.map(lambda ch: query(DETAIL_SQL, {**params, "ids": ch}), chunks))
+    rows = [r for part in parts for r in part]
+    # 分组要求 drive_id 连续; 各份 drive_id 互斥, 稳定排序即可合并 (组内顺序不变)
+    rows.sort(key=lambda r: r["drive_id"])
+    return rows
 
 
 def _group_detail(rows: list[dict]) -> list[dict]:
@@ -673,9 +691,8 @@ def get_tracks_detail(ids: str, zoom: int = 15,
         return {"count": 0, "tracks": []}
     if not (-180 <= w < e <= 180 and -90 <= s < n <= 90):
         raise HTTPException(400, "bbox 参数非法")
-    per = DETAIL_PER_DRIVE.get(zoom, 5000)  # 15 级以上不采样 (5000 为保险上限)
-    rows = query(DETAIL_SQL, {"ids": id_list, "per": per,
-                              "w": w, "s": s, "e": e, "n": n})
+    per = max(60, min(5000, DETAIL_BUDGET.get(zoom, 80000) // len(id_list)))
+    rows = _query_detail(id_list, per, {"w": w, "s": s, "e": e, "n": n})
     tracks = _group_detail(rows)
     return {"count": len(tracks), "tracks": tracks}
 

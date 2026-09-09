@@ -238,7 +238,7 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const PAGE_V = "v8";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
+const PAGE_V = "v9";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
 
 /* ---------- 诊断探针: 浏览器端异常/高德请求失败自动回传服务端日志 ---------- */
 let diagCount = 0;
@@ -423,6 +423,14 @@ function viewBounds() {
            northeast: { lng: c.lng + wl, lat: c.lat + hl } };
 }
 
+function currentBox() {   // 当前视野 + 等比例外扩 (小视野外扩少, 避免拉进太多无关轨迹)
+  const b = viewBounds();
+  if (!b) return null;
+  const M = Math.max((b.northeast.lng - b.southwest.lng) * 0.25, 0.005);
+  return { w: b.southwest.lng - M, e: b.northeast.lng + M,
+           s: b.southwest.lat - M, n: b.northeast.lat + M };
+}
+
 function scheduleRefine() {
   if (!map || !mapReady) return;
   clearTimeout(refineTimer);
@@ -453,11 +461,8 @@ function probeRefine() {   // 缩放/平移手势进行中: 视野内一旦有�
       return;
     }
     if (refinePending) return;                    // 已在加载, 提示本来就亮着
-    const b = viewBounds();
-    if (!b) return;
-    const M = 0.02;
-    const box = { w: b.southwest.lng - M, e: b.northeast.lng + M,
-                  s: b.southwest.lat - M, n: b.northeast.lat + M };
+    const box = currentBox();
+    if (!box) return;
     const cache = detailCache.get(band);
     for (const t of tracks) {
       if (!t.pts.some(p => p[0] >= box.w && p[0] <= box.e && p[1] >= box.s && p[1] <= box.n)) continue;
@@ -518,18 +523,16 @@ async function refineVisible() {
     return;
   }
   if (band !== detailBand) { revertDetail(); detailBand = band; }
-  const b = viewBounds();
-  if (!b) return;
-  const M = 0.02;   // 视野外预留 ~2km, 平移时边缘不至于闪回粗线
-  const box = { w: b.southwest.lng - M, e: b.northeast.lng + M,
-                s: b.southwest.lat - M, n: b.northeast.lat + M };
+  const box = currentBox();
+  if (!box) return;
   const cache = detailCache.get(band) || new Map();
   detailCache.set(band, cache);
   const seq = ++detailSeq;
   const need = [];
   let scanned = 0;
-  for (const t of tracks) {
-    if (scanned >= 80) break;    // 与后端 DETAIL_MAX_IDS 对齐
+  // 从最新轨迹倒序取: 密集走廊超上限时, 优先保证近期轨迹精细
+  for (let k = tracks.length - 1; k >= 0 && scanned < 150; k--) {
+    const t = tracks[k];
     if (!t.pts.some(p => p[0] >= box.w && p[0] <= box.e && p[1] >= box.s && p[1] <= box.n)) continue;
     scanned++;
     const c = cache.get(t.id);
