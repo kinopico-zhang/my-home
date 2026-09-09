@@ -389,6 +389,32 @@ def get_session(session_id: int):
     return detail
 
 
+class CostUpdate(BaseModel):
+    cost: Optional[float] = None  # null = 清除费用
+
+
+@app.patch("/api/sessions/{session_id}/cost")
+def update_cost(session_id: int, body: CostUpdate):
+    """更新 / 添加 / 清除一条充电记录的费用 (写回 TeslaMate 库)。"""
+    if body.cost is not None and not (0 <= body.cost <= 100000):
+        raise HTTPException(400, "金额需在 0 ~ 100000 之间")
+    rows = query("SELECT charge_energy_added, charge_energy_used FROM charging_processes "
+                 "WHERE id = %(id)s", {"id": session_id})
+    if not rows:
+        raise HTTPException(404, "充电记录不存在")
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE charging_processes SET cost = %(cost)s WHERE id = %(id)s",
+                            {"cost": round(body.cost, 2) if body.cost is not None else None,
+                             "id": session_id})
+    except Exception as e:
+        raise HTTPException(503, f"费用保存失败: {e}") from e
+    base = float(rows[0]["charge_energy_used"] or 0) or float(rows[0]["charge_energy_added"] or 0)
+    return {"ok": True, "cost": body.cost,
+            "price_per_kwh": round(body.cost / base, 3) if body.cost is not None and base else None}
+
+
 @app.get("/api/monthly")
 def get_monthly(frm: Optional[str] = Query(None, alias="from"),
                 to: Optional[str] = Query(None)):
