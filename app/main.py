@@ -647,7 +647,7 @@ SELECT p.drive_id, p.longitude, p.latitude
 
 # 总点数预算制: 轨迹密集的走廊 (百条相交) 每条均摊, 轨迹稀少时接近全精度。
 # 响应体量 = 预算 × ~25B, 上限 ~2MB; 15 级以上预算 80000。
-DETAIL_BUDGET = {12: 20000, 13: 40000, 14: 60000}
+DETAIL_BUDGET = {12: 40000, 13: 80000, 14: 120000}
 DETAIL_MAX_IDS = 150
 DETAIL_WORKERS = 4
 
