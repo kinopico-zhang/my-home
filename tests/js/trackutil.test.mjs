@@ -236,3 +236,17 @@ test("meanPowerW: 全无数据/零时长返回 null", () => {
                                     [0, 10]), null);
   assert.equal(TrackUtil.meanPowerW([[114, 22.5, 10, 5000]], [0]), null);
 });
+
+/* ---- ptDistKm / bearingDeg (断档补路的方向校验) ---- */
+test("ptDistKm: 东移 0.01° ≈ 1.03km (cos22°), 北移 0.01° ≈ 1.11km", () => {
+  assert.ok(Math.abs(TrackUtil.ptDistKm([114, 22], [114.01, 22]) - 1.03) < 0.02);
+  assert.ok(Math.abs(TrackUtil.ptDistKm([114, 22], [114, 22.01]) - 1.11) < 0.02);
+  assert.equal(TrackUtil.ptDistKm([114, 22], [114, 22]), 0);
+});
+
+test("bearingDeg: 北 0 东 90 南 180 西 270", () => {
+  assert.equal(Math.round(TrackUtil.bearingDeg([114, 22], [114, 22.01])), 0);
+  assert.equal(Math.round(TrackUtil.bearingDeg([114, 22], [114.01, 22])), 90);
+  assert.equal(Math.round(TrackUtil.bearingDeg([114, 22], [114, 22 - 0.01])), 180);
+  assert.equal(Math.round(TrackUtil.bearingDeg([114, 22], [114 - 0.01, 22])), 270);
+});

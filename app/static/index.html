@@ -245,7 +245,7 @@ main { max-width: 760px; margin: 0 auto; }
 .st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .st { background: #232326; border-radius: 12px; padding: 9px 12px; }
 .st .lb { font-size: 11px; color: var(--ink-2); }
-.st .val { font-size: 16.5px; font-weight: 650; margin-top: 2px; letter-spacing: -.2px; }
+.st .val { font-size: 16.5px; font-weight: 650; margin-top: 2px; letter-spacing: -.2px; white-space: nowrap; }
 .st .val small { font-size: 11px; font-weight: 500; color: var(--ink-2); }
 .sh-chart-title { font-size: 13px; font-weight: 650; margin: 16px 0 6px; display: flex; justify-content: space-between; align-items: center; }
 .sh-chart-title:first-child { margin-top: 2px; }
@@ -454,7 +454,7 @@ function fmtCardDate(s) {
 function fmtDur(min) {
   if (min == null) return "—";
   const h = Math.floor(min / 60), m = min % 60;
-  return h ? `${h}小时${m ? m + "分" : ""}` : `${m}分钟`;
+  return h ? `${h}时${m ? m + "分" : ""}` : `${m}分钟`;   // 紧凑格式, 窄屏不折行
 }
 function fmtMinAxis(v) {
   if (v >= 60) { const h = Math.floor(v / 60), m = Math.round(v % 60); return m ? `${h}h${m}m` : `${h}h`; }
