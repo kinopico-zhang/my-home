@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from app import repository
-from app.models import ChargingProcess, Geofence
+from app.models import Address, ChargingProcess, Geofence
 from tests.conftest import (seed_addresses, seed_car, seed_charge,
                             seed_charging)
 
@@ -304,3 +304,51 @@ def test_charging_page_soc_axis_fixed_and_dense(auth):
     assert "Math.min(it.start_soc, 93)" in html  # 左标签左缘 = 充电起点
     assert "right:${100 - it.end_soc}%" in html  # 右标签右缘 = 终点
     assert 'class="cs-main"' in html             # 电量 + 费用同行
+
+
+# ---------------------------------------------------------------- 城市筛选
+def test_charging_cities_endpoint(auth, db):
+    """充电城市列表 (次数降序); 无城市信息的地址不参与筛选。"""
+    db.add(Address(id=3, name="无名地", city=None, display_name="某处"))
+    db.commit()
+    seed_addresses(db)                       # 1=深圳市 2=东莞市
+    seed_charging(db, id=1, address_id=1)
+    seed_charging(db, id=2, address_id=1)
+    seed_charging(db, id=3, address_id=2)
+    seed_charging(db, id=4, address_id=3)    # 无城市 → 不进列表
+    assert auth.get("/tesla/charging/api/cities").json() == [
+        {"city": "深圳市", "count": 2}, {"city": "东莞市", "count": 1}]
+
+
+def test_charging_sessions_filters_by_city(auth, db):
+    """城市筛选可与快慢充叠加。"""
+    db.add(Address(id=3, name="无名地", city=None, display_name="某处"))
+    db.commit()
+    seed_addresses(db)
+    seed_charging(db, id=1, address_id=1)    # 深圳 慢充 (无采样 → 非快充)
+    seed_charging(db, id=2, address_id=1,
+                  start_date=datetime(2026, 9, 8, 15, 50),
+                  end_date=datetime(2026, 9, 8, 23, 2))
+    seed_charge(db, 2, date=datetime(2026, 9, 8, 16, 0))   # 深圳 快充
+    seed_charging(db, id=3, address_id=2)    # 东莞 慢充
+
+    def ids(**params):
+        return [i["id"] for i in auth.get(
+            "/tesla/charging/api/sessions", params=params).json()["items"]]
+
+    assert ids(city="深圳市") == [2, 1]
+    assert ids(city="东莞市") == [3]
+    assert ids(city="深圳市", type="fast") == [2]
+    assert ids(city="不存在") == []
+
+
+def test_charging_page_time_menu_calendar_and_city_filter(auth):
+    """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行城市下拉, 筛选写进 URL。"""
+    html = auth.get("/tesla/charging").text
+    for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
+                 'data-v="180d"', 'data-v="1y"', 'data-v="all"',
+                 'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
+                 'id="city-menu"', 'id="city-opts"', "/tesla/charging/api/cities",
+                 "function syncURL()", 'u.searchParams.set("city", state.city)']:
+        assert frag in html, f"充电页缺少 {frag}"
+    assert "chips-range" not in html

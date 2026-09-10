@@ -59,7 +59,7 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 .nav-menu .chev { transition: transform .18s; }
 .nav-menu[open] .chev { transform: rotate(180deg); }
 .nav-menu .menu {
-  position: absolute; top: calc(100% + 8px); right: 0; min-width: 128px;
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 128px; z-index: 30;
   display: flex; flex-direction: column; padding: 5px;
   background: rgba(44,44,46,.88);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -73,6 +73,32 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 }
 .nav-menu .menu a:active { background: var(--surface-3); }
 .nav-menu .menu a.on { color: #7db3f0; }
+.nav-menu + .nav-menu { margin-left: 0; }   /* 顶栏两个菜单靠右并排, 只有第一个吃 auto 边距 */
+.nav-menu .menu button {
+  font-size: 14px; color: var(--ink-1); text-align: left;
+  padding: 9px 12px; border-radius: 10px; white-space: nowrap;
+}
+.nav-menu .menu button.on { color: #7db3f0; }
+.nav-menu .menu button:active { background: var(--surface-3); }
+/* 筛选栏 (顶栏下方): 行程独有筛选, 下拉不能被横向滚动裁掉 */
+.filters { display: flex; gap: 8px; margin-top: 10px; }
+.filters .nav-menu { margin-left: 0; }              /* 不吃顶栏的靠右边距 */
+.filters .nav-menu .menu { left: 0; right: auto; }  /* 下拉锚左, 行首也不出屏 */
+.filt .fl { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 时间菜单的自定义日历 (原生 date 输入, 移动端唤起系统日历) */
+.time-menu .tm-custom { border-top: 1px solid var(--hairline); margin-top: 5px; padding-top: 5px; }
+.tm-dates { display: flex; align-items: center; gap: 5px; padding: 6px 8px 3px; }
+.tm-dates span { color: var(--ink-3); }
+.tm-dates input {
+  flex: 1; min-width: 0; background: var(--surface-2);
+  border: 1px solid var(--hairline); border-radius: 8px;
+  color: var(--ink-1); font-size: 12px; padding: 6px 7px;
+}
+.tm-dates input::-webkit-calendar-picker-indicator { filter: invert(.75); }
+.tm-dates #tm-apply {
+  flex: none; background: #3987e5; color: #fff;
+  border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 11px;
+}
 .logout-btn {
   align-self: center; font-size: 12px; color: var(--ink-3);
   padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
@@ -259,6 +285,26 @@ body.selecting .card-t.picked .pick::after {
 <header>
   <div class="nav-row">
     <h1>My Tesla</h1>
+    <details class="nav-menu time-menu" id="time-menu">
+      <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="time-opts">
+        <button data-v="24h">最近 24 小时</button>
+        <button data-v="7d">最近一周</button>
+        <button data-v="30d">最近一个月</button>
+        <button data-v="180d">最近半年</button>
+        <button data-v="1y">最近一年</button>
+        <button data-v="all" class="on">全部</button>
+        <div class="tm-custom">
+          <button data-v="custom">自定义…</button>
+          <div class="tm-dates" id="tm-dates" hidden>
+            <input type="date" id="tm-from" aria-label="开始日期">
+            <span>–</span>
+            <input type="date" id="tm-to" aria-label="结束日期">
+            <button id="tm-apply">确定</button>
+          </div>
+        </div>
+      </div>
+    </details>
     <details class="nav-menu" id="nav-menu">
       <summary>行程<svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
@@ -268,6 +314,27 @@ body.selecting .card-t.picked .pick::after {
       </div>
     </details>
     <button id="logout" class="logout-btn" title="退出登录">退出</button>
+  </div>
+  <!-- 行程页独有筛选 (顶栏时间筛选之下): 起点城市 / 终点城市 / 里程范围 -->
+  <div class="filters">
+    <details class="nav-menu filt" id="fc-menu">
+      <summary><span class="fl" id="fc-lb">起点: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="fc-opts"></div>
+    </details>
+    <details class="nav-menu filt" id="tc-menu">
+      <summary><span class="fl" id="tc-lb">终点: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="tc-opts"></div>
+    </details>
+    <details class="nav-menu filt" id="km-menu">
+      <summary><span class="fl" id="km-lb">里程: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="km-opts">
+        <button data-k="all" class="on">全部</button>
+        <button data-k="0-20">20km 内</button>
+        <button data-k="20-100">20–100km</button>
+        <button data-k="100-300">100–300km</button>
+        <button data-k="300+">300km 以上</button>
+      </div>
+    </details>
   </div>
 </header>
 
@@ -377,7 +444,42 @@ async function getJSON(url) {
 
 /* ============================ 行程列表 (单列) ============================ */
 const PAGE = 24;
-const state = { offset: 0, total: 0, loading: false, done: false, err: null };
+/* ---------- 顶栏时间筛选: 快捷档位下拉, 编码进 ?range= (分享/刷新保留) ---------- */
+const TIME_RANGES = [
+  { v: "24h", days: 1, lb: "24小时" },
+  { v: "7d", days: 7, lb: "近一周" },
+  { v: "30d", days: 30, lb: "近一月" },
+  { v: "180d", days: 180, lb: "近半年" },
+  { v: "1y", days: 365, lb: "近一年" },
+  { v: "all", days: 0, lb: "全部" },
+];
+function timeFrom(v) {   // 档位 → from 本地日期 (含今天共 N 天; 24h 即"昨天起")
+  const r = TIME_RANGES.find(x => x.v === v);
+  if (!r || !r.days) return null;
+  const d = new Date(); d.setDate(d.getDate() - (r.days - 1));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+const KM_BUCKETS = [   // 里程档位: URL 里存档位码, 请求时换算成 km_min/km_max
+  { v: "all", lb: "全部", min: null, max: null },
+  { v: "0-20", lb: "20km 内", min: 0, max: 20 },
+  { v: "20-100", lb: "20–100km", min: 20, max: 100 },
+  { v: "100-300", lb: "100–300km", min: 100, max: 300 },
+  { v: "300+", lb: "300km 以上", min: 300, max: null },
+];
+// URL → 初始筛选: ?range= 快捷档; ?from=&to= 自定义区间; ?from_city=/?to_city=/?km= 筛选行
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const qs0 = new URLSearchParams(location.search);
+let range0 = TIME_RANGES.some(r => r.v === qs0.get("range")) ? qs0.get("range") : "all";
+let cFrom0 = null, cTo0 = null;
+if (range0 === "all") {
+  const f = qs0.get("from"), t = qs0.get("to");
+  if (DATE_RE.test(f || "") && DATE_RE.test(t || "") && f <= t) { range0 = "custom"; cFrom0 = f; cTo0 = t; }
+}
+const state = { range: range0, cFrom: cFrom0, cTo: cTo0,
+                fromCity: qs0.get("from_city") || "",
+                toCity: qs0.get("to_city") || "",
+                km: KM_BUCKETS.some(b => b.v === qs0.get("km")) ? qs0.get("km") : "all",
+                offset: 0, total: 0, loading: false, done: false, err: null };
 const trackCache = new Map();       // id → {pts, ts} 全精度轨迹
 const items = [];                   // 已加载卡片数据 (与 #list 子元素一一对应, 多选用)
 
@@ -423,7 +525,19 @@ async function loadMore() {
   if (state.loading || state.done) return;
   state.loading = true; state.err = null; setTail();
   try {
-    const d = await getJSON(`/tesla/trips/api/sessions?offset=${state.offset}&limit=${PAGE}`);
+    const p = new URLSearchParams({ offset: state.offset, limit: PAGE });
+    if (state.range === "custom") {   // 自定义起止 (日历)
+      p.set("from", state.cFrom); p.set("to", state.cTo);
+    } else {
+      const from = timeFrom(state.range);
+      if (from) p.set("from", from);
+    }
+    if (state.fromCity) p.set("from_city", state.fromCity);
+    if (state.toCity) p.set("to_city", state.toCity);
+    const kb = KM_BUCKETS.find(b => b.v === state.km);
+    if (kb && kb.min != null) p.set("km_min", kb.min);
+    if (kb && kb.max != null) p.set("km_max", kb.max);
+    const d = await getJSON("/tesla/trips/api/sessions?" + p.toString());
     state.total = d.total; state.offset += d.items.length;
     if (state.offset >= d.total) state.done = true;
     d.items.forEach(it => { items.push(it); listEl.appendChild(renderCard(it)); });
@@ -438,6 +552,114 @@ async function loadMore() {
       tailEl.getBoundingClientRect().top < window.innerHeight + PRELOAD_PX)
     loadMore();
 }
+
+function timeLabel() {
+  if (state.range === "custom")   // 自定义显示紧凑区间, 如 01/01–03/31
+    return `${state.cFrom.slice(5).replace("-", "/")}–${state.cTo.slice(5).replace("-", "/")}`;
+  return TIME_RANGES.find(r => r.v === state.range).lb;
+}
+function filterQS() {   // 时间/城市/里程 → 参数串 (无 ? 前缀), 地址栏与请求共用
+  const p = new URLSearchParams();
+  if (state.range === "custom") { p.set("from", state.cFrom); p.set("to", state.cTo); }
+  else if (state.range !== "all") p.set("range", state.range);
+  if (state.fromCity) p.set("from_city", state.fromCity);
+  if (state.toCity) p.set("to_city", state.toCity);
+  if (state.km !== "all") p.set("km", state.km);
+  return p.toString();
+}
+function listURL(key) {   // 行程页地址栏: 筛选参数 + 可选行程深链 (?id=/ ?ids=)
+  const parts = [filterQS(),
+                 key ? `${key.includes(",") ? "ids=" : "id="}${key}` : null].filter(Boolean);
+  return "/tesla/trips" + (parts.length ? "?" + parts.join("&") : "");
+}
+function syncURL() {   // 筛选写进地址栏 (默认值不写, 保留打开中的行程深链)
+  history.replaceState(history.state, "", listURL(urlTripKey()));
+}
+function resetList() {   // 筛选变化: 清空列表重新拉
+  items.length = 0; listEl.innerHTML = "";
+  state.offset = 0; state.total = 0; state.done = false; state.err = null;
+  setTail();
+  loadMore();
+}
+function setTimeRange(v, skipReload) {
+  state.range = v;
+  $("#time-lb").textContent = timeLabel();
+  document.querySelectorAll("#time-opts button[data-v]").forEach(b =>
+    b.classList.toggle("on", b.dataset.v === v));
+  if (v !== "custom") $("#tm-dates").hidden = true;   // 回到快捷档, 收起日历
+  syncURL();
+  if (!skipReload) resetList();
+}
+$("#time-opts").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || b.id === "tm-apply") return;
+  if (b.dataset.v === "custom") {   // 展开/收起日历, 选好再点确定生效
+    const box = $("#tm-dates");
+    box.hidden = !box.hidden;
+    if (!box.hidden) {
+      $("#tm-from").value = state.cFrom || timeFrom("30d");
+      const n = new Date();
+      $("#tm-to").value = state.cTo ||
+        `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
+    }
+    return;
+  }
+  if (b.dataset.v === state.range) return;
+  $("#time-menu").removeAttribute("open");
+  setTimeRange(b.dataset.v);
+});
+$("#tm-apply").addEventListener("click", () => {
+  const f = $("#tm-from").value, t = $("#tm-to").value;
+  if (!f || !t) return;                       // 没选完整不生效
+  $("#time-menu").removeAttribute("open");
+  state.cFrom = f <= t ? f : t;               // 起止填反自动交换
+  state.cTo = f <= t ? t : f;
+  setTimeRange("custom");
+});
+setTimeRange(state.range, true);              // 初始化: 只同步标签/选中态, 不重拉
+
+/* ---------- 筛选行: 起点城市 / 终点城市 / 里程范围 ---------- */
+function bindCityMenu(menuId, optsId, key, lbId, prefix) {
+  $("#" + optsId).addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    $("#" + menuId).removeAttribute("open");
+    state[key] = b.dataset.c;
+    $("#" + optsId + " .on").classList.remove("on"); b.classList.add("on");
+    $("#" + lbId).textContent = prefix + (state[key] || "全部");
+    syncURL(); resetList();
+  });
+}
+bindCityMenu("fc-menu", "fc-opts", "fromCity", "fc-lb", "起点: ");
+bindCityMenu("tc-menu", "tc-opts", "toCity", "tc-lb", "终点: ");
+$("#km-opts").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || b.dataset.k === state.km) return;
+  $("#km-menu").removeAttribute("open");
+  state.km = b.dataset.k;
+  $("#km-opts .on").classList.remove("on"); b.classList.add("on");
+  $("#km-lb").textContent = "里程: " + KM_BUCKETS.find(x => x.v === state.km).lb;
+  syncURL(); resetList();
+});
+$("#fc-lb").textContent = "起点: " + (state.fromCity || "全部");   // URL 带筛选时同步标签
+$("#tc-lb").textContent = "终点: " + (state.toCity || "全部");
+$("#km-lb").textContent = "里程: " + KM_BUCKETS.find(b => b.v === state.km).lb;
+if (state.km !== "all") {
+  $("#km-opts .on").classList.remove("on");
+  $(`#km-opts button[data-k="${state.km}"]`).classList.add("on");
+}
+(async () => {   // 起终点城市选项 (按次数降序); 拉不到就只有"全部"
+  try {
+    const cs = await getJSON("/tesla/trips/api/cities");
+    const opt = (c, sel) =>
+      `<button data-c="${esc(c.city)}"${c.city === sel ? ' class="on"' : ""}>` +
+      `${esc(c.city)} (${c.count})</button>`;
+    $("#fc-opts").innerHTML =
+      `<button data-c=""${state.fromCity ? "" : ' class="on"'}>全部</button>` +
+      cs.start.map(c => opt(c, state.fromCity)).join("");
+    $("#tc-opts").innerHTML =
+      `<button data-c=""${state.toCity ? "" : ' class="on"'}>全部</button>` +
+      cs.end.map(c => opt(c, state.toCity)).join("");
+  } catch (_e) { /* keep 全部 */ }
+})();
 
 /* 懒加载: 触底前 PRELOAD_PX 预加载下一页 */
 new IntersectionObserver(es => {
@@ -882,6 +1104,7 @@ function preloadTiles(pts, z, tpl, onProgress) {
 }
 
 /* ---------- 地址栏深链: 打开变 /tesla/trips?id=X 或 ?ids=a,b, 方便分享/回退 ---------- */
+/* listURL(): 筛选参数 + 行程深链 共同组成地址栏 (时间菜单/筛选行/深链共用) */
 function urlTripKey() {
   const m = /[?&](?:id|ids)=([\d,]+)/.exec(location.search);
   return m ? m[1] : null;
@@ -893,7 +1116,7 @@ async function openByKey(key) {
     if (key.includes(",")) await openMerged(key.split(",").map(Number), true);
     else openTrip(await getJSON(`/tesla/trips/api/sessions/${key}`), true);
   } catch (e) {
-    history.replaceState(null, "", "/tesla/trips");
+    history.replaceState(null, "", listURL());   // 坏链接 → 抹掉行程参数, 保留筛选
   }
 }
 
@@ -912,14 +1135,13 @@ function closeTrip() {
   if (history.state && history.state.k === key)
     history.back();   // 弹层是本页推入的 → 回退 (popstate 会再走一遍 hideSheet, 无害)
   else if (urlTripKey() != null)
-    history.replaceState(null, "", "/tesla/trips");   // 分享直开 → 只抹参数不增历史
+    history.replaceState(null, "", listURL());         // 分享直开 → 只抹行程参数
 }
 
 async function openTrip(it, fromUrl) {
   curKey = it.merged ? it.ids.join(",") : String(it.id);
   if (!fromUrl && urlTripKey() !== curKey)
-    history.pushState({ k: curKey }, "",
-      `/tesla/trips?${it.merged ? "ids=" : "id="}${curKey}`);
+    history.pushState({ k: curKey }, "", listURL(curKey));
   const seq = ++openSeq;
   if (it.merged) {    // 合并多段: 跨天给日期区间, 同天照常; 时间列前缀段数
     const d1 = parseLocal(it.start), d2 = parseLocal(it.end);

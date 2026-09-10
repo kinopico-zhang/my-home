@@ -95,6 +95,79 @@ def test_trip_session_one_404(auth):
     assert auth.get("/tesla/trips/api/sessions/9999").status_code == 404
 
 
+def test_trips_sessions_filters_by_date(auth, db):
+    """from/to 按出发日 (本地日期) 过滤; 快捷档与自定义日历共用这两个参数。"""
+    seed_addresses(db)
+    for i, day in enumerate((10, 20, 25)):
+        seed_drive(db, id=i + 1, distance=10.0, duration_min=10, speed_max=50,
+                   start_date=datetime(2026, 8, day, 4, 0),
+                   end_date=datetime(2026, 8, day, 5, 0))
+    base = "/tesla/trips/api/sessions"
+
+    def ids(qs):
+        return [i["id"] for i in auth.get(base + qs).json()["items"]]
+
+    assert ids("?from=2026-08-21") == [3]           # 只剩 8/25
+    assert ids("?from=2026-08-11&to=2026-08-24") == [2]   # 自定义区间
+    assert ids("?to=2026-08-24") == [2, 1]
+    assert auth.get(base, params={"from": "abc"}).status_code == 400
+    assert auth.get(base, params={"to": "2026-13-99"}).status_code == 400
+
+
+def test_trips_sessions_filters_by_city_and_km(auth, db):
+    """from_city/to_city 按起终城市, km_min/km_max 按里程; 可叠加。"""
+    db.add(Address(id=3, name="花城广场", city="广州市",
+                   display_name="广东省广州市天河区"))
+    db.commit()
+    seed_addresses(db)
+    # 1: 深圳→东莞 42.5km; 2: 东莞→广州 350km; 3: 深圳→深圳 15km
+    seed_drive(db, id=1, distance=42.5, start_address_id=1, end_address_id=2)
+    seed_drive(db, id=2, distance=350.0, start_address_id=2, end_address_id=3)
+    seed_drive(db, id=3, distance=15.0, start_address_id=1, end_address_id=1)
+    base = "/tesla/trips/api/sessions"
+
+    def ids(**params):
+        return [i["id"] for i in auth.get(base, params=params).json()["items"]]
+
+    assert ids(from_city="深圳市") == [1, 3]
+    assert ids(to_city="东莞市") == [1]
+    assert ids(from_city="深圳市", to_city="东莞市") == [1]
+    assert ids(km_min=20, km_max=100) == [1]        # 42.5km
+    assert ids(km_min=300) == [2]
+    assert ids(km_max=20) == [3]                    # 里程档 "20km 内"
+    assert ids(from_city="深圳市", km_min=300) == []  # 叠加无交集 → 空列表, 不报错
+    assert ids(from_city="不存在的城市") == []
+
+
+def test_trips_sessions_rejects_bad_km(auth):
+    assert auth.get("/tesla/trips/api/sessions",
+                    params={"km_min": -1}).status_code == 400
+    assert auth.get("/tesla/trips/api/sessions",
+                    params={"km_min": 100, "km_max": 20}).status_code == 400
+    assert auth.get("/tesla/trips/api/sessions",
+                    params={"km_max": 1e7}).status_code == 400
+
+
+def test_trips_cities_endpoint(auth, db):
+    """起终点城市列表 (次数降序): 未结束行程不计, 无城市地址不参与筛选。"""
+    db.add(Address(id=3, name="花城广场", city="广州市",
+                   display_name="广东省广州市天河区"))
+    db.add(Address(id=4, name="无名地", city=None, display_name="某处"))
+    db.commit()
+    seed_addresses(db)
+    # 1: 深圳→东莞; 2: 东莞→广州; 3: 深圳→东莞; 4: (无城市起) 未结束不计数
+    seed_drive(db, id=1, distance=10.0, start_address_id=1, end_address_id=2)
+    seed_drive(db, id=2, distance=10.0, start_address_id=2, end_address_id=3)
+    seed_drive(db, id=3, distance=10.0, start_address_id=1, end_address_id=2)
+    seed_drive(db, id=4, distance=10.0, start_address_id=4, end_address_id=2,
+               end_date=None)
+    d = auth.get("/tesla/trips/api/cities").json()
+    assert d == {"start": [{"city": "深圳市", "count": 2},
+                           {"city": "东莞市", "count": 1}],
+                 "end": [{"city": "东莞市", "count": 2},
+                         {"city": "广州市", "count": 1}]}
+
+
 # ---------------------------------------------------------------- 轨迹
 def test_trip_track_full_resolution_with_speed(auth, db):
     seed_addresses(db)
@@ -252,6 +325,20 @@ def test_merged_track_404_when_no_points(auth, db):
 
 
 # ---------------------------------------------------------------- 页面
+def test_trips_page_time_menu_and_filter_row(auth):
+    """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行 (起点/终点城市, 里程档),
+    全部编码进 URL, 且与 ?id=/ ?ids= 深链共存。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
+                 'data-v="180d"', 'data-v="1y"', 'data-v="all"',
+                 'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
+                 'id="fc-menu"', 'id="tc-menu"', 'id="km-menu"',
+                 'data-k="0-20"', 'data-k="20-100"', 'data-k="100-300"',
+                 'data-k="300+"', "/tesla/trips/api/cities",
+                 "function filterQS()", "function listURL(", "function syncURL()",
+                 'p.set("from_city", state.fromCity)', 'p.set("km_min", kb.min)']:
+        assert frag in html, f"行程页缺少 {frag}"
+    assert "chips-range" not in html
 def test_trips_page_has_playbar_and_single_column(auth):
     """播放控制条 (暂停/进度/倍速) + 单列列表 + 断档图例 都在页面上。"""
     html = auth.get("/tesla/trips").text
@@ -280,8 +367,9 @@ def test_trips_page_has_url_deeplink(auth):
     for frag in ["urlTripKey", "openByKey", "history.pushState",
                  "addEventListener(\"popstate\"",
                  "/tesla/trips/api/sessions/${",
-                 "history.replaceState(null, \"\", \"/tesla/trips\")",
-                 "it.merged ? \"ids=\" : \"id=\""]:
+                 "history.pushState({ k: curKey }, \"\", listURL(curKey))",
+                 "history.replaceState(null, \"\", listURL())",
+                 'key.includes(",") ? "ids=" : "id="']:
         assert frag in html, f"行程页缺少深链片段 {frag}"
 
 

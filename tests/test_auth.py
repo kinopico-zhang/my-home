@@ -229,5 +229,5 @@ def test_all_pages_have_collapsible_nav_menu(auth):
         assert '<nav class="tabs">' not in html, path       # 平铺页签已删
         for href in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
             assert f'href="{href}"' in html, (path, href)
-        mt = re.search(r"<summary>(.*?)<svg", html)         # summary = 当前页名 + 折叠箭头
+        mt = re.search(r'id="nav-menu">\s*<summary>(.*?)<svg', html)   # 页签菜单 summary (时间菜单在前)
         assert mt and mt.group(1) == cur, (path, mt and mt.group(1))
