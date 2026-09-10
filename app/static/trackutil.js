@@ -93,6 +93,38 @@
     return gaps;
   }
 
+  /* ---- 平均功耗 (W): 相邻点按时间差加权平均, 没有功耗数据的段不计入 ----
+     pts[i][3] 为瓦特 (正=放电 负=回收, 可 null), ts[i] 为相对起点秒。 */
+  function meanPowerW(pts, ts) {
+    let es = 0, t = 0;                       // Σ W·s, Σ s
+    for (let i = 1; i < pts.length; i++) {
+      const dt = ts[i] - ts[i - 1];
+      if (!(dt > 0)) continue;
+      const a = pts[i - 1][3], b = pts[i][3];
+      if (a == null && b == null) continue;  // 这段没数据, 时间也不计
+      const p = a == null ? b : b == null ? a : (a + b) / 2;
+      es += p * dt; t += dt;
+    }
+    return t ? es / t : null;
+  }
+
+  /* ---- 白线描画路径: 断档跳变段替换为已解析的真实道路路径 ----
+     splices: [{aIdx, bIdx, route: [[lng,lat], ...]}] 按 aIdx 升序;
+     route 含两端 (从 path[aIdx] 到 path[bIdx] 的道路路径, 端点已吸附道路),
+     整段替换 path[aIdx..bIdx]。返回 path[0..upto] 按此替换后的描画路径。 */
+  function splicePath(path, splices, upto) {
+    if (!splices.length) return path.slice(0, upto + 1);
+    const parts = [];
+    let from = 0;
+    for (const g of splices) {
+      if (g.bIdx > upto) break;             // 播放头还没到这条断档
+      parts.push(path.slice(from, g.aIdx), g.route);
+      from = g.bIdx + 1;
+    }
+    parts.push(path.slice(from, upto + 1));
+    return Array.prototype.concat.apply([], parts);
+  }
+
   /* ---- 动画: 已播放毫秒 → 当前点序号 ----
      Chrome 的 rAF 回调时间戳是"帧开始时刻", 可能早于 scheduling 前一刻取的
      performance.now() (t0)。命中缓存的轨迹在同一帧内开播就会得到负 t →
@@ -103,6 +135,6 @@
     return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   }
 
-  return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, animIndex: animIndex,
+  return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, meanPowerW: meanPowerW, splicePath: splicePath, animIndex: animIndex,
            speedBucket: speedBucket, SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });
