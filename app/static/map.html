@@ -48,13 +48,34 @@ header {
 }
 .nav-row { display: flex; align-items: baseline; gap: 10px; }
 h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
-.tabs { margin-left: auto; align-self: center; display: flex; gap: 6px; }
-.tabs a {
-  font-size: 12px; color: var(--ink-2); padding: 4px 11px;
-  border-radius: 999px; border: 1px solid var(--hairline);
-  text-decoration: none; transition: all .15s;
+/* ---------- 页签菜单 (收起式) ---------- */
+.nav-menu { position: relative; align-self: center; margin-left: auto; }
+.nav-menu summary {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--ink-1); background: var(--surface-2);
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  list-style: none; -webkit-user-select: none; user-select: none;
 }
-.tabs a.on { color: var(--ink-1); background: var(--surface-2); }
+.nav-menu summary::-webkit-details-marker { display: none; }
+.nav-menu summary:active { opacity: .7; }
+.nav-menu[open] summary { background: var(--surface-3); }
+.nav-menu .chev { transition: transform .18s; }
+.nav-menu[open] .chev { transform: rotate(180deg); }
+.nav-menu .menu {
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 128px;
+  display: flex; flex-direction: column; padding: 5px;
+  background: rgba(44,44,46,.88);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline); border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5);
+}
+.nav-menu .menu a {
+  font-size: 14px; color: var(--ink-1); text-decoration: none;
+  padding: 9px 12px; border-radius: 10px; white-space: nowrap;
+}
+.nav-menu .menu a:active { background: var(--surface-3); }
+.nav-menu .menu a.on { color: #7db3f0; }
 .logout-btn {
   align-self: center; font-size: 12px; color: var(--ink-3);
   padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
@@ -169,11 +190,14 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <header>
   <div class="nav-row">
     <h1>My Tesla</h1>
-    <nav class="tabs">
-      <a href="/tesla/charging">充电</a>
-      <a class="on" href="/tesla/map">足迹</a>
-      <a href="/tesla/trips">行程</a>
-    </nav>
+    <details class="nav-menu" id="nav-menu">
+      <summary>足迹<svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu">
+        <a href="/tesla/charging">充电</a>
+        <a class="on" href="/tesla/map">足迹</a>
+        <a href="/tesla/trips">行程</a>
+      </div>
+    </details>
     <button id="logout" class="logout-btn" title="退出登录">退出</button>
   </div>
   <div class="chips" id="chips-range">
@@ -242,6 +266,13 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script src="/tesla/static/trackutil.js?v=6"></script>
 <script>
 "use strict";
+/* 页签菜单: 点空白处收起 */
+document.addEventListener("click", e => {
+  const inside = e.target.closest && e.target.closest("details.nav-menu");
+  document.querySelectorAll("details.nav-menu[open]").forEach(m => {
+    if (m !== inside) m.removeAttribute("open");
+  });
+});
 const $ = s => document.querySelector(s);
 const PAGE_V = "v11";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
 

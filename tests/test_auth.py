@@ -146,3 +146,17 @@ def test_all_pages_declare_png_and_touch_icons(client):
         body = r.text
         assert 'favicon-32.png' in body, f"{page} 缺 PNG favicon"
         assert 'apple-touch-icon.png' in body, f"{page} 缺 apple-touch-icon"
+
+
+def test_all_pages_have_collapsible_nav_menu(auth):
+    """页签收进 details 菜单: summary 显示当前页名, 菜单含全部三个链接。"""
+    import re
+    for path, cur in (("/tesla/charging", "充电"), ("/tesla/map", "足迹"),
+                      ("/tesla/trips", "行程")):
+        html = auth.get(path).text
+        assert 'class="nav-menu"' in html, path
+        assert '<nav class="tabs">' not in html, path       # 平铺页签已删
+        for href in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
+            assert f'href="{href}"' in html, (path, href)
+        m = re.search(r"<summary>(.*?)<svg", html)           # summary = 当前页名 + 折叠箭头
+        assert m and m.group(1) == cur, (path, m and m.group(1))
