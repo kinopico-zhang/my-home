@@ -76,6 +76,19 @@
     return cum;
   }
 
+  /* ---- 两点距离 (km, 等距圆柱近似, 与 cumDistKm 同一套数学) ----
+     供断档补路的"绕行检测/裁剪定位"用。 */
+  function ptDistKm(a, b) {
+    const kx = 111.32 * Math.cos(((a[1] + b[1]) / 2 || 0) * Math.PI / 180);
+    const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * 110.57;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /* ---- 两点方位角 (0~360°, 北=0 顺时针): 判断路线起步方向是否背离行驶方向 ---- */
+  function bearingDeg(a, b) {
+    return (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI + 360) % 360;
+  }
+
   /* ---- 相邻段之间的断档 (供"缺失段"蓝色虚线): [{pts: [a, b], km: 跳变公里数}] ----
      注意 splitGaps 会丢掉只含 1 个点的孤立段 (GPS 野点), 这时相邻返回段的
      边界距离可能很小, 不是真断档 —— 按最小跳变距离过滤掉。 */
@@ -136,5 +149,6 @@
   }
 
   return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, meanPowerW: meanPowerW, splicePath: splicePath, animIndex: animIndex,
-           speedBucket: speedBucket, SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
+           speedBucket: speedBucket, ptDistKm: ptDistKm, bearingDeg: bearingDeg,
+           SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });

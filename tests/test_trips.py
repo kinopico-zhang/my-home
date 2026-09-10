@@ -161,6 +161,17 @@ def test_trips_page_has_playbar_and_single_column(auth):
     assert "m-col" not in html
 
 
+def test_trips_page_playback_pacing_and_nowrap(auth):
+    """超长轨迹不再 12 秒放完: 时长含里程分量 + 0.5× 慢速档; 统计值不折行。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ["Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90)",
+                 "PB_SPEEDS = [0.5, 1, 2, 4, 8]",
+                 "white-space: nowrap"]:
+        assert frag in html, f"行程页缺少 {frag}"
+    # 时长紧凑格式 (两个页面统一)
+    assert "`${h}时${m ? m + \"分\" : \"\"}`" in html
+
+
 def test_trips_page_has_url_deeplink(auth):
     """打开行程地址栏变 ?id=X: pushState/popstate 同步 + 分享直开。"""
     html = auth.get("/tesla/trips").text

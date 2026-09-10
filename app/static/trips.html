@@ -150,7 +150,7 @@ main { max-width: 760px; margin: 0 auto; }
 .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--hairline); margin: 0 auto 10px; flex: none; cursor: pointer; }
 .sh-head { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 0 4px 10px; }
 .sh-title { font-size: 17px; font-weight: 700; }
-.sh-sub { font-size: 12px; color: var(--ink-3); }
+.sh-sub { font-size: 12px; color: var(--ink-3); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
 /* 有功耗数据时共 4 格, 窄屏改 2×2 (没数据时第 4 格隐藏, 保持一行) */
 @media (max-width: 479px) {
@@ -160,7 +160,7 @@ main { max-width: 760px; margin: 0 auto; }
 }
 .sh-cell { flex: 1; background: var(--surface); border-radius: 12px; padding: 8px 12px; }
 .sh-cell .lb { font-size: 11px; color: var(--ink-2); }
-.sh-cell .val { font-size: 17px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.sh-cell .val { font-size: 17px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sh-cell .val small { font-size: 11px; color: var(--ink-2); font-weight: 500; }
 .trip-map-wrap {
   position: relative; flex: 1; min-height: 0;
@@ -280,7 +280,7 @@ main { max-width: 760px; margin: 0 auto; }
 </div>
 
 <script src="/tesla/static/gcj02.js?v=1"></script>
-<script src="/tesla/static/trackutil.js?v=6"></script>
+<script src="/tesla/static/trackutil.js?v=7"></script>
 <script>
 "use strict";
 /* 页签菜单: 点空白处收起 */
@@ -313,7 +313,8 @@ function fmtTime(s) {
 function fmtDur(min) {
   if (min == null) return "—";
   const h = Math.floor(min / 60), m = min % 60;
-  return h ? `${h}小时${m ? m + "分" : ""}` : `${m}分钟`;
+  /* "1时44分" 而非 "1小时44分": 统计格窄屏放不下长格式会折行 */
+  return h ? `${h}时${m ? m + "分" : ""}` : `${m}分钟`;
 }
 const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
 /* 播放中实时时长: 秒 → "m:ss" / "h:mm:ss" */
@@ -479,6 +480,53 @@ function routeBetween(aGcj, bGcj) {
   });
 }
 
+const toGcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
+
+/* 断档补路的方向校验: 高德把断档端点吸附到对向车道时, 会规划出先朝反方向
+   绕一大圈再回来的路 (实测 0.25km 的断档被规划成 3.6km 掉头环线, 起步方向
+   与行驶方向差 176°)。判"病态": 绕行超直线 3 倍, 或起步方向背离断档前行
+   驶方向 110° 以上。 */
+function routeLooksWrong(route, g, pts, aIdx) {
+  if (!route || route.length < 2) return true;
+  const straight = TrackUtil.ptDistKm(g.pts[0], g.pts[1]);
+  if (TrackUtil.cumDistKm(route)[route.length - 1] > straight * 3 + 0.15) return true;
+  if (aIdx > 0) {
+    const approach = TrackUtil.bearingDeg(pts[aIdx - 1], pts[aIdx]);
+    const start = TrackUtil.bearingDeg(route[0], route[Math.min(2, route.length - 1)]);
+    const diff = Math.abs(approach - start);
+    if (Math.min(diff, 360 - diff) > 110) return true;
+  }
+  return false;
+}
+
+/* 病态路线的修正: 用断档前后各 3 个真实轨迹点做起终点重新规划 —— 起终点
+   落在实际行驶的车道上, 不会吸附到对向; 再按最近点把结果裁剪回 a..b 段。 */
+function routeGapCtx(pts, g, aIdx, bIdx) {
+  const i0 = aIdx - 3, i1 = bIdx + 3;
+  if (i0 < 0 || i1 >= pts.length) return Promise.resolve(null);   // 断档贴着轨迹首尾, 没有上下文
+  const aG = toGcj(g.pts[0]), bG = toGcj(g.pts[1]);
+  return routeBetween(toGcj(pts[i0]), toGcj(pts[i1])).then(ext => {
+    if (!ext || ext.length < 2) return null;
+    let s0 = 0, d0 = Infinity;                    // 先定位离 a 最近的点
+    for (let i = 0; i < ext.length; i++) {
+      const d = TrackUtil.ptDistKm(ext[i], aG);
+      if (d < d0) { d0 = d; s0 = i; }
+    }
+    let s1 = s0, d1 = Infinity;                   // 再在 a 之后定位 b (顺序约束防裁剪坍缩)
+    for (let i = s0; i < ext.length; i++) {
+      const d = TrackUtil.ptDistKm(ext[i], bG);
+      if (d < d1) { d1 = d; s1 = i; }
+    }
+    if (d0 > 0.15 || d1 > 0.15) return null;      // 延伸路线没贴着断档两端, 不可信
+    /* 首尾用精确的断档端点, 中间只取两个最近点之间的路线点: 最近点本身
+       可能落在端点后方几十米 (路线点稀疏), 带上会出现起步回头的小折返 */
+    const slice = [aG, ...ext.slice(s0 + 1, s1), bG];
+    if (TrackUtil.cumDistKm(slice)[slice.length - 1] > TrackUtil.ptDistKm(g.pts[0], g.pts[1]) * 3 + 0.15)
+      return null;                                // 裁出来还是绕, 放弃
+    return slice;
+  });
+}
+
 function playTrack(pts, ts, it) {
   stopAnim();
   if (curSess) curSess.alive = false;
@@ -486,8 +534,9 @@ function playTrack(pts, ts, it) {
   const path = pts.map(gcj);                    // 全量坐标转换一次, 逐帧只切片
   const N = path.length;
   const cum = TrackUtil.cumDistKm(pts);         // 播放中的实时里程
-  // 跟随时长按点数缩放: 4~12s (1× 基准)
-  const dur = Math.min(Math.max(N / 400, 4), 12) * 1000;
+  // 跟随时长按点数与里程取大: 5~90s (1× 基准)。只看点数会亏待被下采样的
+  // 超长轨迹 (260km 也被压到 12 秒放完, 根本看不清路), 里程分量让长途慢下来
+  const dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90) * 1000;
   const growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
   // 背景全程速度线 (淡) —— 拉远后就是完整的速度色全局图
@@ -600,10 +649,11 @@ function playTrack(pts, ts, it) {
   anim = s;
   curSess = s;
 
-  // 断档路径规划: 缓存命中立即换成道路线, 否则请求回来后替换 (失败保持直线)
+  // 断档路径规划: 缓存命中立即换成道路线, 否则请求回来后替换 (失败保持直线);
+  // 规划病态 (吸附到对向车道绕回头路) 时改用上下文重规划 (同样有缓存)
   gaps.forEach((g, i) => {
     const aIdx = pts.indexOf(g.pts[0]), bIdx = pts.indexOf(g.pts[1]);
-    const key = `${it.id}:${aIdx}-${bIdx}`;
+    const key = `${it.id}:${aIdx}-${bIdx}`, ctxKey = key + ":ctx";
     const line = gapLines[i];
     const applyRoute = route => {
       if (!s.alive || !route || route.length < 2) return;
@@ -612,10 +662,25 @@ function playTrack(pts, ts, it) {
       splices.sort((x, y) => x.aIdx - y.aIdx);
       s.drawn = 0;      // 白线下帧重建: 跳变段改为沿道路
     };
+    const settle = plain => {
+      if (!routeLooksWrong(plain, g, pts, aIdx)) return applyRoute(plain);
+      const hit = routeCache.get(ctxKey);
+      if (hit) return applyRoute(hit);
+      routeGapCtx(pts, g, aIdx, bIdx).then(r => {
+        if (r) { routeCache.set(ctxKey, r); return applyRoute(r); }
+        /* 失败重试一次: ctx 请求紧跟 3 个常规请求, 高德规划接口偶发限流 */
+        setTimeout(() => {
+          routeGapCtx(pts, g, aIdx, bIdx).then(r2 => {
+            if (r2) routeCache.set(ctxKey, r2);
+            applyRoute(r2 || plain);
+          });
+        }, 900);
+      });
+    };
     const hit = routeCache.get(key);
-    if (hit) applyRoute(hit);
+    if (hit) settle(hit);
     else routeBetween(gcj(g.pts[0]), gcj(g.pts[1]))
-      .then(r => { if (r) routeCache.set(key, r); applyRoute(r); });
+      .then(r => { if (r) routeCache.set(key, r); settle(r); });
   });
 
   const resetPlaybar = () => {
@@ -728,7 +793,7 @@ async function openTrip(it, fromUrl) {
 
 /* ---------- 播放控制条: 只绑定一次, 操作当前 anim 会话 ---------- */
 const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed");
-const PB_SPEEDS = [1, 2, 4, 8];
+const PB_SPEEDS = [0.5, 1, 2, 4, 8];
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7.5 4.6v14.8L20 12z" fill="currentColor"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M6.6 4.8h4.1v14.4H6.6zM13.3 4.8h4.1v14.4h-4.1z" fill="currentColor"/></svg>';
 const ICON_REPLAY = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 5V1.8L7 6l5 4.2V7a5.5 5.5 0 1 1-5.5 5.5H4.5A7.5 7.5 0 1 0 12 5z" fill="currentColor"/></svg>';
