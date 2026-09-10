@@ -88,6 +88,7 @@ def test_public_paths_accessible_without_login(client):
     assert client.get("/tesla/login").status_code == 200
     assert client.get("/tesla/static/echarts.min.js").status_code == 200
     assert client.get("/tesla/static/gcj02.js").status_code == 200
+    assert client.get("/tesla/static/trackutil.js").status_code == 200
 
 
 def test_old_paths_are_gone(client):

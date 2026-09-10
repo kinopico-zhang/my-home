@@ -235,10 +235,11 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 </div>
 
 <script src="/tesla/static/gcj02.js"></script>
+<script src="/tesla/static/trackutil.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const PAGE_V = "v10";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
+const PAGE_V = "v11";   // 页面版本: 诊断时确认浏览器是否在跑最新代码
 
 /* ---------- 诊断探针: 浏览器端异常/高德请求失败自动回传服务端日志 ---------- */
 let diagCount = 0;
@@ -358,7 +359,7 @@ function renderTracks(list) {
     detailLines.clear();
     detailBand = null;                 // 粗线重画完成后按当前缩放重新细化
     showRefineTip(false);              // 重渲染阶段由大加载层接管提示
-    if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
+    if (selected) selected.forEach(l => l.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 }));
     selected = null; selectedId = null;
     closeSheet();
     if (overlays.length) map.remove(overlays);
@@ -377,14 +378,9 @@ function renderTracks(list) {
       const batch = [];
       for (; i < end; i++) {
         const t = list[i];
-        const path = t.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1]));  // WGS-84 → GCJ-02
-        const line = new AMap.Polyline({
-          path, strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
-          lineJoin: "round", cursor: "pointer", zIndex: 50,
-        });
-        line.on("click", () => selectTrack(line, t));
-        batch.push(line);
-        coarseById.set(t.id, line);
+        const lines = makeTrackLines(t.pts, t);
+        batch.push(...lines);
+        coarseById.set(t.id, lines);
       }
       map.add(batch);
       overlays = overlays.concat(batch);
@@ -481,19 +477,32 @@ function probeRefine() {   // 缩放/平移手势进行中: 视野内一旦有�
 }
 
 function revertDetail() {   // 缩回 13 级以下 / 切档: 细化线还原为粗线
-  for (const [id, line] of detailLines) {
-    map.remove(line);
+  for (const [id, lines] of detailLines) {
+    map.remove(lines);
     const c = coarseById.get(id);
     if (c) {
       map.add(c);
       if (id === selectedId) {   // 选中高亮转移回粗线
         selected = c;
-        c.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+        c.forEach(l => l.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 }));
       }
     }
   }
   detailLines.clear();
   detailBand = null;
+}
+
+function makeTrackLines(pts, t) {   // 一条轨迹因 GPS 断档可能拆成多段折线
+  const lines = TrackUtil.splitGaps(pts).map(seg => {
+    const line = new AMap.Polyline({
+      path: seg.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),  // WGS-84 → GCJ-02
+      strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
+      lineJoin: "round", cursor: "pointer", zIndex: 50,
+    });
+    line.on("click", () => selectTrack(lines, t));
+    return line;
+  });
+  return lines;
 }
 
 function applyDetail(id, pts, force) {   // 用高精度线替换该行程的粗线
@@ -504,17 +513,12 @@ function applyDetail(id, pts, force) {   // 用高精度线替换该行程的粗
   if (old) map.remove(old);       // 之前只覆盖旧视野, 现在换成更宽的
   const c = coarseById.get(id);
   if (c) map.remove(c);
-  const line = new AMap.Polyline({
-    path: pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
-    strokeColor: "#3987e5", strokeOpacity: 0.45, strokeWeight: 2,
-    lineJoin: "round", cursor: "pointer", zIndex: 50,
-  });
-  line.on("click", () => selectTrack(line, t));
-  map.add(line);
-  detailLines.set(id, line);
+  const lines = makeTrackLines(pts, t);
+  map.add(lines);
+  detailLines.set(id, lines);
   if (id === selectedId) {        // 该线正被选中: 高亮转移到细化线
-    selected = line;
-    line.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+    selected = lines;
+    lines.forEach(l => l.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 }));
   }
 }
 
@@ -589,13 +593,13 @@ async function refineVisible() {
   }
 }
 
-function selectTrack(line, t) {
-  if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
-  selected = line;
+function selectTrack(lines, t) {
+  if (selected) selected.forEach(l => l.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 }));
+  selected = lines;
   selectedId = t.id;
-  line.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 });
+  lines.forEach(l => l.setOptions({ strokeOpacity: 1, strokeWeight: 4, zIndex: 99 }));
   refineSelected(t);
-  map.setFitView([line], false, [70, 70, 70, 240]);
+  map.setFitView(lines, false, [70, 70, 70, 240]);
   $("#sh-date").textContent = t.date;
   $("#sh-km").innerHTML = t.km + "<small>km</small>";
   const m = t.min || 0;
@@ -604,7 +608,7 @@ function selectTrack(line, t) {
   $("#sheet").classList.add("show");
 }
 function closeSheet() {
-  if (selected) selected.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 });
+  if (selected) selected.forEach(l => l.setOptions({ strokeOpacity: 0.45, strokeWeight: 2, zIndex: 50 }));
   selected = null;
   selectedId = null;
   $("#backdrop").classList.remove("show");
