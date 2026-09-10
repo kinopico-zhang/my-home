@@ -130,6 +130,12 @@ main { max-width: 760px; margin: 0 auto; }
 .sh-title { font-size: 17px; font-weight: 700; }
 .sh-sub { font-size: 12px; color: var(--ink-3); }
 .sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
+/* 有功耗数据时共 4 格, 窄屏改 2×2 (没数据时第 4 格隐藏, 保持一行) */
+@media (max-width: 479px) {
+  .sh-cells:has(#sh-cell-pw:not([hidden])) {
+    display: grid; grid-template-columns: 1fr 1fr;
+  }
+}
 .sh-cell { flex: 1; background: var(--surface); border-radius: 12px; padding: 8px 12px; }
 .sh-cell .lb { font-size: 11px; color: var(--ink-2); }
 .sh-cell .val { font-size: 17px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -231,6 +237,7 @@ main { max-width: 760px; margin: 0 auto; }
     <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
     <div class="sh-cell"><div class="lb">时长</div><div class="val" id="sh-dur">–</div></div>
     <div class="sh-cell"><div class="lb" id="sh-spd-lb">最高车速</div><div class="val" id="sh-spd">–</div></div>
+    <div class="sh-cell" id="sh-cell-pw" hidden><div class="lb" id="sh-pw-lb">平均功耗</div><div class="val" id="sh-pw">–</div></div>
   </div>
   <div class="playbar" id="playbar" hidden>
     <button id="pb-toggle" class="pb-btn" aria-label="暂停"></button>
@@ -248,7 +255,7 @@ main { max-width: 760px; margin: 0 auto; }
 </div>
 
 <script src="/tesla/static/gcj02.js?v=1"></script>
-<script src="/tesla/static/trackutil.js?v=5"></script>
+<script src="/tesla/static/trackutil.js?v=6"></script>
 <script>
 "use strict";
 /* ============================ 工具 ============================ */
@@ -400,6 +407,7 @@ function tripMsg(text, spin) {
    背景: 速度色全程线 (淡); 前进: 白色亮线逐帧生长; 头部: 当前速度色圆点。 */
 let animRaf = 0;
 let anim = null;            // 当前播放会话 (playTrack 创建, 控制条/收尾引用)
+let curSess = null;         // 当前轨迹会话: 播放结束后仍存活, 供异步路径回调判定
 
 function stopAnim() {
   if (animRaf) cancelAnimationFrame(animRaf);
@@ -413,8 +421,34 @@ function skipAnim() {
   if (anim) anim.finish();
 }
 
+/* 断档两点间的真实道路路径 (高德驾车规划 · 距离优先/最短路程):
+   返回 gcj 路径数组, 失败/没路返回 null, 调用方回退直线。 */
+const routeCache = new Map();   // "driveId:aIdx-bIdx" → gcj 路径 (只缓存成功)
+function routeBetween(aGcj, bGcj) {
+  return new Promise(resolve => {
+    AMap.plugin("AMap.Driving", () => {
+      try {
+        const policy = AMap.DrivingPolicy && AMap.DrivingPolicy.LEAST_DISTANCE != null
+          ? AMap.DrivingPolicy.LEAST_DISTANCE : 2;
+        new AMap.Driving({ policy }).search(aGcj, bGcj, (status, result) => {
+          if (status !== "complete" || !result.routes || !result.routes.length)
+            return resolve(null);
+          const route = [];
+          for (const st of result.routes[0].steps)
+            for (const p of st.path) route.push([p.lng, p.lat]);
+          resolve(route.length >= 2 ? route : null);
+        });
+      } catch (e) {
+        console.warn("断档路径规划失败, 用直线", e);
+        resolve(null);
+      }
+    });
+  });
+}
+
 function playTrack(pts, ts, it) {
   stopAnim();
+  if (curSess) curSess.alive = false;
   const gcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
   const path = pts.map(gcj);                    // 全量坐标转换一次, 逐帧只切片
   const N = path.length;
@@ -423,7 +457,7 @@ function playTrack(pts, ts, it) {
   const dur = Math.min(Math.max(N / 400, 4), 12) * 1000;
   const growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
-  // 背景全程速度线 (淡) —— 终点拉远后就是完整的速度色全局图
+  // 背景全程速度线 (淡) —— 拉远后就是完整的速度色全局图
   const segs = TrackUtil.splitGaps(pts);
   const bgLines = [];
   for (const seg of segs)
@@ -433,14 +467,14 @@ function playTrack(pts, ts, it) {
         strokeColor: b.color, strokeOpacity: 0.28, strokeWeight: 4,
         lineJoin: "round", zIndex: 50,
       }));
-  // GPS 断档处 (隧道/信号丢失) 没有真实采样, 用蓝色虚线示意连接
-  const gapLines = [];
-  for (const g of TrackUtil.gapsBetween(segs))
-    gapLines.push(new AMap.Polyline({
-      path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
-      strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
-      lineJoin: "round", zIndex: 50,
-    }));
+  // GPS 断档处 (隧道/信号丢失) 没有真实采样: 蓝色虚线沿真实道路连接,
+  // 先画直线占位, 规划路径回来后整段替换 (见下方 gaps.forEach)
+  const gaps = TrackUtil.gapsBetween(segs);
+  const gapLines = gaps.map(g => new AMap.Polyline({
+    path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
+    strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
+    lineJoin: "round", zIndex: 50,
+  }));
   const allLines = bgLines.concat(gapLines);
   tripMap.add(allLines);
 
@@ -454,23 +488,36 @@ function playTrack(pts, ts, it) {
   });
   tripMap.add([progress, head]);
 
-  /* 播放中: 里程/时长/车速实时跳动; 收尾停在整体值, 车速标签换回"最高车速" */
+  /* 播放中: 里程/时长/车速/功耗实时跳动; 收尾停在整体值, 标签换回整体口径 */
   $("#sh-spd-lb").textContent = "车速";
+  $("#sh-pw-lb").textContent = "功耗";
+  // 这辆车的 API 上报的 power 常年 ~0 (实测全库 -94~254W, 真开车至少上万瓦),
+  // 只有出现真实量级的数据才亮出功耗格, 不然一直显示 0.0kW 像是坏了
+  const hasPower = pts.some(p => Math.abs(p[3] || 0) > 500);
+  $("#sh-cell-pw").hidden = !hasPower;          // 没有可用的功耗数据就不占格子
   const setLive = idx => {
     $("#sh-km").innerHTML = cum[idx].toFixed(1) + "<small>km</small>";
     $("#sh-dur").textContent = fmtDurLive(ts[idx] || 0);
     $("#sh-spd").innerHTML = Math.round(pts[idx][2] || 0) + "<small>km/h</small>";
+    const pw = pts[idx][3];                     // W: 正=放电 负=动能回收
+    $("#sh-pw").innerHTML = (pw == null ? "—" :
+      (pw / 1000).toFixed(1).replace(/\.0$/, "")) + "<small>kW</small>";
   };
   const setOfficial = () => {
     $("#sh-km").innerHTML = num(it.km) + "<small>km</small>";
     $("#sh-dur").textContent = fmtDur(it.min);
     $("#sh-spd-lb").textContent = "最高车速";
     $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
+    $("#sh-pw-lb").textContent = "平均功耗";
+    const mp = hasPower ? TrackUtil.meanPowerW(pts, ts) : null;
+    $("#sh-pw").innerHTML = (mp == null ? "—" :
+      (mp / 1000).toFixed(1).replace(/\.0$/, "")) + "<small>kW</small>";
   };
 
+  const splices = [];   // 已解析的断档路由 [{aIdx, bIdx, route(同 path 坐标系)}] 按 aIdx 升序
   const s = {
     pts, N, dur, playT: 0, speed: 1, paused: false, seeking: false,
-    finished: false, lastIdx: -1, drawn: 0,
+    finished: false, alive: true, lastIdx: -1, drawn: 0,
     apply(idx) {                 // 播放头落到 idx: 地图与统计一起走 (拖进度条也走这里)
       if (idx === s.lastIdx) return;
       s.lastIdx = idx;
@@ -480,50 +527,98 @@ function playTrack(pts, ts, it) {
       if (idx < s.drawn) s.drawn = 0;         // 拖进度条回退: 白线从头重建
       if (idx - s.drawn >= growStep || idx === N - 1) {
         s.drawn = idx;
-        progress.setPath(path.slice(0, idx + 1));
+        // 断档跳变段替换成道路路径后, 白线也跟着沿道路走
+        progress.setPath(TrackUtil.splicePath(path, splices, idx));
       }
       setLive(idx);
     },
+    /* 收尾: 停表+拉远, 但控制条留着 (重播/拖进度仍可用);
+       stopAnim 只在关弹层/换轨迹时调用。 */
     finish() {
       if (s.finished) return;
       s.finished = true;
-      stopAnim();
+      if (animRaf) cancelAnimationFrame(animRaf);
+      animRaf = 0;
       tripMap.remove([progress, head]);
       allLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));  // 淡线变亮
       tripMap.setFitView(allLines, false, [46, 46, 46, 46]);      // 拉远 → 全局视角
       setOfficial();
+      pbToggle.innerHTML = ICON_REPLAY;
+      pbToggle.setAttribute("aria-label", "重播");
+      pbSeek.value = 1000;
+      pbSeek.style.setProperty("--pb", "100%");
+    },
+    replay() {                   // 重播: 从头再放 (播完点按钮 / 播完拖进度都会走这)
+      if (!s.finished) return;
+      s.finished = false;
+      s.playT = 0; s.paused = false; s.lastIdx = -1; s.drawn = 0;
+      allLines.forEach(l => l.setOptions({ strokeOpacity: 0.28 }));
+      progress.setPath([path[0]]);
+      head.setCenter(path[0]);
+      head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[0][2] || 0)] });
+      tripMap.add([progress, head]);
+      tripMap.setZoomAndCenter(15, path[0], true);
+      $("#sh-spd-lb").textContent = "车速";
+      $("#sh-pw-lb").textContent = "功耗";
+      resetPlaybar();
+      frameLoop();
     },
   };
   anim = s;
+  curSess = s;
 
-  // 播放控制条复位 (图标/倍速标签由各控件自己的 state 恢复)
-  pbSeek.value = 0;
-  pbSeek.style.setProperty("--pb", "0%");
-  pbToggle.innerHTML = ICON_PAUSE;
-  pbToggle.setAttribute("aria-label", "暂停");
+  // 断档路径规划: 缓存命中立即换成道路线, 否则请求回来后替换 (失败保持直线)
+  gaps.forEach((g, i) => {
+    const aIdx = pts.indexOf(g.pts[0]), bIdx = pts.indexOf(g.pts[1]);
+    const key = `${it.id}:${aIdx}-${bIdx}`;
+    const line = gapLines[i];
+    const applyRoute = route => {
+      if (!s.alive || !route || route.length < 2) return;
+      line.setPath(route);
+      splices.push({ aIdx, bIdx, route });
+      splices.sort((x, y) => x.aIdx - y.aIdx);
+      s.drawn = 0;      // 白线下帧重建: 跳变段改为沿道路
+    };
+    const hit = routeCache.get(key);
+    if (hit) applyRoute(hit);
+    else routeBetween(gcj(g.pts[0]), gcj(g.pts[1]))
+      .then(r => { if (r) routeCache.set(key, r); applyRoute(r); });
+  });
+
+  const resetPlaybar = () => {
+    pbSeek.value = 0;
+    pbSeek.style.setProperty("--pb", "0%");
+    pbToggle.innerHTML = ICON_PAUSE;
+    pbToggle.setAttribute("aria-label", "暂停");
+    $("#playbar").hidden = false;
+  };
+  const frameLoop = () => {
+    let lastNow = 0;
+    (function frame(now) {
+      if (anim !== s || s.finished) return;    // 会话已停止/替换, 或已收尾
+      // 帧间隔钳制 [0, 100ms]: Chrome 的 rAF 时间戳可能比上一帧还早 (见
+      // trackutil.animIndex 注释); 切后台回来会有超大间隔 —— 都不该让播放头跳跃
+      const dt = Math.max(0, Math.min(now - lastNow, 100));
+      lastNow = now;
+      if (!s.paused && !s.seeking)
+        s.playT = Math.min(s.playT + dt * s.speed, dur);
+      s.apply(TrackUtil.animIndex(s.playT, dur, N));
+      pbSeek.value = Math.round(s.playT / dur * 1000);
+      pbSeek.style.setProperty("--pb", (s.playT / dur * 100).toFixed(1) + "%");
+      if (s.playT >= dur) { s.finish(); return; }   // 播完自动收尾 (控制条留着重播)
+      animRaf = requestAnimationFrame(frame);
+    })(performance.now());
+  };
+
+  resetPlaybar();
   pbSpeed.textContent = "1×";
-  $("#playbar").hidden = false;
-
   tripMap.setZoomAndCenter(15, path[0], true);
-  let lastNow = 0;
-  (function frame(now) {
-    if (anim !== s) return;                    // 会话已被停止/跳过/替换
-    // 帧间隔钳制 [0, 100ms]: Chrome 的 rAF 时间戳可能比上一帧还早 (见
-    // trackutil.animIndex 注释); 切后台回来会有超大间隔 —— 都不该让播放头跳跃
-    const dt = Math.max(0, Math.min(now - lastNow, 100));
-    lastNow = now;
-    if (!s.paused && !s.seeking)
-      s.playT = Math.min(s.playT + dt * s.speed, dur);
-    s.apply(TrackUtil.animIndex(s.playT, dur, N));
-    pbSeek.value = Math.round(s.playT / dur * 1000);
-    pbSeek.style.setProperty("--pb", (s.playT / dur * 100).toFixed(1) + "%");
-    if (s.playT >= dur) { s.finish(); return; }   // 播完自动收尾
-    animRaf = requestAnimationFrame(frame);
-  })(performance.now());
+  frameLoop();
 }
 
 function closeTrip() {
   stopAnim();
+  if (curSess) { curSess.alive = false; curSess = null; }
   $("#sheet").classList.remove("show");
   $("#backdrop").classList.remove("show");
 }
@@ -536,6 +631,8 @@ async function openTrip(it) {
   $("#sh-dur").textContent = fmtDur(it.min);
   $("#sh-spd-lb").textContent = "最高车速";
   $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
+  $("#sh-pw-lb").textContent = "平均功耗";
+  $("#sh-pw").textContent = "—";
   $("#sheet").classList.add("show");
   $("#backdrop").classList.add("show");
   tripMsg("正在加载轨迹…", true);
@@ -572,15 +669,18 @@ const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed
 const PB_SPEEDS = [1, 2, 4, 8];
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7.5 4.6v14.8L20 12z" fill="currentColor"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M6.6 4.8h4.1v14.4H6.6zM13.3 4.8h4.1v14.4h-4.1z" fill="currentColor"/></svg>';
+const ICON_REPLAY = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 5V1.8L7 6l5 4.2V7a5.5 5.5 0 1 1-5.5 5.5H4.5A7.5 7.5 0 1 0 12 5z" fill="currentColor"/></svg>';
 
 pbToggle.addEventListener("click", () => {
   if (!anim) return;
+  if (anim.finished) { anim.replay(); return; }   // 播完 → 重播
   anim.paused = !anim.paused;
   pbToggle.innerHTML = anim.paused ? ICON_PLAY : ICON_PAUSE;
   pbToggle.setAttribute("aria-label", anim.paused ? "播放" : "暂停");
 });
-pbSeek.addEventListener("input", () => {         // 拖动进度: 立即生效 (暂停中也生效)
+pbSeek.addEventListener("input", () => {         // 拖动进度: 立即生效 (暂停/播完都生效)
   if (!anim) return;
+  if (anim.finished) anim.replay();              // 播完拖进度 = 从该处重播
   anim.playT = pbSeek.value / 1000 * anim.dur;
   anim.apply(TrackUtil.animIndex(anim.playT, anim.dur, anim.N));
 });

@@ -73,21 +73,23 @@ def test_trip_track_full_resolution_with_speed(auth, monkeypatch):
         seen["sql"], seen["params"] = sql, params
         t0 = datetime(2026, 9, 10, 8, 32)
         return [
-            {"longitude": 114.05, "latitude": 22.55, "speed": 30, "date": t0},
-            {"longitude": 114.06, "latitude": 22.56, "speed": None,
+            {"longitude": 114.05, "latitude": 22.55, "speed": 30, "power": 45000, "date": t0},
+            {"longitude": 114.06, "latitude": 22.56, "speed": None, "power": None,
              "date": t0 + timedelta(minutes=72, seconds=1)},
         ]
 
     monkeypatch.setattr(m, "query", fake_query)
     r = auth.get("/tesla/trips/api/7/track")
     assert r.status_code == 200
-    # 每点 [lng, lat, speed]; 速度缺失按 0 (停车);
-    # ts 是相对起点的秒偏移 (播放动画里算"已行驶时长")
-    assert r.json() == {"id": 7, "pts": [[114.05, 22.55, 30], [114.06, 22.56, 0]],
+    # 每点 [lng, lat, speed, power_W]; 速度缺失按 0 (停车), power 可为 null;
+    # ts 是相对起点的秒偏移 (播放动画里算"已行驶时长"和平均功耗)
+    assert r.json() == {"id": 7,
+                        "pts": [[114.05, 22.55, 30, 45000], [114.06, 22.56, 0, None]],
                         "ts": [0, 4321]}
-    # 整条无视野框 + 5000 点上限 + 带速度/时间列
+    # 整条无视野框 + 5000 点上限 + 带速度/功耗/时间列
     assert seen["params"] == {"id": 7, "per": 5000}
-    assert "pos.speed" in seen["sql"] and "pos.date" in seen["sql"]
+    for col in ("pos.speed", "pos.power", "pos.date"):
+        assert col in seen["sql"]
     assert "drive_id = %(id)s" in seen["sql"]
 
 
@@ -97,7 +99,7 @@ def test_trip_track_404_when_no_points(auth, monkeypatch):
     assert r.status_code == 404
     # 只剩 1 个点画不了线, 也算没有轨迹
     monkeypatch.setattr(m, "query", lambda sql, params=None: [
-        {"longitude": 114.05, "latitude": 22.55, "speed": 30}])
+        {"longitude": 114.05, "latitude": 22.55, "speed": 30, "power": 45000}])
     r = auth.get("/tesla/trips/api/999/track")
     assert r.status_code == 404
     assert "没有轨迹数据" in r.json()["detail"]
@@ -108,6 +110,7 @@ def test_trips_page_has_playbar_and_single_column(auth):
     """播放控制条 (暂停/进度/倍速) + 单列列表 + 断档图例 都在页面上。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
+                 'id="sh-cell-pw"', 'id="sh-pw-lb"', "ICON_REPLAY",
                  'id="list"', "缺失", "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
     # 瀑布流的列容器已删
