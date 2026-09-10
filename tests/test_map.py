@@ -238,6 +238,9 @@ def test_map_page_time_menu_in_filters_row(auth):
     # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留页签菜单; 旧的 chips 行已删
     assert '<div class="filters">\n    <details class="nav-menu time-menu" id="time-menu">' in html
     assert "chips-range" not in html and ".chip {" not in html
+    # 关键 id 全页唯一 (孤儿节点会重复 id, JS 绑错元素且不报错)
+    for i in ("time-menu", "time-lb", "time-opts", "tm-dates", "nav-menu"):
+        assert html.count(f'id="{i}"') == 1, f"足迹页 {i} 重复"
 
 
 # ---------------------------------------------------------------- 视野内高精度轨迹

@@ -352,3 +352,5 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
                  "function syncURL()", 'u.searchParams.set("city", state.city)']:
         assert frag in html, f"充电页缺少 {frag}"
     assert "chips-range" not in html
+    for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu', 'city-opts'):
+        assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
