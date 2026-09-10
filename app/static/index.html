@@ -122,6 +122,14 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
 .filters { display: flex; gap: 8px; margin-top: 10px; }
 .filters .nav-menu { margin-left: 0; }              /* 不吃顶栏的靠右边距 */
 .filters .nav-menu .menu { left: 0; right: auto; }  /* 下拉锚左, 行首也不出屏 */
+/* 手机: 下拉改顶栏正下方近全宽面板 —— 自定义日历一行要 ~300px, 挂在胶囊
+   右缘必出屏 (390px 时面板左缘 -64px, 起始日期半格在屏幕外)。
+   .nav-menu 改 static 让 containing block 上移到全宽的 sticky header,
+   top:calc(100%+8px) 恰好落在 header 底 + 8px, left/right 即视口两侧。 */
+@media (max-width: 479px) {
+  .nav-menu { position: static; }
+  .nav-menu .menu, .filters .nav-menu .menu { left: 12px; right: 12px; }
+}
 .filt .fl { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg {
   display: flex; flex: none; background: rgba(118,118,128,.24);

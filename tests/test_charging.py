@@ -349,7 +349,9 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
                  'id="city-menu"', 'id="city-opts"', "/tesla/charging/api/cities",
-                 "function syncURL()", 'u.searchParams.set("city", state.city)']:
+                 "function syncURL()", 'u.searchParams.set("city", state.city)',
+                 # 手机: 下拉面板锚全宽 header (日历行 ~300px, 挂胶囊右缘必出屏)
+                 '@media (max-width: 479px)', '.nav-menu { position: static; }']:
         assert frag in html, f"充电页缺少 {frag}"
     assert "chips-range" not in html
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu', 'city-opts'):

@@ -390,7 +390,9 @@ def test_trips_page_time_menu_and_filter_row(auth):
                  'data-k="300+"', "/tesla/trips/api/regions",
                  "function filterQS()", "function listURL(", "function syncURL()",
                  "function bindLocMenu(", 'class="menu loc-menu"',
-                 'p.set("from_loc", state.fromLoc)', 'p.set("km_min", kb.min)']:
+                 'p.set("from_loc", state.fromLoc)', 'p.set("km_min", kb.min)',
+                 # 手机: 下拉面板锚全宽 header (日历行 ~300px, 挂胶囊右缘必出屏)
+                 '@media (max-width: 479px)', '.nav-menu { position: static; }']:
         assert frag in html, f"行程页缺少 {frag}"
     assert "chips-range" not in html and "/tesla/trips/api/cities" not in html
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu',
