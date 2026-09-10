@@ -197,8 +197,8 @@ def test_tracks_detail_endpoint(auth, monkeypatch):
     assert "ANY(%(ids)s)" in seen["sql"]      # 走 drive_id 索引
     assert "BETWEEN %(w)s AND %(e)s" in seen["sql"]   # 视野框过滤
     assert seen["params"]["ids"] == [7, 8]
-    # 只有 2 条轨迹: 预算均摊后不设限 (全精度)
-    assert seen["params"]["per"] == 5000
+    # 轨迹少: 全精度
+    assert seen["params"]["per"] == m.DETAIL_PER_MAX
     assert seen["params"]["w"] == 113.9
 
 
@@ -218,7 +218,7 @@ def test_tracks_detail_zoom15_is_full_resolution(auth, monkeypatch):
 
 
 def test_tracks_detail_caps_ids_and_spreads_budget(auth, monkeypatch):
-    """id 上限 150; 密集时总点数预算均摊到每条轨迹 (200 条走 4 路并行)。"""
+    """id 上限 150; 200 条走 4 路并行, 每条目标点数不因轨迹多而减少。"""
     seen = {}
 
     def fake_query(sql, params=None):
@@ -235,8 +235,45 @@ def test_tracks_detail_caps_ids_and_spreads_budget(auth, monkeypatch):
     assert r.status_code == 200
     assert len(seen["ids"]) == m.DETAIL_MAX_IDS == 150   # 4 份合计仍是 150
     assert sorted(seen["sizes"]) == [37, 37, 38, 38]     # 均匀拆 4 份
-    # 12 级预算 20000 均摊给 150 条 → 每条 133 点
-    assert seen["per"] == m.DETAIL_BUDGET[12] // 150
+    # 150 条时每条仍有下限 2000 (旧总预算制会稀释到 ~266)
+    assert seen["per"] == m.DETAIL_PER_FLOOR
+
+
+def test_tracks_detail_per_track_not_diluted_by_density(auth, monkeypatch):
+    """密集区域: 每条轨迹目标点数不随轨迹数量明显减少 (总点数 ∝ 轨迹数)。"""
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen["per"] = params["per"]
+        return []
+
+    monkeypatch.setattr(m, "query", fake_query)
+    base = "/tesla/map/api/tracks/detail"
+    box = {"w": 113, "s": 22, "e": 115, "n": 24}
+    # 轨迹少 (≤50 条) → 全精度, 与缩放级别无关
+    for n in (2, 50):
+        ids = ",".join(str(i) for i in range(1, n + 1))
+        r = auth.get(base, params={"ids": ids, "zoom": 12, **box})
+        assert r.status_code == 200
+        assert seen["per"] == m.DETAIL_PER_MAX, f"{n} 条时被稀释"
+    # 密集 (150 条) → 按总点均摊, 但每条不低于下限
+    ids = ",".join(str(i) for i in range(1, 151))
+    r = auth.get(base, params={"ids": ids, "zoom": 13, **box})
+    assert r.status_code == 200
+    assert seen["per"] == m.DETAIL_PER_FLOOR
+
+
+def test_tracks_detail_gzipped_when_large(auth, monkeypatch):
+    """大响应走 gzip, 手机端省流量 (轨迹点多的接口动辄几 MB)。"""
+    monkeypatch.setattr(m, "query", lambda sql, params=None: [
+        detail_row(7, 114.0 + i * 0.00001, 22.5) for i in range(300)])
+    r = auth.get("/tesla/map/api/tracks/detail",
+                 params={"ids": "7", "zoom": 15, "w": 113, "s": 22,
+                         "e": 115, "n": 24},
+                 headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200
+    assert r.headers.get("content-encoding") == "gzip"
+    assert r.json()["count"] == 1
 
 
 def test_tracks_detail_rejects_bad_input(auth, monkeypatch):

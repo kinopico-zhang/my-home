@@ -529,7 +529,7 @@ async function refineSelected(t) {
   $("#refine-tip-text").textContent = "正在加载选中轨迹…";
   try {
     const d = await getJSON("/tesla/map/api/tracks/detail?ids=" + t.id +
-      "&zoom=15&w=-180&s=-90&e=180&n=90");   // 全球框 = 整条轨迹, 单条预算 → 全精度
+      "&zoom=15&w=-180&s=-90&e=180&n=90");   // 全球框 = 整条轨迹, 单条 → 全精度
     if (d.tracks.length) {
       fullCache.set(t.id, d.tracks[0].pts);
       if (selectedId === t.id) applyDetail(t.id, d.tracks[0].pts, true);

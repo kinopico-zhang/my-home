@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from pydantic import BaseModel
@@ -112,6 +113,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="My Tesla", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=2048)   # 轨迹 JSON 压缩 ~5x
 
 # 充电记录页面专属 API (页面: /tesla/charging)
 charging = APIRouter(prefix="/tesla/charging/api")
@@ -658,9 +660,12 @@ SELECT p.drive_id, p.longitude, p.latitude
  ORDER BY p.drive_id, rn
 """
 
-# 总点数预算制: 轨迹密集的走廊 (百条相交) 每条均摊, 轨迹稀少时接近全精度。
-# 响应体量 = 预算 × ~25B, 上限 ~2MB; 15 级以上预算 80000。
-DETAIL_BUDGET = {12: 40000, 13: 80000, 14: 120000}
+# 每条轨迹目标点数: 轨迹不多时全精度 (5000); 密集时按 25 万总点均摊,
+# 但每条不低于 2000 —— 旧的总预算固定制会把密集走廊稀释成折线 (用户反馈:
+# 总点数应随轨迹数量增长)。响应上限 ~30 万点 (~6MB, gzip 后 ~1MB)。
+DETAIL_PER_MAX = 5000
+DETAIL_PER_FLOOR = 2000
+DETAIL_TOTAL_CAP = 250000
 DETAIL_MAX_IDS = 150
 DETAIL_WORKERS = 4
 
@@ -704,7 +709,8 @@ def get_tracks_detail(ids: str, zoom: int = 15,
         return {"count": 0, "tracks": []}
     if not (-180 <= w < e <= 180 and -90 <= s < n <= 90):
         raise HTTPException(400, "bbox 参数非法")
-    per = max(60, min(5000, DETAIL_BUDGET.get(zoom, 80000) // len(id_list)))
+    per = min(DETAIL_PER_MAX,
+              max(DETAIL_PER_FLOOR, DETAIL_TOTAL_CAP // len(id_list)))
     rows = _query_detail(id_list, per, {"w": w, "s": s, "e": e, "n": n})
     tracks = _group_detail(rows)
     return {"count": len(tracks), "tracks": tracks}
