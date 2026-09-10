@@ -69,7 +69,7 @@ def test_logout_rotates_secret_and_revokes(client):
 
 # ---------------------------------------------------------------- 中间件
 def test_unauthed_pages_redirect_to_login(client):
-    for path in ("/tesla", "/tesla/charging", "/tesla/map"):
+    for path in ("/tesla", "/tesla/charging", "/tesla/map", "/tesla/trips"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
         assert r.headers["location"] == "/tesla/login", path
@@ -78,7 +78,8 @@ def test_unauthed_pages_redirect_to_login(client):
 def test_unauthed_apis_return_401_json(client):
     for path in ("/tesla/charging/api/summary", "/tesla/charging/api/sessions",
                  "/tesla/map/api/summary", "/tesla/map/api/tracks",
-                 "/tesla/map/api/tracks/detail", "/tesla/map/api/config"):
+                 "/tesla/map/api/tracks/detail", "/tesla/map/api/config",
+                 "/tesla/trips/api/sessions", "/tesla/trips/api/1/track"):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
@@ -108,6 +109,7 @@ def test_root_redirect_chain(auth):
 def test_pages_served_after_login(auth):
     for path, marker in (("/tesla/charging", "My Tesla"),
                          ("/tesla/map", "My Tesla"),
+                         ("/tesla/trips", "My Tesla"),
                          ("/tesla/login", "My Tesla")):
         r = auth.get(path)
         assert r.status_code == 200, path
@@ -120,5 +122,5 @@ def test_cache_control_headers(auth):
     # 未登录的 401 API 响应同样禁缓存
     anon = TestClient(m.app)
     assert anon.get("/tesla/map/api/config").headers["cache-control"] == "no-store"
-    for path in ("/tesla/charging", "/tesla/map", "/tesla/login"):
+    for path in ("/tesla/charging", "/tesla/map", "/tesla/trips", "/tesla/login"):
         assert auth.get(path).headers["cache-control"] == "no-cache", path

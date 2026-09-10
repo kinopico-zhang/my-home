@@ -727,6 +727,57 @@ async def map_diag(request: Request):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------- 行程轨迹页
+# 页面: /tesla/trips —— 行程卡片瀑布流 + 点击查看单条全精度轨迹
+trips = APIRouter(prefix="/tesla/trips/api")
+
+TRIPS_SQL = """
+SELECT d.id, d.start_date, d.end_date, d.distance, d.duration_min, d.speed_max,
+       sa.display_name AS start_addr, ea.display_name AS end_addr
+  FROM drives d
+  LEFT JOIN addresses sa ON sa.id = d.start_address_id
+  LEFT JOIN addresses ea ON ea.id = d.end_address_id
+ ORDER BY d.start_date DESC
+ LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+
+def _clean_addr(s: str | None) -> str:
+    """地址去掉反查带来的尾部悬挂逗号/空白。"""
+    return (s or "未知位置").rstrip(", ").strip()[:80] or "未知位置"
+
+
+@trips.get("/sessions")
+def get_trip_sessions(offset: int = 0, limit: int = 24):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(400, "分页参数非法")
+    total = query("SELECT count(*) AS n FROM drives")[0]["n"]
+    rows = query(TRIPS_SQL, {"limit": limit, "offset": offset})
+    items = [{
+        "id": r["id"],
+        "date": fdate(r["start_date"]),
+        "start": ftime(r["start_date"]),
+        "end": ftime(r["end_date"]) if r["end_date"] else None,
+        "km": round(v, 2) if (v := fnum(r["distance"])) is not None else None,
+        "min": r["duration_min"],
+        "speed_max": r["speed_max"],
+        "from": _clean_addr(r["start_addr"]),
+        "to": _clean_addr(r["end_addr"]),
+    } for r in rows]
+    return {"total": total, "items": items}
+
+
+@trips.get("/{drive_id}/track")
+def get_trip_track(drive_id: int):
+    """单条行程全精度轨迹 (与地图页点选轨迹同规格: 全球框 + 5000 点/条)。"""
+    rows = _query_detail([drive_id], 5000,
+                         {"w": -180, "s": -90, "e": 180, "n": 90})
+    tracks = _group_detail(rows)
+    if not tracks:
+        raise HTTPException(404, "该行程没有轨迹数据")
+    return {"id": drive_id, "pts": tracks[0]["pts"]}
+
+
 # ---------------------------------------------------------------- 静态页面
 
 def _page(fname: str) -> FileResponse:
@@ -756,6 +807,12 @@ def map_page():
     return _page("map.html")
 
 
+@app.get("/tesla/trips")
+def trips_page():
+    return _page("trips.html")
+
+
 app.include_router(charging)
 app.include_router(mapapi)
+app.include_router(trips)
 app.mount("/tesla/static", StaticFiles(directory=STATIC_DIR), name="static")

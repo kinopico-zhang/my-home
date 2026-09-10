@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>行程轨迹 · My Tesla</title>
+<style>
+/* ---------- 设计令牌: 与充电/地图页一致的 iOS 暗色 ---------- */
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-3: #3a3a3c;
+  --ink-1: #f5f5f7;
+  --ink-2: rgba(235,235,245,.62);
+  --ink-3: rgba(235,235,245,.32);
+  --hairline: rgba(255,255,255,.09);
+  --nav-bg: rgba(10,10,12,.72);
+  --blue: #3987e5;       /* 轨迹线色 (与地图页一致) */
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg); color: var(--ink-1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+               "Helvetica Neue", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45;
+  min-height: 100vh; min-height: 100dvh;
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+/* ---------- 顶部导航 (毛玻璃) ---------- */
+header {
+  position: sticky; top: 0; z-index: 50;
+  padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--hairline);
+}
+.nav-row { display: flex; align-items: baseline; gap: 10px; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.tabs { margin-left: auto; align-self: center; display: flex; gap: 6px; }
+.tabs a {
+  font-size: 12.5px; color: var(--ink-2); text-decoration: none;
+  padding: 5px 11px; border-radius: 999px; transition: color .15s;
+}
+.tabs a.on { color: var(--ink-1); background: var(--surface-2); }
+.logout-btn {
+  align-self: center; font-size: 12px; color: var(--ink-3);
+  padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
+}
+.logout-btn:active { color: var(--ink-1); }
+
+main { max-width: 1180px; margin: 0 auto; }
+.sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
+.sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
+.count-badge { font-size: 12px; color: var(--ink-3); }
+
+/* ---------- 瀑布流 ---------- */
+#masonry { display: flex; gap: 10px; padding: 8px 14px 10px; align-items: flex-start; transition: opacity .25s; }
+#masonry.dim { opacity: .45; pointer-events: none; }
+.m-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+@media (max-width: 719px) { #masonry { padding: 8px 12px 10px; } }
+
+/* ---------- 行程卡片 ---------- */
+.card-t {
+  background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
+  padding: 12px 13px; cursor: pointer; overflow: hidden;
+  transition: transform .15s, background .15s;
+}
+.card-t:active { transform: scale(.975); background: #232326; }
+@media (hover: hover) { .card-t:hover { border-color: rgba(255,255,255,.2); } }
+.ct-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.ct-date { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+.ct-arrow {
+  flex: none; font-size: 10.5px; font-weight: 600; color: #7db3f0;
+  background: rgba(57,135,229,.14); padding: 2px 8px; border-radius: 999px;
+}
+.ct-dist { font-size: 23px; font-weight: 650; letter-spacing: -.4px; margin: 8px 0 1px; }
+.ct-dist small { font-size: 11px; color: var(--ink-2); font-weight: 500; }
+.ct-addr { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.ct-addr .line {
+  font-size: 12px; color: var(--ink-2); display: flex; gap: 6px; align-items: baseline;
+}
+.ct-addr .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; align-self: center; }
+.ct-addr .from .dot { background: var(--green, #1fa349); }
+.ct-addr .to .dot { background: #d95926; }
+.ct-addr .txt {
+  -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; min-width: 0;
+}
+.ct-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 8px; }
+
+/* ---------- 尾部状态 ---------- */
+.tail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 0 40px; }
+.spin {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2.5px solid var(--surface-3); border-top-color: var(--ink-2);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.endnote, .empty { font-size: 12px; color: var(--ink-3); }
+.err-box { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 13px; color: #ff9f9f; }
+.retry {
+  font-size: 13px; padding: 7px 22px; border-radius: 999px;
+  border: 1px solid var(--hairline); color: var(--ink-1);
+}
+
+/* ---------- 轨迹弹层 (底部 sheet) ---------- */
+.backdrop {
+  position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.4);
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.backdrop.show { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
+  height: 78vh; height: 78dvh;
+  display: flex; flex-direction: column;
+  background: var(--surface-2); border-radius: 20px 20px 0 0;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 12px);
+  transform: translateY(105%); transition: transform .28s cubic-bezier(.32,.72,.33,1);
+}
+.sheet.show { transform: translateY(0); }
+.grab { width: 38px; height: 5px; border-radius: 3px; background: var(--hairline); margin: 0 auto 10px; flex: none; cursor: pointer; }
+.sh-head { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 0 4px 10px; }
+.sh-title { font-size: 17px; font-weight: 700; }
+.sh-sub { font-size: 12px; color: var(--ink-3); }
+.sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
+.sh-cell { flex: 1; background: var(--surface); border-radius: 12px; padding: 8px 12px; }
+.sh-cell .lb { font-size: 11px; color: var(--ink-2); }
+.sh-cell .val { font-size: 17px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.sh-cell .val small { font-size: 11px; color: var(--ink-2); font-weight: 500; }
+.trip-map-wrap {
+  position: relative; flex: 1; min-height: 0;
+  border-radius: 14px; overflow: hidden; background: var(--surface);
+}
+#trip-map { position: absolute; inset: 0; }
+.trip-msg {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  font-size: 13px; color: var(--ink-2); background: var(--surface);
+  z-index: 10; text-align: center; padding: 0 30px;
+}
+.trip-msg .spin { margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-row">
+    <h1>My Tesla</h1>
+    <nav class="tabs">
+      <a href="/tesla/charging">充电</a>
+      <a href="/tesla/map">足迹</a>
+      <a class="on" href="/tesla/trips">行程</a>
+    </nav>
+    <button id="logout" class="logout-btn" title="退出登录">退出</button>
+  </div>
+</header>
+
+<main>
+  <div class="sec-head">
+    <h2>行程轨迹</h2>
+    <span class="count-badge" id="count-badge"></span>
+  </div>
+  <div id="masonry"></div>
+
+  <div class="tail" id="tail" hidden>
+    <div class="spin" id="loader-spin" hidden></div>
+    <div class="endnote" id="endnote" hidden>· 已经到底啦 ·</div>
+    <div class="empty" id="empty" hidden>还没有行程记录</div>
+    <div class="err-box" id="errbox" hidden>
+      <p id="errmsg">加载失败</p>
+      <button class="retry" id="retry">重试</button>
+    </div>
+  </div>
+</main>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet">
+  <div class="grab" id="grab"></div>
+  <div class="sh-head">
+    <div class="sh-title" id="sh-date">–</div>
+    <div class="sh-sub" id="sh-time"></div>
+  </div>
+  <div class="sh-cells">
+    <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
+    <div class="sh-cell"><div class="lb">时长</div><div class="val" id="sh-dur">–</div></div>
+    <div class="sh-cell"><div class="lb">最高车速</div><div class="val" id="sh-spd">–</div></div>
+  </div>
+  <div class="trip-map-wrap">
+    <div id="trip-map"></div>
+    <div class="trip-msg" id="trip-msg">
+      <div class="spin" id="trip-spin" hidden></div>
+      <div id="trip-msg-text">正在加载轨迹…</div>
+    </div>
+  </div>
+</div>
+
+<script src="/tesla/static/gcj02.js"></script>
+<script src="/tesla/static/trackutil.js"></script>
+<script>
+"use strict";
+/* ============================ 工具 ============================ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = n => String(n).padStart(2, "0");
+
+/* "2026-09-10 08:32" → 本地 Date (服务端已转北京时间; 手动解析, 兼容 iOS Safari) */
+function parseLocal(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : new Date(s);
+}
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+function fmtCardDate(s) {
+  const d = parseLocal(s);
+  return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEK[d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtTime(s) {
+  const d = parseLocal(s);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDur(min) {
+  if (min == null) return "—";
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h}小时${m ? m + "分" : ""}` : `${m}分钟`;
+}
+const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
+
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+/* ============================ 瀑布流列表 ============================ */
+const PAGE = 24;
+const state = { offset: 0, total: 0, loading: false, done: false, err: null };
+const itemsById = new Map();
+const trackCache = new Map();       // id → 全精度 pts
+
+const masonryEl = $("#masonry");
+let mCols = [], cardEls = [];
+
+function colCount(w) { return w >= 1100 ? 4 : w >= 720 ? 3 : 2; }
+function buildColumns() {
+  const n = colCount(masonryEl.clientWidth);
+  if (mCols.length === n) return;
+  mCols.forEach(c => c.remove());
+  mCols = Array.from({ length: n }, () => {
+    const c = document.createElement("div");
+    c.className = "m-col"; masonryEl.appendChild(c); return c;
+  });
+  cardEls.forEach(el => shortestCol().appendChild(el));
+}
+function shortestCol() {
+  return mCols.reduce((a, b) => (a.offsetHeight <= b.offsetHeight ? a : b));
+}
+
+function renderCard(it) {
+  const el = document.createElement("article");
+  el.className = "card-t"; el.dataset.id = it.id;
+  const avg = it.km != null && it.min ? Math.round(it.km / (it.min / 60)) : null;
+  el.innerHTML = `
+    <div class="ct-top">
+      <span class="ct-date">${esc(fmtCardDate(it.start))}</span>
+      <span class="ct-arrow">→ 查看轨迹</span>
+    </div>
+    <div class="ct-dist">${num(it.km)}<small>km</small></div>
+    <div class="ct-addr">
+      <div class="line from"><i class="dot"></i><span class="txt">${esc(it.from)}</span></div>
+      <div class="line to"><i class="dot"></i><span class="txt">${esc(it.to)}</span></div>
+    </div>
+    <div class="ct-sub">${fmtDur(it.min)}${avg ? ` · 均速 ${avg} km/h` : ""}${it.speed_max != null ? ` · 最高 ${it.speed_max} km/h` : ""}</div>`;
+  el.addEventListener("click", () => openTrip(it));
+  return el;
+}
+
+const tailEl = $("#tail");
+function setTail() {
+  tailEl.hidden = state.total === 0 && !state.loading && state.done && !state.err;
+  $("#loader-spin").hidden = !state.loading;
+  $("#endnote").hidden = !(state.done && state.total > 0);
+  $("#empty").hidden = !(state.done && state.total === 0 && !state.err);
+  $("#errbox").hidden = !state.err;
+  $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
+}
+
+async function loadMore() {
+  if (state.loading || state.done) return;
+  state.loading = true; state.err = null; setTail();
+  try {
+    const d = await getJSON(`/tesla/trips/api/sessions?offset=${state.offset}&limit=${PAGE}`);
+    state.total = d.total; state.offset += d.items.length;
+    if (state.offset >= d.total) state.done = true;
+    buildColumns();
+    d.items.forEach(it => {
+      itemsById.set(it.id, it);
+      const el = renderCard(it); cardEls.push(el); shortestCol().appendChild(el);
+    });
+  } catch (e) {
+    state.err = "数据加载失败: " + e.message;
+  }
+  state.loading = false; setTail();
+}
+
+/* 懒加载: 触底前 800px 预加载下一页 */
+new IntersectionObserver(es => {
+  if (es[0].isIntersecting) loadMore();
+}, { rootMargin: "800px" }).observe(tailEl);
+
+/* 列数变化时重排 (保持时间顺序) */
+let resizeTimer;
+new ResizeObserver(() => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(buildColumns, 120);
+}).observe(document.body);
+
+$("#retry").addEventListener("click", () => { state.err = null; loadMore(); });
+$("#logout").addEventListener("click", async () => {
+  await fetch("/tesla/api/logout", { method: "POST" });
+  location.replace("/tesla/login");
+});
+
+/* ============================ 轨迹弹层 ============================ */
+let amapLoading = null;             // Promise<true>: 高德脚本就绪
+let tripMap = null;                 // 弹层内地图实例, 复用不销毁
+let openSeq = 0;                    // 连续点开多条时, 只认最后一次
+
+function loadAMapScript(key, securityCode) {
+  return new Promise((resolve, reject) => {
+    if (securityCode) window._AMapSecurityConfig = { securityJsCode: securityCode };
+    const s = document.createElement("script");
+    s.src = "https://webapi.amap.com/maps?v=2.0&key=" + encodeURIComponent(key);
+    s.onload = () => resolve(true);
+    s.onerror = () => reject(new Error("高德地图脚本加载失败, 请检查网络"));
+    document.head.appendChild(s);
+  });
+}
+
+/* 高德脚本只加载一次 (弹层打开与后台预载共用入口; 失败可重试) */
+function ensureAMap() {
+  if (!amapLoading) {
+    amapLoading = (async () => {
+      const cfg = await getJSON("/tesla/map/api/config?_=" + Date.now());
+      if (!cfg.amap_key) throw new Error("未配置高德地图 Key (.env 里设置 AMAP_KEY)");
+      await loadAMapScript(cfg.amap_key, cfg.security_code);
+      return true;
+    })();
+    amapLoading.catch(() => { amapLoading = null; });
+  }
+  return amapLoading;
+}
+
+function tripMsg(text, spin) {
+  $("#trip-msg").hidden = !text && !spin;
+  $("#trip-msg-text").textContent = text || "";
+  $("#trip-spin").hidden = !spin;
+}
+
+function closeTrip() {
+  $("#sheet").classList.remove("show");
+  $("#backdrop").classList.remove("show");
+}
+
+async function openTrip(it) {
+  const seq = ++openSeq;
+  $("#sh-date").textContent = fmtCardDate(it.start).replace(/ \d\d:\d\d$/, "");
+  $("#sh-time").textContent = (it.end ? fmtTime(it.start) + " – " + fmtTime(it.end) : "");
+  $("#sh-km").innerHTML = num(it.km) + "<small>km</small>";
+  $("#sh-dur").textContent = fmtDur(it.min);
+  $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
+  $("#sheet").classList.add("show");
+  $("#backdrop").classList.add("show");
+  tripMsg("正在加载轨迹…", true);
+
+  try {
+    await ensureAMap();
+    if (seq !== openSeq) return;
+
+    if (!tripMap) {
+      tripMap = new AMap.Map("trip-map", { mapStyle: "amap://styles/dark", zoom: 11 });
+      // iOS Safari 双指缩放劫持成页面缩放: 拦掉, 手势只给地图
+      for (const ev of ["gesturestart", "gesturechange"])
+        document.getElementById("trip-map").addEventListener(ev, e => e.preventDefault());
+    }
+    tripMap.clearMap();
+
+    let pts = trackCache.get(it.id);
+    if (!pts) {
+      const d = await getJSON(`/tesla/trips/api/${it.id}/track`);
+      trackCache.set(it.id, d.pts);
+      pts = d.pts;
+    }
+    if (seq !== openSeq) return;
+
+    // GPS 断档处拆段 (飞线修复) + WGS-84 → GCJ-02
+    const segs = TrackUtil.splitGaps(pts);
+    const lines = segs.map(seg => new AMap.Polyline({
+      path: seg.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
+      strokeColor: "#3987e5", strokeOpacity: 1, strokeWeight: 4,
+      lineJoin: "round", zIndex: 50,
+    }));
+    tripMap.add(lines);
+    tripMap.setFitView(lines, false, [46, 46, 46, 46]);
+    tripMsg(null, false);
+  } catch (e) {
+    if (seq === openSeq) tripMsg(String(e.message || e), false);
+  }
+}
+
+$("#backdrop").addEventListener("click", closeTrip);
+$("#grab").addEventListener("click", closeTrip);
+
+/* 首页列表加载完后, 后台预载高德脚本 (首次点开更快) */
+loadMore().then(() => { ensureAMap().catch(() => {}); });
+</script>
+</body>
+</html>
