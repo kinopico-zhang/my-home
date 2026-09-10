@@ -148,7 +148,19 @@
     return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   }
 
+  /* ---- Web 墨卡托瓦片坐标 (slippy tile): GCJ 经纬度 → z 层的格 x/y。
+     播放前预载沿途瓦片用 (URL 里换 x/y/z 即可复算整条路的瓦片)。 ---- */
+  function lngLatToTile(lng, lat, z) {
+    const n = Math.pow(2, z);
+    const x = Math.floor((lng + 180) / 360 * n);
+    const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
+    const rad = clamped * Math.PI / 180;
+    const y = Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
+    return [x, y];
+  }
+
   return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, meanPowerW: meanPowerW, splicePath: splicePath, animIndex: animIndex,
            speedBucket: speedBucket, ptDistKm: ptDistKm, bearingDeg: bearingDeg,
+           lngLatToTile: lngLatToTile,
            SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });

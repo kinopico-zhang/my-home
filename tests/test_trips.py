@@ -275,6 +275,16 @@ def test_trips_page_has_url_deeplink(auth):
         assert frag in html, f"行程页缺少深链片段 {frag}"
 
 
+def test_trips_page_preloads_tiles(auth):
+    """播放前预载沿途瓦片: 倍率按里程 + DOM 抄模板 + Image() 刷缓存, 失败静默。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ["function followZoom(", "async function tileTemplate(", "function tileUrl(",
+                 "function preloadTiles(", "正在预载地图", "TrackUtil.lngLatToTile",
+                 "appmaptile", "playTrack(c.pts, c.ts || [], it, zoom)",
+                 "setTimeout(resolve, 8000)", "trackutil.js?v=8"]:
+        assert frag in html, f"行程页缺少瓦片预载片段 {frag}"
+
+
 def test_trips_page_has_multiselect(auth):
     """多选连续行程: 选择模式 + 底栏 + 合并接口直开都挂在页面上。"""
     html = auth.get("/tesla/trips").text
