@@ -87,6 +87,16 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
 .filters .nav-menu { margin-left: 0; }              /* 不吃顶栏的靠右边距 */
 .filters .nav-menu .menu { left: 0; right: auto; }  /* 下拉锚左, 行首也不出屏 */
 .filt .fl { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 起终点省市区级联: 菜单限高滚动 (区县可能有十几项), 返回行/面包屑/层级行 */
+.nav-menu .menu.loc-menu { max-height: min(420px, 62vh); overflow-y: auto; min-width: 176px; }
+.nav-menu .menu .loc-crumb { font-size: 11px; color: var(--ink-3); padding: 4px 12px 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-menu .menu button.loc-back { color: var(--ink-2); font-size: 13px; padding: 5px 12px 8px; }
+.nav-menu .menu button.loc-row { display: flex; align-items: baseline; gap: 8px; }
+.nav-menu .menu button.loc-row .nm { overflow: hidden; text-overflow: ellipsis; }
+.nav-menu .menu button.loc-row .cnt { color: var(--ink-3); font-size: 12px;
+  margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+.nav-menu .menu button.on .cnt { color: #7db3f0; }
 /* 时间菜单的自定义日历 (原生 date 输入, 移动端唤起系统日历) */
 .time-menu .tm-custom { border-top: 1px solid var(--hairline); margin-top: 5px; padding-top: 5px; }
 .tm-dates { display: flex; align-items: center; gap: 5px; padding: 6px 8px 3px; }
@@ -321,11 +331,11 @@ body.selecting .card-t.picked .pick::after {
   <div class="filters">
     <details class="nav-menu filt" id="fc-menu">
       <summary><span class="fl" id="fc-lb">起点: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-      <div class="menu" id="fc-opts"></div>
+      <div class="menu loc-menu" id="fc-opts"></div>
     </details>
     <details class="nav-menu filt" id="tc-menu">
       <summary><span class="fl" id="tc-lb">终点: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-      <div class="menu" id="tc-opts"></div>
+      <div class="menu loc-menu" id="tc-opts"></div>
     </details>
     <details class="nav-menu filt" id="km-menu">
       <summary><span class="fl" id="km-lb">里程: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
@@ -396,9 +406,13 @@ body.selecting .card-t.picked .pick::after {
 <script src="/tesla/static/trackutil.js?v=8"></script>
 <script>
 "use strict";
-/* 页签菜单: 点空白处收起 */
+/* 页签菜单: 点空白处收起。
+   注意: 级联菜单钻取会在点击处理器里 innerHTML 重渲染, 事件目标被脱链
+   (closest() 找不到菜单祖先) —— 脱链的点击一定发生在某个菜单里, 不能当"点外面"关闭。 */
 document.addEventListener("click", e => {
-  const inside = e.target.closest && e.target.closest("details.nav-menu");
+  const t = e.target;
+  if (!(t instanceof Element) || !t.isConnected) return;
+  const inside = t.closest("details.nav-menu");
   document.querySelectorAll("details.nav-menu[open]").forEach(m => {
     if (m !== inside) m.removeAttribute("open");
   });
@@ -468,7 +482,7 @@ const KM_BUCKETS = [   // 里程档位: URL 里存档位码, 请求时换算成 
   { v: "100-300", lb: "100–300km", min: 100, max: 300 },
   { v: "300+", lb: "300km 以上", min: 300, max: null },
 ];
-// URL → 初始筛选: ?range= 快捷档; ?from=&to= 自定义区间; ?from_city=/?to_city=/?km= 筛选行
+// URL → 初始筛选: ?range= 快捷档; ?from=&to= 自定义区间; ?from_loc=/?to_loc=/?km= 筛选行
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const qs0 = new URLSearchParams(location.search);
 let range0 = TIME_RANGES.some(r => r.v === qs0.get("range")) ? qs0.get("range") : "all";
@@ -477,9 +491,12 @@ if (range0 === "all") {
   const f = qs0.get("from"), t = qs0.get("to");
   if (DATE_RE.test(f || "") && DATE_RE.test(t || "") && f <= t) { range0 = "custom"; cFrom0 = f; cTo0 = t; }
 }
+const locParam = k => {   // ?from_loc=省/市/区 (1~3 段, 脏参数丢弃)
+  const segs = (qs0.get(k) || "").split("/").map(s => s.trim()).filter(Boolean);
+  return segs.length && segs.length <= 3 && segs.every(s => s.length <= 30) ? segs.join("/") : "";
+};
 const state = { range: range0, cFrom: cFrom0, cTo: cTo0,
-                fromCity: qs0.get("from_city") || "",
-                toCity: qs0.get("to_city") || "",
+                fromLoc: locParam("from_loc"), toLoc: locParam("to_loc"),
                 km: KM_BUCKETS.some(b => b.v === qs0.get("km")) ? qs0.get("km") : "all",
                 offset: 0, total: 0, loading: false, done: false, err: null };
 const trackCache = new Map();       // id → {pts, ts} 全精度轨迹
@@ -534,8 +551,8 @@ async function loadMore() {
       const from = timeFrom(state.range);
       if (from) p.set("from", from);
     }
-    if (state.fromCity) p.set("from_city", state.fromCity);
-    if (state.toCity) p.set("to_city", state.toCity);
+    if (state.fromLoc) p.set("from_loc", state.fromLoc);
+    if (state.toLoc) p.set("to_loc", state.toLoc);
     const kb = KM_BUCKETS.find(b => b.v === state.km);
     if (kb && kb.min != null) p.set("km_min", kb.min);
     if (kb && kb.max != null) p.set("km_max", kb.max);
@@ -560,12 +577,12 @@ function timeLabel() {
     return `${state.cFrom.slice(5).replace("-", "/")}–${state.cTo.slice(5).replace("-", "/")}`;
   return TIME_RANGES.find(r => r.v === state.range).lb;
 }
-function filterQS() {   // 时间/城市/里程 → 参数串 (无 ? 前缀), 地址栏与请求共用
+function filterQS() {   // 时间/起终点/里程 → 参数串 (无 ? 前缀), 地址栏与请求共用
   const p = new URLSearchParams();
   if (state.range === "custom") { p.set("from", state.cFrom); p.set("to", state.cTo); }
   else if (state.range !== "all") p.set("range", state.range);
-  if (state.fromCity) p.set("from_city", state.fromCity);
-  if (state.toCity) p.set("to_city", state.toCity);
+  if (state.fromLoc) p.set("from_loc", state.fromLoc);
+  if (state.toLoc) p.set("to_loc", state.toLoc);
   if (state.km !== "all") p.set("km", state.km);
   return p.toString();
 }
@@ -620,19 +637,69 @@ $("#tm-apply").addEventListener("click", () => {
 });
 setTimeRange(state.range, true);              // 初始化: 只同步标签/选中态, 不重拉
 
-/* ---------- 筛选行: 起点城市 / 终点城市 / 里程范围 ---------- */
-function bindCityMenu(menuId, optsId, key, lbId, prefix) {
-  $("#" + optsId).addEventListener("click", e => {
+/* ---------- 筛选行: 起终点省市区级联 / 里程范围 ----------
+   树来自 /trips/api/regions (省→市→区县, 次数降序)。点层级行钻下一级,
+   顶部 "全部X" 行选中当前层 (省/市/区县任一级都能作为筛选条件), 叶子直接选中。 */
+const REGIONS = { start: [], end: [] };
+function bindLocMenu(menuId, optsId, key, lbId, prefix, treeKey) {
+  const menuEl = $("#" + menuId), optsEl = $("#" + optsId), lbEl = $("#" + lbId);
+  const stack = [];   // 当前钻取路径 (省名/市名), 空 = 省列表
+  const setLoc = v => {
+    state[key] = v;
+    lbEl.textContent = prefix + (v ? v.split("/").pop() : "全部");   // 显示末级, title 全路径
+    lbEl.parentElement.title = v;
+  };
+  const nodesAt = () => {   // stack 对应的节点层
+    let nodes = REGIONS[treeKey];
+    for (const s of stack) {
+      const n = nodes.find(x => x.name === s);
+      nodes = n ? n.children : [];
+    }
+    return nodes;
+  };
+  const render = () => {
+    const sel = state[key], cur = stack.join("/");
+    const rows = nodesAt().map(n => {
+      const path = (cur ? cur + "/" : "") + n.name;
+      return `<button class="loc-row${path === sel ? " on" : ""}" data-n="${esc(n.name)}">` +
+        `<span class="nm">${esc(n.name)}</span>` +
+        `<span class="cnt">${n.count}${n.children.length ? " ›" : ""}</span></button>`;
+    }).join("");
+    optsEl.innerHTML =
+      (stack.length ? `<button class="loc-back" data-b="1">‹ 返回</button>` +
+        `<div class="loc-crumb">${esc(stack.join(" · "))}</div>` : "") +
+      `<button data-a="${esc(cur)}"${sel === cur ? ' class="on"' : ""}>` +
+      `${cur ? "全部" + esc(stack[stack.length - 1]) : "全部"}</button>` + rows;
+  };
+  optsEl.addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
-    $("#" + menuId).removeAttribute("open");
-    state[key] = b.dataset.c;
-    $("#" + optsId + " .on").classList.remove("on"); b.classList.add("on");
-    $("#" + lbId).textContent = prefix + (state[key] || "全部");
+    if (b.dataset.b) { stack.pop(); return render(); }   // ‹ 返回
+    if (b.dataset.a !== undefined) {                     // "全部X" = 选中当前层
+      menuEl.removeAttribute("open");
+      setLoc(b.dataset.a);
+      syncURL(); resetList();
+      return;
+    }
+    const node = nodesAt().find(n => n.name === b.dataset.n);
+    if (!node) return;
+    if (node.children.length) { stack.push(node.name); return render(); }   // 钻下一级
+    menuEl.removeAttribute("open");                     // 叶子 (区县) 直接选中
+    setLoc([...stack, node.name].join("/"));
     syncURL(); resetList();
   });
+  menuEl.addEventListener("toggle", () => {   // 关闭时把视图重置到当前所选的父层,
+    if (menuEl.open) return;                  // 下次打开即所见 (toggle 异步, 开时才渲会闪旧视图)
+    stack.length = 0;
+    if (state[key]) stack.push(...state[key].split("/").slice(0, -1));
+    render();
+  });
+  setLoc(state[key]);   // URL 带筛选时同步标签
+  if (state[key]) stack.push(...state[key].split("/").slice(0, -1));
+  render();
+  return render;
 }
-bindCityMenu("fc-menu", "fc-opts", "fromCity", "fc-lb", "起点: ");
-bindCityMenu("tc-menu", "tc-opts", "toCity", "tc-lb", "终点: ");
+const renderLocStart = bindLocMenu("fc-menu", "fc-opts", "fromLoc", "fc-lb", "起点: ", "start");
+const renderLocEnd = bindLocMenu("tc-menu", "tc-opts", "toLoc", "tc-lb", "终点: ", "end");
 $("#km-opts").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.dataset.k === state.km) return;
   $("#km-menu").removeAttribute("open");
@@ -641,26 +708,18 @@ $("#km-opts").addEventListener("click", e => {
   $("#km-lb").textContent = "里程: " + KM_BUCKETS.find(x => x.v === state.km).lb;
   syncURL(); resetList();
 });
-$("#fc-lb").textContent = "起点: " + (state.fromCity || "全部");   // URL 带筛选时同步标签
-$("#tc-lb").textContent = "终点: " + (state.toCity || "全部");
 $("#km-lb").textContent = "里程: " + KM_BUCKETS.find(b => b.v === state.km).lb;
 if (state.km !== "all") {
   $("#km-opts .on").classList.remove("on");
   $(`#km-opts button[data-k="${state.km}"]`).classList.add("on");
 }
-(async () => {   // 起终点城市选项 (按次数降序); 拉不到就只有"全部"
+(async () => {   // 起终点省市区树 (次数降序); 拉不到就只有"全部"
   try {
-    const cs = await getJSON("/tesla/trips/api/cities");
-    const opt = (c, sel) =>
-      `<button data-c="${esc(c.city)}"${c.city === sel ? ' class="on"' : ""}>` +
-      `${esc(c.city)} (${c.count})</button>`;
-    $("#fc-opts").innerHTML =
-      `<button data-c=""${state.fromCity ? "" : ' class="on"'}>全部</button>` +
-      cs.start.map(c => opt(c, state.fromCity)).join("");
-    $("#tc-opts").innerHTML =
-      `<button data-c=""${state.toCity ? "" : ' class="on"'}>全部</button>` +
-      cs.end.map(c => opt(c, state.toCity)).join("");
-  } catch (_e) { /* keep 全部 */ }
+    const rg = await getJSON("/tesla/trips/api/regions");
+    REGIONS.start = rg.start || [];
+    REGIONS.end = rg.end || [];
+  } catch (_e) { /* keep empty */ }
+  renderLocStart(); renderLocEnd();
 })();
 
 /* 懒加载: 触底前 PRELOAD_PX 预加载下一页 */

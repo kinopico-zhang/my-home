@@ -12,6 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
+from functools import lru_cache
+import re
 
 from typing import Any
 
@@ -35,8 +37,9 @@ from .schemas import (
     MapTrack,
     MergedTrack,
     MonthlyStat,
-    TripCities,
+    RegionNode,
     TripItem,
+    TripRegions,
     TripTrack,
 )
 
@@ -486,37 +489,117 @@ def _trip_item(drive: Drive, start_addr: str | None,
 
 @dataclass(frozen=True)
 class TripFilter:
-    """行程列表过滤条件 (顶栏时间 + 筛选行城市 / 里程)。"""
+    """行程列表过滤条件 (顶栏时间 + 筛选行起终地区 / 里程)。
+
+    from_loc / to_loc 是 "/" 连接的省市区路径 (1~3 段):
+    "广东省"=整省, "广东省/深圳市"=整市, "广东省/深圳市/龙华区"=精确到区县。
+    """
 
     date_range: DateRange | None = None
-    from_city: str | None = None    # 起点城市 (空 = 全部)
-    to_city: str | None = None      # 终点城市 (空 = 全部)
+    from_loc: str | None = None     # 起点地区 (空 = 全部)
+    to_loc: str | None = None       # 终点地区 (空 = 全部)
     km_min: float | None = None     # 里程下限 (km)
     km_max: float | None = None     # 里程上限 (km)
 
 
+# ---------------------------------------------------------------- 省市区解析
+# TeslaMate (OSM) 的 display_name 是逗号分隔、从细到粗的地址链:
+# "POI, 路, 街道/镇, 区县, 市, 省, 邮编, 中国", 但市/区偶尔重复或缺失
+# ("…, 顺德区, 佛山市, 顺德区, 广东省", 省直辖县没有市)。addresses 的
+# city 列则混着 市/区/街道, 不能当层级用 —— 三级只能从 display_name 解析。
+
+_PROV_SUF = ("省", "自治区", "特别行政区")
+_CITY_SUF = ("市", "盟", "地区", "自治州")
+_DIST_SUF = ("区", "县", "旗", "镇", "街道", "市")
+_LEGACY_RE = re.compile(r"^(?:(.{1,12}?(?:省|自治区))?)\s*(?:(.{1,12}?市)?)"
+                        r"\s*(?:(.{1,12}?(?:区|县|镇|街道))?)")
+
+
+def _suffixed(token: str, suffixes: tuple[str, ...]) -> bool:
+    return any(token.endswith(s) for s in suffixes)
+
+
+def _scan_left(parts: list[str], start: int, suffixes: tuple[str, ...],
+               window: int = 2) -> int:
+    """从 start 向左 window 格内找第一个以后缀结尾的 token 下标 (找不到 = -1)。"""
+    for j in range(start - 1, max(-1, start - 1 - window), -1):
+        if _suffixed(parts[j], suffixes):
+            return j
+    return -1
+
+
+@lru_cache(maxsize=4096)
+def parse_region(display_name: str) -> tuple[str | None, str | None, str | None]:
+    """display_name → (省, 市, 区县)。
+
+    兼容两种格式: OSM 逗号链 (向左窗口扫描, 容忍重复/缺失/邮编/中国大陆)
+    和旧版连写 "广东省深圳市龙岗区坂田街道"。解析不出省 = 无地区信息。
+    """
+    if not display_name:
+        return (None, None, None)
+    if "," not in display_name:
+        m = _LEGACY_RE.match(display_name)
+        g = m.groups() if m else (None, None, None)
+        return (g[0] or None, g[1] or None, g[2] or None)
+    parts = [p.strip() for p in display_name.split(",") if p.strip()]
+    i = len(parts) - 1
+    while i >= 0 and (parts[i] in ("中国", "中国大陆") or parts[i].isdigit()):
+        i -= 1
+    if i < 0 or not _suffixed(parts[i], _PROV_SUF):
+        return (None, None, None)
+    prov = parts[i]
+    city = dist = None
+    cj = _scan_left(parts, i, _CITY_SUF)
+    if cj >= 0:
+        city = parts[cj]
+        dj = _scan_left(parts, cj, _DIST_SUF)
+        if dj >= 0:
+            dist = parts[dj]
+    else:                       # 省直辖县: 没有市级, 区县提升到市层
+        dj = _scan_left(parts, i, _DIST_SUF)
+        if dj >= 0:
+            city = parts[dj]
+    return (prov, city, dist)
+
+
+def region_address_ids(session: Session, path: str) -> list[int]:
+    """省市区路径 → 命中的地址 id 列表 (段数即精确到哪一级)。
+
+    空路径返回 []; 无命中返回 [] (调用方 in_([]) 自然过滤成空列表)。
+    """
+    segs = [s for s in (p.strip() for p in path.split("/")) if s]
+    if not segs:
+        return []
+    ids: list[int] = []
+    for aid, name in session.execute(select(Address.id, Address.display_name)).all():
+        prov, city, dist = parse_region(name or "")
+        if (prov == segs[0]
+                and (len(segs) < 2 or city == segs[1])
+                and (len(segs) < 3 or dist == segs[2])):
+            ids.append(aid)
+    return ids
+
+
 def _trip_rows_stmt(start_addr: type[Address],
                     end_addr: type[Address]) -> Select[Any]:
-    """行程查询骨架: 只取已结束行程, 带起终点地址 (结束时间降序交给调用方)。
-
-    别名由调用方创建传入: 按起终城市过滤时, 计数与列表要共用同一组别名。
-    """
+    """行程查询骨架: 只取已结束行程, 带起终点地址 (结束时间降序交给调用方)。"""
     return (select(Drive, start_addr.display_name, end_addr.display_name)
             .join(start_addr, Drive.start_address_id == start_addr.id, isouter=True)
             .join(end_addr, Drive.end_address_id == end_addr.id, isouter=True)
             .where(Drive.end_date.is_not(None)))
 
 
-def _trip_conditions(start_addr: type[Address],
-                     end_addr: type[Address],
+def _trip_conditions(session: Session,
                      flt: TripFilter | None) -> list[ColumnElement[bool]]:
-    """时间 / 起终城市 / 里程过滤条件 (计数与列表共用)。"""
+    """时间 / 起终地区 / 里程过滤条件 (计数与列表共用)。"""
     conds = _range_conditions(Drive.start_date, flt.date_range if flt else None)
     if flt:
-        if flt.from_city:
-            conds.append(start_addr.city == flt.from_city)
-        if flt.to_city:
-            conds.append(end_addr.city == flt.to_city)
+        if flt.from_loc:
+            conds.append(Drive.start_address_id.in_(
+                region_address_ids(session, flt.from_loc)))
+        if flt.to_loc:
+            conds.append(Drive.end_address_id.in_(
+                region_address_ids(session, flt.to_loc)))
         if flt.km_min is not None:
             conds.append(Drive.distance >= flt.km_min)
         if flt.km_max is not None:
@@ -526,41 +609,76 @@ def _trip_conditions(start_addr: type[Address],
 
 def list_trips(session: Session, offset: int, limit: int,
                flt: TripFilter | None = None) -> tuple[int, list[TripItem]]:
-    """行程列表 (最新在前), total 为已结束行程数; 按出发时间/起终城市/里程过滤。"""
-    start_addr, end_addr = aliased(Address), aliased(Address)
-    conds = _trip_conditions(start_addr, end_addr, flt)
+    """行程列表 (最新在前), total 为已结束行程数; 按出发时间/起终地区/里程过滤。"""
+    conds = _trip_conditions(session, flt)
     total = session.scalar(
         select(func.count()).select_from(Drive)
-        .join(start_addr, Drive.start_address_id == start_addr.id, isouter=True)
-        .join(end_addr, Drive.end_address_id == end_addr.id, isouter=True)
         .where(Drive.end_date.is_not(None), *conds)) or 0
     rows = session.execute(
-        _trip_rows_stmt(start_addr, end_addr).where(*conds)
+        _trip_rows_stmt(aliased(Address), aliased(Address)).where(*conds)
         .order_by(Drive.start_date.desc())
         .offset(offset).limit(limit)).all()
     return int(total), [_trip_item(d, s, e) for d, s, e in rows]
 
 
-def _drive_city_counts(session: Session,
-                       address_id: InstrumentedAttribute[int | None]) -> list[CityCount]:
-    """某个地址角色 (起点/终点) 的城市计数 (按次数降序, 未结束行程不计)。"""
+class _RegionAcc:
+    """建树用的临时累加器: 数 count, children 最后统一排序转 RegionNode。"""
+
+    def __init__(self, name: str) -> None:
+        """建一个 0 计数的空节点。"""
+        self.name = name
+        self.count = 0
+        self.children: dict[str, _RegionAcc] = {}
+
+    def child(self, name: str) -> "_RegionAcc":
+        """取子节点 (没有就建)。"""
+        node = self.children.get(name)
+        if node is None:
+            node = self.children[name] = _RegionAcc(name)
+        return node
+
+    def node(self) -> RegionNode:
+        """转出定型的 RegionNode (children 按次数降序)。"""
+        return RegionNode(
+            name=self.name, count=self.count,
+            children=[c.node() for c in
+                      sorted(self.children.values(), key=lambda c: -c.count)])
+
+
+def _region_tree(session: Session,
+                 address_id: InstrumentedAttribute[int | None]) -> list[RegionNode]:
+    """某个地址角色 (起点/终点) 的省→市→区县计数树 (次数降序, 未结束行程不计)。
+
+    无省信息的地址 (解析不出省) 不进树, 但仍参与列表展示。
+    """
     addr = aliased(Address)
     rows = session.execute(
-        select(addr.city, func.count())
+        select(addr.display_name)
         .select_from(Drive)
         .join(addr, address_id == addr.id, isouter=True)
-        .where(Drive.end_date.is_not(None),
-               addr.city.is_not(None), addr.city != "")
-        .group_by(addr.city)
-        .order_by(func.count().desc())).all()
-    return [CityCount(city=city, count=int(n)) for city, n in rows]
+        .where(Drive.end_date.is_not(None))).all()
+    root = _RegionAcc("")
+    for (name,) in rows:
+        prov, city, dist = parse_region(name or "")
+        if not prov:
+            continue
+        prov_acc = root.child(prov)
+        prov_acc.count += 1
+        if city:
+            city_acc = prov_acc.child(city)
+            city_acc.count += 1
+            if dist:
+                dist_acc = city_acc.child(dist)
+                dist_acc.count += 1
+    return [c.node() for c in
+            sorted(root.children.values(), key=lambda c: -c.count)]
 
 
-def list_trip_cities(session: Session) -> TripCities:
-    """行程起终点城市列表 (筛选下拉数据源)。"""
-    return TripCities(
-        start=_drive_city_counts(session, Drive.start_address_id),
-        end=_drive_city_counts(session, Drive.end_address_id))
+def list_trip_regions(session: Session) -> TripRegions:
+    """行程起终点省市区树 (级联下拉数据源)。"""
+    return TripRegions(
+        start=_region_tree(session, Drive.start_address_id),
+        end=_region_tree(session, Drive.end_address_id))
 
 
 def get_trip(session: Session, drive_id: int) -> TripItem | None:
