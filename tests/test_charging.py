@@ -1,87 +1,113 @@
-"""充电记录 API 测试 (数据库用替身, 不依赖真实 TeslaMate 库)。"""
+"""充电记录 API 测试 (SQLite 种子数据跑真实 SQL, 不依赖真实 TeslaMate 库)。"""
 from datetime import datetime
 
-import app.main as m
+from app import repository
+from app.models import ChargingProcess, Geofence
+from tests.conftest import (seed_addresses, seed_car, seed_charge,
+                            seed_charging)
 
 
-def cp_row(**kw):
-    """构造一条 charging_process 查询结果行 (与 SESSION_SELECT 列对齐)。"""
-    base = dict(
-        id=1, start_date=datetime(2026, 9, 7, 15, 50),
-        end_date=datetime(2026, 9, 7, 23, 2),
-        start_battery_level=20, end_battery_level=80,
-        charge_energy_added=45.0, charge_energy_used=48.0,
-        duration_min=432, cost=25.5, outside_temp_avg=28.5,
-        start_rated_range_km=120.0, end_rated_range_km=330.0,
-        power_max=90.0, is_fast=True,
-        geofence_name=None, address_name="华为立体车库",
-        city="深圳市", display_name="广东省深圳市龙岗区坂田街道",
-    )
-    base.update(kw)
-    return base
+# ---------------------------------------------------------------- 转换语义 (repository)
+def test_session_fields_and_price(db):
+    seed_addresses(db)
+    seed_charge(db, 1)
+    seed_charging(db)          # 默认: 45/48kWh, 25.5 元, 无 geofence
+    row = repository.list_charging_sessions(db, repository.SessionFilter(
+        None, "all", None, "date_desc", 0, 50))[1][0]
+    assert row.id == 1
+    assert row.start == "2026-09-07 23:50"      # UTC 15:50 → 北京时间
+    assert row.date == "2026-09-07"
+    assert row.location == "华为立体车库"         # 无 geofence 时退回 address
+    assert row.price_per_kwh == round(25.5 / 48.0, 3)
+    assert row.is_fast is True                   # charges 有 90kW 采样
+    assert row.outside_temp == 28.5
+    assert row.city == "深圳市"
 
 
-# ---------------------------------------------------------------- 纯函数
-def test_session_row_fields_and_price():
-    d = m.session_row(cp_row())
-    assert d["id"] == 1
-    assert d["start"] == "2026-09-07 23:50"   # UTC 15:50 → 北京时间
-    assert d["date"] == "2026-09-07"
-    assert d["location"] == "华为立体车库"      # 无 geofence 时退回 address
-    assert d["price_per_kwh"] == round(25.5 / 48.0, 3)
-    assert d["is_fast"] is True
-    assert d["outside_temp"] == 28.5
+def test_session_geofence_preferred(db):
+    db.add(Geofence(id=7, name="公司"))
+    db.commit()
+    seed_addresses(db)
+    seed_charging(db, geofence_id=7)
+    seed_charge(db, 1)
+    item = repository.list_charging_sessions(db, repository.SessionFilter(
+        None, "all", None, "date_desc", 0, 50))[1][0]
+    assert item.location == "公司"
 
 
-def test_session_row_geofence_preferred():
-    d = m.session_row(cp_row(geofence_name="公司"))
-    assert d["location"] == "公司"
+def test_session_without_cost(db):
+    seed_addresses(db)
+    seed_charging(db, cost=None)
+    item = repository.list_charging_sessions(db, repository.SessionFilter(
+        None, "all", None, "date_desc", 0, 50))[1][0]
+    assert item.cost is None
+    assert item.price_per_kwh is None
 
 
-def test_session_row_without_cost():
-    d = m.session_row(cp_row(cost=None))
-    assert d["cost"] is None
-    assert d["price_per_kwh"] is None
-
-
-def test_range_clause():
-    assert m.range_clause({}) == "TRUE"
-    assert "cp.start_date >=" in m.range_clause({"from": "2026-01-01"})
-    assert "cp.start_date <" in m.range_clause({"to": "2026-01-31"})
-    both = m.range_clause({"from": "2026-01-01", "to": "2026-01-31"})
-    assert ">=" in both and "<" in both and " AND " in both
+def test_parse_date_range_boundaries():
+    rng = repository.parse_date_range("2026-01-01", "2026-01-31")
+    assert rng is not None
+    # 北京时间 1/1 00:00 = UTC 前一天 16:00; to 的边界是次日零点 (左闭右开)
+    assert rng.start == datetime(2025, 12, 31, 16, 0)
+    assert rng.end == datetime(2026, 1, 31, 16, 0)
+    assert repository.parse_date_range(None, None) is None
+    try:
+        repository.parse_date_range("2026-13-99", None)
+        raise AssertionError("非法日期应抛 ValueError")
+    except ValueError as exc:
+        assert "日期格式错误" in str(exc)
 
 
 # ---------------------------------------------------------------- 接口
-def test_car_endpoint(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [
-        {"id": 1, "name": "臭哈子", "model": "Y", "trim_badging": "50", "vin": "LRW1"}])
+def test_car_endpoint(auth, db):
+    seed_car(db)
     r = auth.get("/tesla/charging/api/car")
     assert r.status_code == 200
     assert r.json() == [{"id": 1, "name": "臭哈子", "model": "Y",
                          "trim_badging": "50", "vin": "LRW1"}]
 
 
-def test_summary_endpoint(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [{
-        "sessions": 10, "fast_sessions": 4, "energy_added": 400.0,
-        "energy_used": 430.0, "cost": 215.0, "duration_min": 2000,
-        "soc_gain": 300, "range_gain": 1500.0,
-        "first_date": datetime(2026, 1, 1), "last_date": datetime(2026, 9, 1)}])
+def test_summary_endpoint(auth, db):
+    seed_addresses(db)
+    # 快充 45/48kWh 25.5 元 + 慢充 (无 charges 采样, is_fast=False)
+    seed_charging(db)
+    seed_charge(db, 1)
+    seed_charging(db, id=2, start_date=datetime(2026, 9, 8, 10, 0),
+                  end_date=datetime(2026, 9, 8, 12, 0),
+                  charge_energy_added=10.0, charge_energy_used=11.0,
+                  duration_min=120, cost=None, start_battery_level=50,
+                  end_battery_level=70, start_rated_range_km=200.0,
+                  end_rated_range_km=280.0)
     d = auth.get("/tesla/charging/api/summary").json()
-    assert d["sessions"] == 10
-    assert d["fast_sessions"] == 4
-    assert d["price_per_kwh"] == round(215.0 / 430.0, 3)
-    assert d["first_date"] == "2026-01-01"
-    assert d["last_date"] == "2026-09-01"
+    assert d["sessions"] == 2
+    assert d["fast_sessions"] == 1
+    assert d["energy_added"] == 55.0
+    assert d["energy_used"] == 59.0
+    assert d["cost"] == 25.5
+    assert d["price_per_kwh"] == round(25.5 / 59.0, 3)
+    assert d["duration_min"] == 552
+    assert d["soc_gain"] == 80
+    assert d["range_gain"] == round((330 - 120) + (280 - 200), 1)
+    assert d["first_date"] == "2026-09-07"
+    assert d["last_date"] == "2026-09-08"
 
 
-def test_sessions_list(auth, monkeypatch):
-    def q(sql, params=None):
-        return [{"n": 279}] if "count(*)" in sql else [cp_row(id=332)]
-    monkeypatch.setattr(m, "query", q)
+def test_summary_respects_date_range(auth, db):
+    seed_addresses(db)
+    seed_charging(db)          # 09-07
+    seed_charging(db, id=2, start_date=datetime(2026, 8, 1, 1, 0),
+                  end_date=datetime(2026, 8, 1, 3, 0))
+    d = auth.get("/tesla/charging/api/summary",
+                 params={"from": "2026-09-01"}).json()
+    assert d["sessions"] == 1
+    assert d["first_date"] == "2026-09-07"
+
+
+def test_sessions_list(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=332)
     d = auth.get("/tesla/charging/api/sessions?limit=1").json()
-    assert d["total"] == 279
+    assert d["total"] == 1
     assert len(d["items"]) == 1
     assert d["items"][0]["id"] == 332
 
@@ -92,62 +118,125 @@ def test_sessions_rejects_unknown_sort(auth):
     assert "不支持的排序" in r.json()["detail"]
 
 
-def test_sessions_type_filter_adds_condition(auth, monkeypatch):
-    calls = []
+def test_sessions_sort_orders_with_nulls_last(auth, db):
+    """排序键齐全 + None 值排最后 (等价 Postgres NULLS LAST)。"""
+    seed_addresses(db)
+    # 1: 09-08 (最新) 30 元 55kWh 120 分; 2: 09-07 10 元 28kWh 150 分;
+    # 3: 09-06 各字段全空
+    seed_charging(db, id=1, cost=30.0, charge_energy_used=55.0,
+                  duration_min=120, start_date=datetime(2026, 9, 8, 15, 50),
+                  end_date=datetime(2026, 9, 8, 20, 0))
+    seed_charging(db, id=2, cost=10.0, charge_energy_used=28.0, duration_min=150)
+    seed_charging(db, id=3, cost=None, charge_energy_used=None,
+                  duration_min=None, start_date=datetime(2026, 9, 6, 15, 50))
+    base = "/tesla/charging/api/sessions?limit=50"
 
-    def q(sql, params=None):
-        calls.append(sql)
-        return [{"n": 0}] if "count(*)" in sql else []
+    def ids(qs):
+        return [i["id"] for i in auth.get(f"{base}{qs}").json()["items"]]
 
-    monkeypatch.setattr(m, "query", q)
-    assert auth.get("/tesla/charging/api/sessions?type=fast").status_code == 200
-    assert any("agg.is_fast" in c and "NOT" not in c for c in calls)
-    assert auth.get("/tesla/charging/api/sessions?type=slow").status_code == 200
-    assert any("NOT agg.is_fast" in c for c in calls)
+    assert ids("&sort=date_desc") == [1, 2, 3]
+    assert ids("&sort=date_asc") == [3, 2, 1]
+    assert ids("&sort=cost_desc") == [1, 2, 3]     # None 排最后
+    assert ids("&sort=cost_asc") == [2, 1, 3]
+    assert ids("&sort=energy_desc") == [1, 2, 3]
+    assert ids("&sort=energy_asc") == [2, 1, 3]
+    assert ids("&sort=duration_desc") == [2, 1, 3]
 
 
-def test_session_detail(auth, monkeypatch):
-    samples = [
-        dict(date=datetime(2026, 9, 7, 16, 0), battery_level=20, charger_power=90.0,
-             charger_voltage=400.0, charger_actual_current=220.0,
-             charge_energy_added=0.0, outside_temp=28.0, conn_charge_cable="CCS",
-             fast_charger_brand="<invalid>", fast_charger_type="Tesla"),
-        dict(date=datetime(2026, 9, 7, 16, 10), battery_level=30, charger_power=80.0,
-             charger_voltage=400.0, charger_actual_current=200.0,
-             charge_energy_added=10.0, outside_temp=28.0, conn_charge_cable=None,
-             fast_charger_brand=None, fast_charger_type=None),
-    ]
-    monkeypatch.setattr(m, "query", lambda sql, params=None:
-                        samples if "ORDER BY date" in sql else [cp_row()])
+def test_sessions_type_filter(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=1)                      # 快充 (90kW 采样)
+    seed_charge(db, 1, charger_power=90.0, fast_charger_present=True)
+    seed_charging(db, id=2, start_date=datetime(2026, 9, 8, 10, 0))
+    seed_charge(db, 2, charger_power=8.0, fast_charger_present=False,
+                date=datetime(2026, 9, 8, 10, 5))
+    assert auth.get("/tesla/charging/api/sessions?type=fast"
+                    ).json()["total"] == 1
+    assert auth.get("/tesla/charging/api/sessions?type=slow"
+                    ).json()["total"] == 1
+    assert auth.get("/tesla/charging/api/sessions"
+                    ).json()["total"] == 2
+
+
+def test_sessions_search_by_address(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=1)
+    seed_charging(db, id=2, address_id=2,            # 东莞
+                  start_date=datetime(2026, 9, 8, 10, 0))
+    base = "/tesla/charging/api/sessions"
+    assert auth.get(base, params={"q": "龙岗"}).json()["total"] == 1
+    assert auth.get(base, params={"q": "东莞"}).json()["total"] == 1
+    assert auth.get(base, params={"q": "不存在的地方"}).json()["total"] == 0
+
+
+def test_sessions_pagination(auth, db):
+    seed_addresses(db)
+    for i in range(5):
+        seed_charging(db, id=i + 1,
+                      start_date=datetime(2026, 9, 7 + i, 15, 50))
+    base = "/tesla/charging/api/sessions?sort=date_asc"
+    d1 = auth.get(f"{base}&offset=0&limit=2").json()
+    assert d1["total"] == 5 and [i["id"] for i in d1["items"]] == [1, 2]
+    d2 = auth.get(f"{base}&offset=2&limit=2").json()
+    assert [i["id"] for i in d2["items"]] == [3, 4]
+    assert auth.get(f"{base}&offset=4&limit=2").json()["items"][0]["id"] == 5
+    assert auth.get(f"{base}&offset=99&limit=2").json()["items"] == []
+
+
+def test_session_detail(auth, db):
+    seed_addresses(db)
+    seed_charging(db)
+    seed_charge(db, 1, date=datetime(2026, 9, 7, 16, 0),
+                fast_charger_brand="<invalid>", fast_charger_type="Tesla")
+    seed_charge(db, 1, id=None, date=datetime(2026, 9, 7, 16, 10),
+                battery_level=30, charger_power=80.0,
+                charger_actual_current=200.0, charge_energy_added=10.0,
+                conn_charge_cable=None, fast_charger_brand=None,
+                fast_charger_type=None)
     d = auth.get("/tesla/charging/api/sessions/1").json()
-    assert d["curve"]["minutes"] == [10.0, 20.0]      # 距 start (15:50) 的分钟数
+    assert d["curve"]["minutes"] == [10.0, 20.0]    # 距 start (15:50) 的分钟数
     assert d["curve"]["soc"] == [20, 30]
+    assert d["curve"]["kw"] == [90.0, 80.0]
     assert d["cable"] == "CCS"
-    assert d["charger_brand"] is None                  # <invalid> 已过滤
+    assert d["charger_brand"] is None               # <invalid> 已过滤
     assert d["charger_type"] == "Tesla"
+    assert d["start_rated_range"] == 120.0
+    assert d["end_rated_range"] == 330.0
 
 
-def test_session_detail_404(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [])
+def test_session_detail_404(auth):
     assert auth.get("/tesla/charging/api/sessions/99999").status_code == 404
 
 
-def test_monthly_endpoint(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [
-        {"month": "2026-08", "sessions": 12, "energy_used": 300.0,
-         "cost": 150.0, "fast_sessions": 5}])
+def test_monthly_endpoint(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=1, cost=150.0, charge_energy_used=300.0,
+                  duration_min=60)
+    seed_charging(db, id=2, start_date=datetime(2026, 8, 1, 2, 0),
+                  end_date=datetime(2026, 8, 1, 4, 0), cost=None,
+                  charge_energy_used=None)
     d = auth.get("/tesla/charging/api/monthly").json()
-    assert d[0] == {"month": "2026-08", "sessions": 12, "energy_used": 300.0,
-                    "cost": 150.0, "fast_sessions": 5}
+    assert d == [
+        {"month": "2026-08", "sessions": 1, "energy_used": None,
+         "cost": None, "fast_sessions": 0},
+        {"month": "2026-09", "sessions": 1, "energy_used": 300.0,
+         "cost": 150.0, "fast_sessions": 0},
+    ]
 
 
-def test_locations_endpoint(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [
-        {"loc": "华为立体车库", "city": "深圳市", "sessions": 20,
-         "energy_used": 900.0, "cost": 450.0, "fast_sessions": 2}])
+def test_locations_endpoint(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=1, address_id=2)          # 东莞 1 次
+    seed_charging(db, id=2, address_id=1,          # 深圳 2 次
+                  start_date=datetime(2026, 9, 8, 10, 0))
+    seed_charging(db, id=3, address_id=1,
+                  start_date=datetime(2026, 9, 9, 10, 0))
     d = auth.get("/tesla/charging/api/locations").json()
-    assert d[0]["location"] == "华为立体车库"
-    assert d[0]["sessions"] == 20
+    assert d[0]["location"] == "华为立体车库"        # 次数多的排前面
+    assert d[0]["sessions"] == 2
+    assert d[0]["city"] == "深圳市"
+    assert d[1]["location"] == "长安镇"
+    assert d[1]["city"] == "东莞市"
 
 
 # ---------------------------------------------------------------- 费用编辑
@@ -158,34 +247,40 @@ def test_cost_patch_rejects_out_of_range(auth):
         assert "金额" in r.json()["detail"]
 
 
-def test_cost_patch_unknown_session(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [])
+def test_cost_patch_unknown_session(auth):
     r = auth.patch("/tesla/charging/api/sessions/99999/cost", json={"cost": 10})
     assert r.status_code == 404
 
 
-def test_cost_patch_updates_db(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [
-        {"charge_energy_added": 45.0, "charge_energy_used": 48.0}])
+def test_cost_patch_updates_db(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=332)      # used 48 kWh
     r = auth.patch("/tesla/charging/api/sessions/332/cost", json={"cost": 30})
     assert r.status_code == 200
     d = r.json()
     assert d["ok"] is True
     assert d["cost"] == 30.0
     assert d["price_per_kwh"] == round(30.0 / 48.0, 3)
-    # FakePool 记录到真实的 UPDATE 语句
-    cur = m.pool.conn.cur
-    assert "UPDATE charging_processes SET cost" in cur.sql
-    assert cur.params == {"cost": 30.0, "id": 332}
+    # 真实写库: 换个会话能看到 (金额四舍五入到 2 位)
+    assert db.get(ChargingProcess, 332).cost == 30.0
 
 
-def test_cost_patch_clear_with_null(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [
-        {"charge_energy_added": 45.0, "charge_energy_used": 48.0}])
+def test_cost_patch_clear_with_null(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=332, cost=30.0)
     r = auth.patch("/tesla/charging/api/sessions/332/cost", json={"cost": None})
     assert r.status_code == 200
     assert r.json()["cost"] is None
-    assert m.pool.conn.cur.params == {"cost": None, "id": 332}
+    assert db.get(ChargingProcess, 332).cost is None
+
+
+def test_cost_patch_rounds_to_two_decimals(auth, db):
+    seed_addresses(db)
+    seed_charging(db, id=332)
+    r = auth.patch("/tesla/charging/api/sessions/332/cost",
+                   json={"cost": 30.456})
+    assert r.status_code == 200
+    assert db.get(ChargingProcess, 332).cost == 30.46
 
 
 def test_charging_page_single_column_and_lazy_chain(auth):
