@@ -316,7 +316,8 @@ function rangeParams() {
   if (range === "all") return "";
   const now = new Date();
   if (range === "ytd") return "?from=" + now.getFullYear() + "-01-01";
-  const from = new Date(now); from.setDate(from.getDate() - Number(range));
+  // 按钮值是 "30d"/"90d", 取前导数字 (Number("30d") 是 NaN, 之前的 500 就是这么来的)
+  const from = new Date(now); from.setDate(from.getDate() - parseInt(range, 10));
   return "?from=" + fmtDate(from);
 }
 

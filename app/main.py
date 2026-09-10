@@ -616,9 +616,22 @@ def _warm_tracks():
         pass  # 预热失败不影响服务, 首次访问会重试
 
 
+def _date_or_400(val: str, name: str) -> str:
+    """校验 YYYY-MM-DD, 防止坏参数 (如 "NaN-NaN-NaN") 打穿到数据库。"""
+    try:
+        datetime.strptime(val, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(400, f"{name} 日期格式错误, 应为 YYYY-MM-DD")
+    return val
+
+
 @mapapi.get("/tracks")
 def get_tracks(frm: Optional[str] = Query(None, alias="from"),
                to: Optional[str] = None):
+    if frm:
+        frm = _date_or_400(frm, "from")   # 先校验再过滤, 空列表也要拦住坏参数
+    if to:
+        to = _date_or_400(to, "to")
     tracks = _load_tracks()
     if frm:
         tracks = [t for t in tracks if t["date"] >= frm]
