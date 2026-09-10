@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>行程轨迹 · My Tesla</title>
+<link rel="icon" type="image/svg+xml" href="/tesla/static/favicon.svg">
+  <title>行程轨迹 · My Tesla</title>
 <style>
 /* ---------- 设计令牌: 与充电/地图页一致的 iOS 暗色 ---------- */
 :root {
@@ -376,7 +377,91 @@ function tripMsg(text, spin) {
   $("#trip-spin").hidden = !spin;
 }
 
+/* ---------- 轨迹动画: 起点跑到终点, 视角跟随, 结束后拉远看全局 ----------
+   背景: 速度色全程线 (淡); 前进: 白色亮线逐帧生长; 头部: 当前速度色圆点。 */
+let animRaf = 0;
+let animating = false;
+let animFinish = null;      // 当前动画的收尾函数 (跳过时直接呈现最终状态)
+
+function stopAnim() {
+  if (animRaf) cancelAnimationFrame(animRaf);
+  animRaf = 0;
+  animating = false;
+  animFinish = null;
+}
+
+function skipAnim() {
+  if (!animating || !animFinish) return;
+  const f = animFinish;
+  stopAnim();
+  f();                      // 亮线删除, 淡线变亮, 拉远全局
+}
+
+function playTrack(pts) {
+  stopAnim();
+  animating = true;
+  const gcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
+  const path = pts.map(gcj);                    // 全量坐标转换一次, 逐帧只切片
+  const N = path.length;
+
+  // 背景全程速度线 (淡) —— 终点拉远后就是完整的速度色全局图
+  const bgLines = [];
+  for (const seg of TrackUtil.splitGaps(pts))
+    for (const b of TrackUtil.speedLines(seg))
+      bgLines.push(new AMap.Polyline({
+        path: b.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
+        strokeColor: b.color, strokeOpacity: 0.28, strokeWeight: 4,
+        lineJoin: "round", zIndex: 50,
+      }));
+  tripMap.add(bgLines);
+
+  const progress = new AMap.Polyline({
+    path: [path[0]], strokeColor: "#f5f5f7", strokeWeight: 4.5,
+    lineJoin: "round", lineCap: "round", zIndex: 80,
+  });
+  const head = new AMap.CircleMarker({
+    center: path[0], radius: 7, strokeColor: "#fff", strokeWeight: 2.5,
+    fillColor: "#e5484d", fillOpacity: 1, zIndex: 100,
+  });
+  tripMap.add([progress, head]);
+
+  const finish = () => {
+    stopAnim();
+    animFinish = null;
+    tripMap.remove([progress, head]);
+    bgLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));   // 淡线变亮
+    tripMap.setFitView(bgLines, false, [46, 46, 46, 46]);       // 拉远 → 全局视角
+  };
+
+  animFinish = finish;      // 播放中点地图 → 跳过动画直接收尾
+
+  // 跟随时长按点数缩放: 4~12s
+  const dur = Math.min(Math.max(N / 400, 4), 12) * 1000;
+  tripMap.setZoomAndCenter(15, path[0], true);
+  const t0 = performance.now();
+  const growStep = Math.max(1, Math.floor(N / 200));   // 亮线分块生长: 每帧全量重建太卡
+  let lastIdx = -1, drawn = 0;
+  (function frame(now) {
+    if (!animating) return;
+    const t = Math.min((now - t0) / dur, 1);
+    const idx = Math.round(t * (N - 1));
+    if (idx !== lastIdx) {
+      lastIdx = idx;
+      head.setCenter(path[idx]);
+      head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[idx][2] || 0)] });
+      tripMap.setCenter(path[idx], true);       // 视角紧贴头部
+      if (idx - drawn >= growStep) {            // 头部圆点/视角逐帧, 白线按块追长
+        drawn = idx;
+        progress.setPath(path.slice(0, idx + 1));
+      }
+    }
+    if (t < 1) animRaf = requestAnimationFrame(frame);
+    else finish();
+  })(t0);
+}
+
 function closeTrip() {
+  stopAnim();
   $("#sheet").classList.remove("show");
   $("#backdrop").classList.remove("show");
 }
@@ -401,6 +486,7 @@ async function openTrip(it) {
       // iOS Safari 双指缩放劫持成页面缩放: 拦掉, 手势只给地图
       for (const ev of ["gesturestart", "gesturechange"])
         document.getElementById("trip-map").addEventListener(ev, e => e.preventDefault());
+      tripMap.on("click", skipAnim);   // 播放中点一下 = 跳过, 直接收尾拉远
     }
     tripMap.clearMap();
 
@@ -412,20 +498,8 @@ async function openTrip(it) {
     }
     if (seq !== openSeq) return;
 
-    // GPS 断档处拆段 (飞线修复), 每段按车速着色 (慢红快绿) + WGS-84 → GCJ-02
-    const polylines = [];
-    for (const seg of TrackUtil.splitGaps(pts)) {
-      for (const band of TrackUtil.speedLines(seg)) {
-        polylines.push(new AMap.Polyline({
-          path: band.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
-          strokeColor: band.color, strokeOpacity: 1, strokeWeight: 4,
-          lineJoin: "round", zIndex: 50,
-        }));
-      }
-    }
-    tripMap.add(polylines);
-    tripMap.setFitView(polylines, false, [46, 46, 46, 46]);
     tripMsg(null, false);
+    playTrack(pts);      // 动态播放: 起点跑向终点, 视角跟随, 结束后拉远全局
   } catch (e) {
     if (seq === openSeq) tripMsg(String(e.message || e), false);
   }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Tesla T 标 (简化): 顶部翼形横杠 + 收尖竖杆, Tesla 红 -->
+  <path d="M4 22 C 14 10, 50 10, 60 22 L 56 27.5 C 47 18, 17 18, 8 27.5 Z" fill="#E82127"/>
+  <path d="M27 16 L37 16 L39.5 46 L32 57.5 L24.5 46 Z" fill="#E82127"/>
+</svg>

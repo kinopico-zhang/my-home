@@ -63,5 +63,5 @@
   }
 
   return { splitGaps: splitGaps, speedLines: speedLines,
-           SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
+           speedBucket: speedBucket, SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });
