@@ -62,6 +62,37 @@
     return lines;
   }
 
+  /* ---- 累计里程: 轨迹点 → 每点累计公里数 (等距圆柱近似, 展示精度足够) ----
+     cum[i] = 起点到第 i 点的里程 (km), cum[0] = 0; 播放动画实时里程用它。 */
+  function cumDistKm(pts) {
+    const cum = [0];
+    const kx = 111.32 * Math.cos((pts[0][1] || 0) * Math.PI / 180);  // 每经度 km
+    const ky = 110.57;                                                // 每纬度 km
+    for (let i = 1; i < pts.length; i++) {
+      const dx = (pts[i][0] - pts[i - 1][0]) * kx;
+      const dy = (pts[i][1] - pts[i - 1][1]) * ky;
+      cum.push(cum[i - 1] + Math.sqrt(dx * dx + dy * dy));
+    }
+    return cum;
+  }
+
+  /* ---- 相邻段之间的断档 (供"缺失段"蓝色虚线): [{pts: [a, b], km: 跳变公里数}] ----
+     注意 splitGaps 会丢掉只含 1 个点的孤立段 (GPS 野点), 这时相邻返回段的
+     边界距离可能很小, 不是真断档 —— 按最小跳变距离过滤掉。 */
+  const MIN_GAP_KM = 0.16;   // 与 MIN_GAP (~160m) 对齐
+
+  function gapsBetween(segs) {
+    const gaps = [];
+    for (let i = 1; i < segs.length; i++) {
+      const a = segs[i - 1][segs[i - 1].length - 1], b = segs[i][0];
+      const kx = 111.32 * Math.cos((((a[1] || 0) + (b[1] || 0)) / 2) * Math.PI / 180);
+      const ky = 110.57;
+      const km = Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * ky);
+      if (km >= MIN_GAP_KM) gaps.push({ pts: [a, b], km: km });
+    }
+    return gaps;
+  }
+
   /* ---- 动画: 已播放毫秒 → 当前点序号 ----
      Chrome 的 rAF 回调时间戳是"帧开始时刻", 可能早于 scheduling 前一刻取的
      performance.now() (t0)。命中缓存的轨迹在同一帧内开播就会得到负 t →
@@ -72,6 +103,6 @@
     return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   }
 
-  return { splitGaps: splitGaps, speedLines: speedLines, animIndex: animIndex,
+  return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, animIndex: animIndex,
            speedBucket: speedBucket, SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });

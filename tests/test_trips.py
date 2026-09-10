@@ -1,5 +1,5 @@
 """行程轨迹页 API 测试 (列表分页 / 单条全精度轨迹 / 参数校验)。"""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import app.main as m
 
@@ -71,17 +71,23 @@ def test_trip_track_full_resolution_with_speed(auth, monkeypatch):
 
     def fake_query(sql, params=None):
         seen["sql"], seen["params"] = sql, params
-        return [{"longitude": 114.05, "latitude": 22.55, "speed": 30},
-                {"longitude": 114.06, "latitude": 22.56, "speed": None}]
+        t0 = datetime(2026, 9, 10, 8, 32)
+        return [
+            {"longitude": 114.05, "latitude": 22.55, "speed": 30, "date": t0},
+            {"longitude": 114.06, "latitude": 22.56, "speed": None,
+             "date": t0 + timedelta(minutes=72, seconds=1)},
+        ]
 
     monkeypatch.setattr(m, "query", fake_query)
     r = auth.get("/tesla/trips/api/7/track")
     assert r.status_code == 200
-    # 每点 [lng, lat, speed]; 速度缺失按 0 (停车)
-    assert r.json() == {"id": 7, "pts": [[114.05, 22.55, 30], [114.06, 22.56, 0]]}
-    # 整条无视野框 + 5000 点上限 + 带速度列
+    # 每点 [lng, lat, speed]; 速度缺失按 0 (停车);
+    # ts 是相对起点的秒偏移 (播放动画里算"已行驶时长")
+    assert r.json() == {"id": 7, "pts": [[114.05, 22.55, 30], [114.06, 22.56, 0]],
+                        "ts": [0, 4321]}
+    # 整条无视野框 + 5000 点上限 + 带速度/时间列
     assert seen["params"] == {"id": 7, "per": 5000}
-    assert "pos.speed" in seen["sql"]
+    assert "pos.speed" in seen["sql"] and "pos.date" in seen["sql"]
     assert "drive_id = %(id)s" in seen["sql"]
 
 
@@ -95,3 +101,14 @@ def test_trip_track_404_when_no_points(auth, monkeypatch):
     r = auth.get("/tesla/trips/api/999/track")
     assert r.status_code == 404
     assert "没有轨迹数据" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------- 页面
+def test_trips_page_has_playbar_and_single_column(auth):
+    """播放控制条 (暂停/进度/倍速) + 单列列表 + 断档图例 都在页面上。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
+                 'id="list"', "缺失", "最高车速"]:
+        assert frag in html, f"行程页缺少 {frag}"
+    # 瀑布流的列容器已删
+    assert "m-col" not in html

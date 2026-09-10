@@ -774,13 +774,13 @@ def get_trip_sessions(offset: int = 0, limit: int = 24):
 # 行程弹层轨迹: 整条 (无视野框), 每点带车速 km/h, 供前端按速度着色 (慢红快绿)
 TRIP_TRACK_SQL = """
 WITH p AS (
-    SELECT pos.longitude, pos.latitude, pos.speed,
+    SELECT pos.longitude, pos.latitude, pos.speed, pos.date,
            row_number() OVER (ORDER BY pos.date) AS rn,
            count(*) OVER () AS cnt
       FROM positions pos
      WHERE pos.drive_id = %(id)s
 )
-SELECT p.longitude, p.latitude, p.speed
+SELECT p.longitude, p.latitude, p.speed, p.date
   FROM p
  WHERE rn = 1 OR rn = cnt OR (rn - 1) %% greatest((cnt / %(per)s)::int, 1) = 0
  ORDER BY rn
@@ -789,13 +789,16 @@ SELECT p.longitude, p.latitude, p.speed
 
 @trips.get("/{drive_id}/track")
 def get_trip_track(drive_id: int):
-    """单条行程全精度轨迹: pts 为 [lng, lat, speed_km_h]。"""
+    """单条行程全精度轨迹: pts 为 [lng, lat, speed_km_h]; ts 为相对起点的秒偏移
+    (与 pts 下标对齐, 播放动画里用来算"已行驶时长")。"""
     rows = query(TRIP_TRACK_SQL, {"id": drive_id, "per": 5000})
     pts = [[round(float(r["longitude"]), 5), round(float(r["latitude"]), 5),
             r["speed"] or 0] for r in rows]
     if len(pts) < 2:
         raise HTTPException(404, "该行程没有轨迹数据")
-    return {"id": drive_id, "pts": pts}
+    t0 = rows[0]["date"]
+    ts = [round((r["date"] - t0).total_seconds()) for r in rows]
+    return {"id": drive_id, "pts": pts, "ts": ts}
 
 
 # ---------------------------------------------------------------- 静态页面
