@@ -1,0 +1,236 @@
+"""API 响应模型 (Pydantic)。字段与既有前端逐字段对齐, JSON 形状不变。
+
+`from` 是 Python 关键字, 字段名用 from_ + alias="from"
+(FastAPI 响应默认按别名序列化)。
+"""
+from pydantic import BaseModel, ConfigDict, Field
+
+
+# ---------------------------------------------------------------- 充电
+class CarInfo(BaseModel):
+    """车辆信息。"""
+
+    id: int
+    name: str
+    model: str | None
+    trim_badging: str | None
+    vin: str | None
+
+
+class ChargingSession(BaseModel):
+    """充电卡片 (列表项与详情共用前缀)。"""
+
+    id: int
+    start: str
+    end: str | None
+    date: str
+    location: str
+    city: str | None
+    address: str | None
+    start_soc: int | None
+    end_soc: int | None
+    energy_added: float | None
+    energy_used: float | None
+    cost: float | None
+    price_per_kwh: float | None
+    duration_min: int | None
+    outside_temp: float | None
+    power_max: float | None
+    is_fast: bool
+
+
+class ChargeCurve(BaseModel):
+    """充电过程采样曲线 (各数组下标对齐)。"""
+
+    minutes: list[float]
+    soc: list[int | None]
+    kw: list[float | None]
+    voltage: list[float | None]
+    current: list[float | None]
+    energy: list[float | None]
+
+
+class ChargingSessionDetail(ChargingSession):
+    """充电详情: 卡片字段 + 曲线 / 线缆 / 快充品牌。"""
+
+    start_rated_range: float | None
+    end_rated_range: float | None
+    cable: str | None
+    charger_brand: str | None
+    charger_type: str | None
+    curve: ChargeCurve
+
+
+class ChargingSummary(BaseModel):
+    """充电汇总。"""
+
+    sessions: int
+    fast_sessions: int
+    energy_added: float
+    energy_used: float
+    cost: float
+    price_per_kwh: float | None
+    duration_min: int
+    soc_gain: int
+    range_gain: float
+    first_date: str | None
+    last_date: str | None
+
+
+class ChargingSessionsPage(BaseModel):
+    """充电列表页。"""
+
+    total: int
+    items: list[ChargingSession]
+
+
+class MonthlyStat(BaseModel):
+    """按月充电统计。"""
+
+    month: str
+    sessions: int
+    energy_used: float | None
+    cost: float | None
+    fast_sessions: int
+
+
+class LocationStat(BaseModel):
+    """按地点充电统计。"""
+
+    location: str
+    city: str | None
+    sessions: int
+    energy_used: float | None
+    cost: float | None
+    fast_sessions: int
+
+
+class CostUpdateResult(BaseModel):
+    """费用回写结果 (price_per_kwh 为回显换算值)。"""
+
+    ok: bool
+    cost: float | None
+    price_per_kwh: float | None
+
+
+# ---------------------------------------------------------------- 足迹地图
+class AmapConfig(BaseModel):
+    """高德地图前端配置 (env 注入)。"""
+
+    amap_key: str | None
+    security_code: str | None
+
+
+class MapSummary(BaseModel):
+    """地图页汇总。"""
+
+    drives: int
+    distance_km: float
+    duration_min: int
+    first_date: str | None
+    last_date: str | None
+
+
+class MapTrack(BaseModel):
+    """全量粗轨迹 (每条下采样到 ~40 点)。"""
+
+    id: int
+    date: str
+    km: float
+    min: int | None
+    pts: list[list[float]]
+
+
+class TracksResponse(BaseModel):
+    """全量粗轨迹响应。"""
+
+    count: int
+    tracks: list[MapTrack]
+
+
+class MapDetailTrack(BaseModel):
+    """视野内高精度轨迹。"""
+
+    id: int
+    pts: list[list[float]]
+
+
+class TracksDetailResponse(BaseModel):
+    """视野内高精度轨迹响应。"""
+
+    count: int
+    tracks: list[MapDetailTrack]
+
+
+# ---------------------------------------------------------------- 行程
+class TripItem(BaseModel):
+    """行程卡片字段 (列表与单条共用)。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    date: str
+    start: str
+    end: str | None
+    km: float | None
+    min: int | None
+    speed_max: int | None
+    from_: str = Field(alias="from")
+    to: str
+
+
+class TripsPage(BaseModel):
+    """行程列表页。"""
+
+    total: int
+    items: list[TripItem]
+
+
+class TripTrack(BaseModel):
+    """单条行程全精度轨迹: pts 为 [lng, lat, speed_km_h, power_W]
+    (power 正=放电 负=动能回收, 可能为 null); ts 为相对起点的秒偏移
+    (与 pts 下标对齐, 播放动画里用来算"已行驶时长"和平均功耗)。"""
+
+    id: int
+    pts: list[list[float | None]]
+    ts: list[int]
+
+
+class MergedTrack(BaseModel):
+    """多选连续行程 → 一条连续轨迹 (ts 为累计行驶秒, 行程间停驶剔除)。
+
+    与旧版响应一致: 没有 id 字段 (前端自行用 "m:{ids}" 当弹层键)。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    ids: list[int]
+    n: int
+    pts: list[list[float | None]]
+    ts: list[int]
+    date: str
+    start: str
+    end: str | None
+    km: float
+    min: int
+    speed_max: int | None
+    from_: str = Field(alias="from")
+    to: str
+
+
+class OkResponse(BaseModel):
+    """通用 ok 应答 (登录/登出/诊断)。"""
+
+    ok: bool
+
+
+class LoginCredentials(BaseModel):
+    """登录请求体。"""
+
+    user: str
+    password: str
+
+
+class CostUpdateRequest(BaseModel):
+    """费用回写请求体。"""
+
+    cost: float | None = None   # null = 清除费用

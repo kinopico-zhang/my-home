@@ -1,17 +1,49 @@
 """鉴权 / 路由 / 中间件测试。"""
 import hashlib
 import hmac
+import re
+import struct
 import time
+import zlib
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app import authentication, config
 import app.main as m
+
+
+def _unfilter_png(raw: bytes, w: int, ch: int) -> list[bytearray]:
+    """逆 PNG 行滤镜 (8-bit, 滤镜 0-4), 返回每行的 RGB(A) 字节 (不引 Pillow)。"""
+    stride = w * ch + 1
+    rows: list[bytearray] = []
+    for y in range(len(raw) // stride):
+        f = raw[y * stride]
+        row = bytearray(raw[y*stride+1:(y+1)*stride])
+        up = rows[y - 1] if y else None
+        for x in range(w * ch):
+            a = row[x - ch] if x >= ch else 0
+            b = up[x] if up is not None else 0
+            c = up[x - ch] if up is not None and x >= ch else 0
+            if f == 1:
+                row[x] = (row[x] + a) & 255
+            elif f == 2:
+                row[x] = (row[x] + b) & 255
+            elif f == 3:
+                row[x] = (row[x] + (a + b) // 2) & 255
+            elif f == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                row[x] = (row[x] + (a if pa <= pb and pa <= pc
+                                    else b if pb <= pc else c)) & 255
+        rows.append(row)
+    return rows
 
 
 # ---------------------------------------------------------------- 登录
 def test_login_ok_sets_cookie_attributes(client):
     r = client.post("/tesla/api/login",
-                    json={"user": m.AUTH_USER, "password": m.AUTH_PASS})
+                    json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert r.status_code == 200
     cookie = r.headers["set-cookie"].lower()
     assert "auth=" in cookie
@@ -23,7 +55,7 @@ def test_login_ok_sets_cookie_attributes(client):
 
 def test_login_wrong_password_returns_reason(client):
     r = client.post("/tesla/api/login",
-                    json={"user": m.AUTH_USER, "password": "nope"})
+                    json={"user": config.AUTH_USER, "password": "nope"})
     assert r.status_code == 401
     assert r.json()["detail"] == "账号或密码错误"
 
@@ -31,35 +63,36 @@ def test_login_wrong_password_returns_reason(client):
 def test_login_rate_limited_after_5_failures(client):
     for _ in range(5):
         r = client.post("/tesla/api/login",
-                        json={"user": m.AUTH_USER, "password": "nope"})
+                        json={"user": config.AUTH_USER, "password": "nope"})
         assert r.status_code == 401
     r = client.post("/tesla/api/login",
-                    json={"user": m.AUTH_USER, "password": "nope"})
+                    json={"user": config.AUTH_USER, "password": "nope"})
     assert r.status_code == 429
     assert "尝试次数过多" in r.json()["detail"]
     # 锁定期间正确密码也进不去
     r = client.post("/tesla/api/login",
-                    json={"user": m.AUTH_USER, "password": m.AUTH_PASS})
+                    json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert r.status_code == 429
 
 
 def test_token_roundtrip_tamper_and_expiry():
-    assert m._check_token(m._make_token())
-    assert not m._check_token("")
-    assert not m._check_token("garbage")
-    assert not m._check_token("1.2.3")
+    assert authentication.check_token(authentication.make_token())
+    assert not authentication.check_token("")
+    assert not authentication.check_token("garbage")
+    assert not authentication.check_token("1.2.3")
     # 有效期但签名被篡改
     exp = str(int(time.time()) + 100)
-    assert not m._check_token(f"{exp}.deadbeef")
+    assert not authentication.check_token(f"{exp}.deadbeef")
     # 已过期的合法签名
     exp = str(int(time.time()) - 1)
-    sig = hmac.new(m.SECRET, exp.encode(), hashlib.sha256).hexdigest()
-    assert not m._check_token(f"{exp}.{sig}")
+    secret = authentication._secret.value  # pylint: disable=protected-access
+    sig = hmac.new(secret, exp.encode(), hashlib.sha256).hexdigest()
+    assert not authentication.check_token(f"{exp}.{sig}")
 
 
 def test_logout_rotates_secret_and_revokes(client):
     client.post("/tesla/api/login",
-                json={"user": m.AUTH_USER, "password": m.AUTH_PASS})
+                json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert client.get("/tesla/charging").status_code == 200
     assert client.post("/tesla/api/logout").status_code == 200
     r = client.get("/tesla/charging", follow_redirects=False)
@@ -99,20 +132,15 @@ def test_public_paths_accessible_without_login(client):
 def test_apple_touch_icon_opaque_with_padding():
     """iOS 主屏图标: 不透明纯白底 (透明底被 iOS 合成纯黑) + Tesla 红 T 居中留边。
     旧版 T 铺满整个画布还带 Alpha → 添加到主屏幕后 logo 过大且黑底。"""
-    import os
-    import struct
-    import zlib
-
-    import app.main as m
-
-    path = os.path.join(os.path.dirname(m.__file__), "static", "apple-touch-icon.png")
-    d = open(path, "rb").read()
+    path = Path(m.__file__).parent / "static" / "apple-touch-icon.png"
+    with path.open("rb") as fh:
+        d = fh.read()
     w, h = struct.unpack(">II", d[16:24])
     ctype = d[25]
     assert (w, h) == (180, 180)
     assert ctype in (2, 6), f"应是 RGB/RGBA, 实际类型 {ctype}"
 
-    # 纯 Python 解码 (8-bit, 滤镜 0-4), 不引 Pillow
+    # 纯 Python 解码 (无 Pillow 依赖): 拼出 IDAT 后逆滤镜
     ch = {2: 3, 6: 4}[ctype]
     pos, idat = 8, b""
     while pos < len(d):
@@ -120,27 +148,10 @@ def test_apple_touch_icon_opaque_with_padding():
         if typ == b"IDAT":
             idat += d[pos+8:pos+8+ln]
         pos += 12 + ln
-    raw = zlib.decompress(idat)
-    stride = w * ch + 1
-    rows, prev = [], None
-    for y in range(h):
-        f = raw[y*stride]
-        row = bytearray(raw[y*stride+1:(y+1)*stride])
-        for x in range(w*ch):
-            a = row[x-ch] if x >= ch else 0
-            b = prev[x] if prev else 0
-            c = prev[x-ch] if (prev and x >= ch) else 0
-            if f == 1: row[x] = (row[x] + a) & 255
-            elif f == 2: row[x] = (row[x] + b) & 255
-            elif f == 3: row[x] = (row[x] + (a + b)//2) & 255
-            elif f == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p-a), abs(p-b), abs(p-c)
-                row[x] = (row[x] + (a if pa <= pb and pa <= pc
-                                    else b if pb <= pc else c)) & 255
-        prev = row
-        rows.append(row)
-    px = lambda x, y: tuple(rows[y][x*ch:x*ch+3])
+    rows = _unfilter_png(zlib.decompress(idat), w, ch)
+
+    def px(x, y):
+        return tuple(rows[y][x*ch:x*ch+3])
 
     if ch == 4:   # 带 Alpha 则必须全不透明 (透明像素在主屏上变黑)
         assert all(rows[y][x*4+3] == 255
@@ -211,7 +222,6 @@ def test_all_pages_declare_png_and_touch_icons(client):
 
 def test_all_pages_have_collapsible_nav_menu(auth):
     """页签收进 details 菜单: summary 显示当前页名, 菜单含全部三个链接。"""
-    import re
     for path, cur in (("/tesla/charging", "充电"), ("/tesla/map", "足迹"),
                       ("/tesla/trips", "行程")):
         html = auth.get(path).text
@@ -219,5 +229,5 @@ def test_all_pages_have_collapsible_nav_menu(auth):
         assert '<nav class="tabs">' not in html, path       # 平铺页签已删
         for href in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
             assert f'href="{href}"' in html, (path, href)
-        m = re.search(r"<summary>(.*?)<svg", html)           # summary = 当前页名 + 折叠箭头
-        assert m and m.group(1) == cur, (path, m and m.group(1))
+        mt = re.search(r"<summary>(.*?)<svg", html)         # summary = 当前页名 + 折叠箭头
+        assert mt and mt.group(1) == cur, (path, mt and mt.group(1))

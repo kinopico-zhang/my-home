@@ -1,0 +1,54 @@
+[project]
+name = "mytesla"
+version = "1.0.0"
+description = "My Tesla — TeslaMate 数据展示 (充电 / 足迹 / 行程)"
+requires-python = ">=3.10"
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+# 全库严格模式: DB 行 → SQLAlchemy 实体 → Pydantic 模型 → JSON 端到端有类型。
+# app 严格 / tests 非严格 (见 overrides); SQLAlchemy 2.0 / Pydantic v2 自带类型标注。
+python_version = "3.10"
+strict = true
+files = ["app", "tests"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# 测试层放宽: 测试函数/桩的 fixture 形参标注是纯仪式 (pytest 注入), 无安全增益;
+# 逐模块 strict=false 在 mypy 2.x 不完整展开, 这里显式列出放宽的检查项
+module = "tests.*"
+strict = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+
+# ---------------------------------------------------------------- pylint
+[tool.pylint.main]
+# 从仓库根运行时让 pylint 找到 app 包 (conftest 里是运行时 sys.path 注入)
+init-hook = 'import sys; sys.path.insert(0, ".")'
+# FastAPI 路由函数天然多参数 (查询参数 + Depends 依赖), 默认 5 不够
+max-args = 10
+max-positional-arguments = 10
+# 数据密集的查询/组装函数局部变量多
+max-locals = 18
+max-statements = 60
+max-branches = 14
+
+[tool.pylint.basic]
+# 测试函数不需要 docstring (pytest 惯例; 默认已豁免 _ 开头的私有名)
+no-docstring-rgx = "^(_|test_)"
+
+[tool.pylint."messages control"]
+disable = [
+    "too-few-public-methods",  # ORM 模型 / Pydantic 模型 / 持有者类天生方法少
+]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+[tool.pylint.typecheck]
+# SQLAlchemy 2.0 的泛型订阅 (sessionmaker[Session]) 与动态构造器 (func.count 等)
+# 是运行时合法的, pylint 静态推断不了 → 按官方常见配置豁免这两个模块
+ignored-modules = ["sqlalchemy", "sqlalchemy.orm"]
+ignored-classes = ["sqlalchemy.orm.session.sessionmaker"]
