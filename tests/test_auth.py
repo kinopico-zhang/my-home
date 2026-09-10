@@ -96,6 +96,67 @@ def test_public_paths_accessible_without_login(client):
     assert client.get("/tesla/static/apple-touch-icon.png").status_code == 200
 
 
+def test_apple_touch_icon_opaque_with_padding():
+    """iOS 主屏图标: 不透明纯白底 (透明底被 iOS 合成纯黑) + Tesla 红 T 居中留边。
+    旧版 T 铺满整个画布还带 Alpha → 添加到主屏幕后 logo 过大且黑底。"""
+    import os
+    import struct
+    import zlib
+
+    import app.main as m
+
+    path = os.path.join(os.path.dirname(m.__file__), "static", "apple-touch-icon.png")
+    d = open(path, "rb").read()
+    w, h = struct.unpack(">II", d[16:24])
+    ctype = d[25]
+    assert (w, h) == (180, 180)
+    assert ctype in (2, 6), f"应是 RGB/RGBA, 实际类型 {ctype}"
+
+    # 纯 Python 解码 (8-bit, 滤镜 0-4), 不引 Pillow
+    ch = {2: 3, 6: 4}[ctype]
+    pos, idat = 8, b""
+    while pos < len(d):
+        ln, typ = struct.unpack(">I4s", d[pos:pos+8])
+        if typ == b"IDAT":
+            idat += d[pos+8:pos+8+ln]
+        pos += 12 + ln
+    raw = zlib.decompress(idat)
+    stride = w * ch + 1
+    rows, prev = [], None
+    for y in range(h):
+        f = raw[y*stride]
+        row = bytearray(raw[y*stride+1:(y+1)*stride])
+        for x in range(w*ch):
+            a = row[x-ch] if x >= ch else 0
+            b = prev[x] if prev else 0
+            c = prev[x-ch] if (prev and x >= ch) else 0
+            if f == 1: row[x] = (row[x] + a) & 255
+            elif f == 2: row[x] = (row[x] + b) & 255
+            elif f == 3: row[x] = (row[x] + (a + b)//2) & 255
+            elif f == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p-a), abs(p-b), abs(p-c)
+                row[x] = (row[x] + (a if pa <= pb and pa <= pc
+                                    else b if pb <= pc else c)) & 255
+        prev = row
+        rows.append(row)
+    px = lambda x, y: tuple(rows[y][x*ch:x*ch+3])
+
+    if ch == 4:   # 带 Alpha 则必须全不透明 (透明像素在主屏上变黑)
+        assert all(rows[y][x*4+3] == 255
+                   for y in range(h) for x in range(0, w, 9))
+    # 满出血白底, 四角纯白 (iOS 自己切圆角, 不能预切)
+    for x, y in [(0, 0), (w-1, 0), (0, h-1), (w-1, h-1)]:
+        assert px(x, y) == (255, 255, 255)
+    # T 标居中, 是 Tesla 红
+    assert px(w//2, h//2) == (232, 33, 39)
+    # 上下左右各留 ≥18px (10%) 白边: logo 不再铺满画布
+    assert px(18, h//2) == (255, 255, 255)
+    assert px(w-1-18, h//2) == (255, 255, 255)
+    assert px(w//2, 18) == (255, 255, 255)
+    assert px(w//2, h-1-18) == (255, 255, 255)
+
+
 def test_old_paths_are_gone(client):
     assert client.get("/login").status_code == 404
     assert client.get("/api/summary").status_code == 404
