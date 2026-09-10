@@ -149,6 +149,100 @@ def test_trip_track_404_when_no_points(auth, monkeypatch):
     assert "没有轨迹数据" in r.json()["detail"]
 
 
+# ---------------------------------------------------------------- 合并轨迹 (多选连续行程)
+def test_merged_track_stitches_and_skips_parking(auth, monkeypatch):
+    """多段行程拼一条轨迹: pts 按时间串联, ts 是"累计行驶秒" (行程间停驶剔除),
+    汇总 = 首段起/末段终 + 各项求和 (前端弹层播放/统计照常)。"""
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen.setdefault("calls", []).append((sql, params))
+        if "FROM positions" in sql:          # 轨迹行 (含 drive_id)
+            t = datetime(2026, 9, 10, 8, 32)
+            return [
+                {"drive_id": 11, "longitude": 114.05, "latitude": 22.55,
+                 "speed": 30, "power": 45000, "date": t},
+                {"drive_id": 11, "longitude": 114.06, "latitude": 22.56,
+                 "speed": 40, "power": None, "date": t + timedelta(minutes=10)},
+                # 停驶 2h50m 后的第二段 (这段间隔不应计入 ts)
+                {"drive_id": 12, "longitude": 114.07, "latitude": 22.57,
+                 "speed": 50, "power": 30000, "date": t + timedelta(hours=3)},
+                {"drive_id": 12, "longitude": 114.08, "latitude": 22.58,
+                 "speed": None, "power": None, "date": t + timedelta(hours=3, minutes=10)},
+            ]
+        # 行程汇总行 (TRIPS_IDS_SQL: 按 start_date 排序返回)
+        return [drive_row(id=11, dist=42.5, dur=72, spd=118,
+                          frm="广东省深圳市南山区, ", to="中途点"),
+                drive_row(id=12, start=datetime(2026, 9, 10, 11, 32),
+                          end=datetime(2026, 9, 10, 12, 42),
+                          dist=10.04, dur=10, spd=96, frm="中途点", to="广东省东莞市长安镇")]
+
+    monkeypatch.setattr(m, "query", fake_query)
+    r = auth.get("/tesla/trips/api/merged?ids=12,11")   # 乱序传入
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ids"] == [11, 12] and d["n"] == 2
+    assert d["pts"] == [[114.05, 22.55, 30, 45000], [114.06, 22.56, 40, None],
+                        [114.07, 22.57, 50, 30000], [114.08, 22.58, 0, None]]
+    # 第二段从上一段末尾继续累计: 中间 2h50m 停驶不进 ts
+    assert d["ts"] == [0, 600, 600, 1200]
+    # 汇总: 首段起 / 末段终, 里程/时长求和, 最高速取 max
+    assert d["km"] == 52.54 and d["min"] == 82 and d["speed_max"] == 118
+    assert d["date"] == "2026-09-10"
+    assert d["start"] == "2026-09-10 08:32" and d["end"] == "2026-09-10 20:42"
+    assert d["from"] == "广东省深圳市南山区" and d["to"] == "广东省东莞市长安镇"
+    # SQL 按行程分区下采样 (保首末点), 预算 per = 4000/段数 (下限 200)
+    track_sql, track_params = seen["calls"][1]
+    assert "PARTITION BY pos.drive_id" in track_sql
+    assert "rn = 1 OR rn = cnt" in track_sql
+    assert track_params == {"ids": [12, 11], "per": 2000}
+
+
+def test_merged_track_dedupes_ids(auth, monkeypatch):
+    """重复 id 去重, 仍然只算一段。"""
+    seen = []
+
+    def fake_query(sql, params=None):
+        seen.append(params)
+        if "FROM positions" in sql:
+            return [{"drive_id": i, "longitude": 114.0, "latitude": 22.5,
+                     "speed": 10, "power": None,
+                     "date": datetime(2026, 9, 10, 8) + timedelta(minutes=i)}
+                    for i in (11, 12)]
+        return [drive_row(id=11), drive_row(id=12, start=datetime(2026, 9, 10, 9))]
+
+    monkeypatch.setattr(m, "query", fake_query)
+    r = auth.get("/tesla/trips/api/merged?ids=11,12,11,12")
+    assert r.status_code == 200
+    assert seen[0] == {"ids": [11, 12]}                # 去重后 2 个 (汇总查询)
+    assert seen[1]["per"] == 2000                      # 轨迹查询: 4000/2 段
+
+
+def test_merged_track_validation_and_404(auth, monkeypatch):
+    """参数校验 + 行程缺失/无轨迹 → 404, 前端抹掉地址栏参数。"""
+    def never(sql, params=None):
+        raise AssertionError("参数非法不应查库")
+
+    monkeypatch.setattr(m, "query", never)
+    assert auth.get("/tesla/trips/api/merged?ids=abc").status_code == 400
+    assert auth.get("/tesla/trips/api/merged?ids=1").status_code == 400
+    assert auth.get("/tesla/trips/api/merged?ids=" +
+                    ",".join(str(i) for i in range(51))).status_code == 400
+    # 任一行程不存在/未完成 (返回行数对不上) → 404
+    monkeypatch.setattr(m, "query", lambda sql, p=None: [])
+    r = auth.get("/tesla/trips/api/merged?ids=1,2")
+    assert r.status_code == 404
+    assert "不存在或未完成" in r.json()["detail"]
+    # 行程都在但没有轨迹点 → 404
+    monkeypatch.setattr(m, "query", lambda sql, p=None: (
+        [{"drive_id": 1, "longitude": 114.0, "latitude": 22.5, "speed": 1, "power": None,
+          "date": datetime(2026, 9, 10, 8)}]
+        if "FROM positions" in sql else [drive_row(id=1), drive_row(id=2)]))
+    r = auth.get("/tesla/trips/api/merged?ids=1,2")
+    assert r.status_code == 404
+    assert "没有轨迹数据" in r.json()["detail"]
+
+
 # ---------------------------------------------------------------- 页面
 def test_trips_page_has_playbar_and_single_column(auth):
     """播放控制条 (暂停/进度/倍速) + 单列列表 + 断档图例 都在页面上。"""
@@ -173,8 +267,20 @@ def test_trips_page_playback_pacing_and_nowrap(auth):
 
 
 def test_trips_page_has_url_deeplink(auth):
-    """打开行程地址栏变 ?id=X: pushState/popstate 同步 + 分享直开。"""
+    """打开行程地址栏变 ?id=X / 合并 ?ids=a,b: pushState/popstate 同步 + 分享直开。"""
     html = auth.get("/tesla/trips").text
-    for frag in ["urlTripId", "openById", "history.pushState", "addEventListener(\"popstate\"",
-                 "/tesla/trips/api/sessions/${", "history.replaceState(null, \"\", \"/tesla/trips\")"]:
+    for frag in ["urlTripKey", "openByKey", "history.pushState", "addEventListener(\"popstate\"",
+                 "/tesla/trips/api/sessions/${", "history.replaceState(null, \"\", \"/tesla/trips\")",
+                 "it.merged ? \"ids=\" : \"id=\""]:
         assert frag in html, f"行程页缺少深链片段 {frag}"
+
+
+def test_trips_page_has_multiselect(auth):
+    """多选连续行程: 选择模式 + 底栏 + 合并接口直开都挂在页面上。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ['id="merge-btn"', 'id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
+                 'id="sel-count"', "body.selecting", "pickCard", "enterSelect", "exitSelect",
+                 "openMerged", "/tesla/trips/api/merged?ids=", "mergedCache"]:
+        assert frag in html, f"行程页缺少多选片段 {frag}"
+    # 合并弹层复用播放: pts 随 it 一起传入 (不走单条轨迹接口)
+    assert "it.pts ? it : trackCache.get(it.id)" in html
