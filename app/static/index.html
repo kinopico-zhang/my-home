@@ -160,11 +160,11 @@ main { max-width: 760px; margin: 0 auto; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
 /* 单列列表 (与行程页一致, 手机优先) */
-#masonry { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; transition: opacity .25s; }
+#masonry { display: flex; flex-direction: column; gap: 8px; padding: 8px 14px 10px; transition: opacity .25s; }
 #masonry.dim { opacity: .45; pointer-events: none; }
 .card-s {
   background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
-  padding: 12px 13px; cursor: pointer; overflow: hidden;
+  padding: 10px 12px; cursor: pointer; overflow: hidden;
   transition: transform .15s, background .15s;
 }
 .card-s:active { transform: scale(.975); background: #232326; }
@@ -177,20 +177,20 @@ main { max-width: 760px; margin: 0 auto; }
 }
 .tag-fast { color: #f0b13d; background: rgba(237,161,0,.14); }
 .tag-slow { color: #7db3f0; background: rgba(57,135,229,.14); }
+/* SOC 轴: 量程固定 0-100%, 标签钉在真实百分比位置 (左标签左缘=充电起点, 右标签右缘=终点);
+   不做 space-between 贴边 —— 那样读起来像轴随数据自适应 */
+.soc-axis { position: relative; height: 18px; margin-top: 2px; }
+.soc-axis .trk { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; border-radius: 3px; background: var(--surface-2); }
+.soc-axis .trk i { position: absolute; top: 0; bottom: 0; background: var(--green); border-radius: 3px; }
+.sa-lb { position: absolute; bottom: 8px; font-size: 10px; line-height: 1; color: var(--ink-3); white-space: nowrap; }
 .cs-loc {
-  font-size: 14.5px; font-weight: 600; line-height: 1.32; margin: 7px 0 10px;
+  font-size: 14.5px; font-weight: 600; line-height: 1.32; margin: 5px 0 6px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.soc-track { position: relative; height: 6px; border-radius: 3px; background: var(--surface-2); }
-.soc-track i { position: absolute; top: 0; bottom: 0; background: var(--green); border-radius: 3px; }
-.soc-lbl { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink-3); margin-top: 4px; }
-.soc-lbl .gain { color: var(--ink-2); }
-.cs-energy { font-size: 23px; font-weight: 650; letter-spacing: -.4px; margin: 9px 0 1px; }
-.cs-energy small { font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 3px; letter-spacing: 0; }
-.cs-cost { font-size: 13px; font-weight: 600; margin-top: 3px; }
-.cs-cost .pp { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-left: 7px; }
-.cs-cost.none { color: var(--ink-3); font-weight: 400; }
-.cs-sub { font-size: 11px; color: var(--ink-3); margin-top: 5px; }
+.cs-main { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
+.cs-energy { font-size: 20px; font-weight: 650; letter-spacing: -.4px; }
+.cs-energy small { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-left: 3px; letter-spacing: 0; }
+.cs-sub { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
 
 /* ---------- 加载态 ---------- */
 .tail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 0 40px; }
@@ -297,17 +297,16 @@ main { max-width: 760px; margin: 0 auto; }
 .al-strong { font-weight: 650; color: #7db3f0; }
 .al-btn:active, .al-clear:active { background: rgba(255,255,255,.06); }
 
-/* 卡片费用行 (可点编辑) */
+/* 卡片费用 (与电量同行, 靠右, 可点编辑) */
 .cs-cost {
-  display: flex; align-items: baseline; width: 100%;
-  font-size: 13px; font-weight: 600; margin-top: 3px; color: var(--ink-1);
+  display: flex; align-items: baseline; flex: none;
+  font-size: 13px; font-weight: 600; color: var(--ink-1);
 }
 .cs-cost:active { opacity: .55; }
 .cs-cost .pp { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-left: 7px; }
-.cs-cost .edit-ic { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--ink-3); }
+.cs-cost .edit-ic { margin-left: 5px; font-size: 11px; font-weight: 400; color: var(--ink-3); }
 .cs-cost.none {
-  width: fit-content; align-self: flex-start; margin-top: 6px;
-  font-size: 11.5px; font-weight: 500; color: var(--ink-3);
+  width: fit-content; font-size: 11.5px; font-weight: 500; color: var(--ink-3);
   border: 1px dashed rgba(235,235,245,.28); border-radius: 8px; padding: 4px 10px;
 }
 /* Sheet 费用块 (可点编辑) */
@@ -651,16 +650,23 @@ function renderCard(it) {
     ? `<button class="cs-cost" data-cost>${money(it.cost)}${it.price_per_kwh != null
         ? `<span class="pp">¥${it.price_per_kwh.toFixed(2)}/kWh</span>` : ""}<span class="edit-ic">✎</span></button>`
     : `<button class="cs-cost none" data-cost>＋ 添加费用</button>`;
+  const lblStart = `left:${Math.min(it.start_soc, 93)}%`;  // 93 上限防极高起点溢出
+  const lblEnd = `right:${100 - it.end_soc}%`;
   el.innerHTML = `
     <div class="cs-top">
       <span class="cs-date">${esc(fmtCardDate(it.start))}</span>
       <span class="tag ${it.is_fast ? "tag-fast" : "tag-slow"}">${it.is_fast ? "⚡ 快充" : "🔌 慢充"}</span>
     </div>
     <h3 class="cs-loc">${esc(it.location)}</h3>
-    <div class="soc-track"><i style="left:${it.start_soc}%;width:${Math.max(it.end_soc - it.start_soc, 2)}%"></i></div>
-    <div class="soc-lbl"><span>${it.start_soc}%</span><span class="gain">+${it.end_soc - it.start_soc}</span><span>${it.end_soc}%</span></div>
-    <div class="cs-energy">${num(it.energy_added ?? it.energy_used)}<small>kWh</small></div>
-    ${costLine}
+    <div class="soc-axis">
+      <span class="sa-lb" style="${lblStart}">${it.start_soc}%</span>
+      <span class="sa-lb" style="${lblEnd}">${it.end_soc}%</span>
+      <span class="trk"><i style="left:${it.start_soc}%;width:${Math.max(it.end_soc - it.start_soc, 2)}%"></i></span>
+    </div>
+    <div class="cs-main">
+      <div class="cs-energy">${num(it.energy_added ?? it.energy_used)}<small>kWh</small></div>
+      ${costLine}
+    </div>
     <div class="cs-sub">${fmtDur(it.duration_min)} · 峰值 ${it.power_max ?? "—"} kW${it.outside_temp != null ? ` · ${num(it.outside_temp, 0)}°C` : ""}</div>`;
   return el;
 }
