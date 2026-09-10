@@ -66,26 +66,32 @@ def test_trips_sessions_rejects_bad_pagination(auth, monkeypatch):
 
 
 # ---------------------------------------------------------------- 轨迹
-def test_trip_track_full_resolution(auth, monkeypatch):
+def test_trip_track_full_resolution_with_speed(auth, monkeypatch):
     seen = {}
 
     def fake_query(sql, params=None):
         seen["sql"], seen["params"] = sql, params
-        return [{"drive_id": 7, "longitude": 114.05, "latitude": 22.55},
-                {"drive_id": 7, "longitude": 114.06, "latitude": 22.56}]
+        return [{"longitude": 114.05, "latitude": 22.55, "speed": 30},
+                {"longitude": 114.06, "latitude": 22.56, "speed": None}]
 
     monkeypatch.setattr(m, "query", fake_query)
     r = auth.get("/tesla/trips/api/7/track")
     assert r.status_code == 200
-    assert r.json() == {"id": 7, "pts": [[114.05, 22.55], [114.06, 22.56]]}
-    # 与地图页点选同规格: 全球框 + 每条 5000 点
-    assert seen["params"]["ids"] == [7]
-    assert seen["params"]["per"] == 5000
-    assert seen["params"]["w"] == -180 and seen["params"]["n"] == 90
+    # 每点 [lng, lat, speed]; 速度缺失按 0 (停车)
+    assert r.json() == {"id": 7, "pts": [[114.05, 22.55, 30], [114.06, 22.56, 0]]}
+    # 整条无视野框 + 5000 点上限 + 带速度列
+    assert seen["params"] == {"id": 7, "per": 5000}
+    assert "pos.speed" in seen["sql"]
+    assert "drive_id = %(id)s" in seen["sql"]
 
 
 def test_trip_track_404_when_no_points(auth, monkeypatch):
-    monkeypatch.setattr(m, "query", lambda sql, params=None: [])
+    monkeypatch.setattr(m, "query", lambda sql, params=None: [])  # 0 点
+    r = auth.get("/tesla/trips/api/999/track")
+    assert r.status_code == 404
+    # 只剩 1 个点画不了线, 也算没有轨迹
+    monkeypatch.setattr(m, "query", lambda sql, params=None: [
+        {"longitude": 114.05, "latitude": 22.55, "speed": 30}])
     r = auth.get("/tesla/trips/api/999/track")
     assert r.status_code == 404
     assert "没有轨迹数据" in r.json()["detail"]

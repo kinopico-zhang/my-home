@@ -34,5 +34,34 @@
     return ok.length ? ok : [pts];   // 全是孤立点时按原样画, 不能让轨迹消失
   }
 
-  return { splitGaps: splitGaps, _segLen: segLen };
+  /* ---- 速度着色: 慢=红 快=绿 (行程弹层轨迹) ----
+     pts 每点 [lng, lat, speed_km_h]; 相邻点同档连成一段, 相邻段共享端点。
+     返回 [{color, pts: [[lng,lat], ...]}], 坐标保持 WGS-84, 由调用方转 GCJ-02。 */
+  const SPEED_STOPS = [15, 40, 70, 100];   // 分档阈值 km/h
+  const SPEED_COLORS = ["#e5484d", "#e08a2e", "#d9b42a", "#9dbb32", "#1fa349"];
+
+  function speedBucket(s) {
+    let i = 0;
+    while (i < SPEED_STOPS.length && s >= SPEED_STOPS[i]) i++;
+    return i;
+  }
+
+  function speedLines(pts) {
+    const lines = [];
+    let cur = null;                            // {color, pts}
+    for (let i = 1; i < pts.length; i++) {
+      const s = Math.max(pts[i - 1][2] || 0, pts[i][2] || 0);   // 段速取两端较大
+      const color = SPEED_COLORS[speedBucket(s)];
+      if (!cur || cur.color !== color) {
+        if (cur) lines.push(cur);
+        cur = { color: color, pts: [pts[i - 1]] };   // 共享端点, 段间不留缝
+      }
+      cur.pts.push(pts[i]);
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  return { splitGaps: splitGaps, speedLines: speedLines,
+           SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });

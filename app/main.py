@@ -767,15 +767,31 @@ def get_trip_sessions(offset: int = 0, limit: int = 24):
     return {"total": total, "items": items}
 
 
+# 行程弹层轨迹: 整条 (无视野框), 每点带车速 km/h, 供前端按速度着色 (慢红快绿)
+TRIP_TRACK_SQL = """
+WITH p AS (
+    SELECT pos.longitude, pos.latitude, pos.speed,
+           row_number() OVER (ORDER BY pos.date) AS rn,
+           count(*) OVER () AS cnt
+      FROM positions pos
+     WHERE pos.drive_id = %(id)s
+)
+SELECT p.longitude, p.latitude, p.speed
+  FROM p
+ WHERE rn = 1 OR rn = cnt OR (rn - 1) %% greatest((cnt / %(per)s)::int, 1) = 0
+ ORDER BY rn
+"""
+
+
 @trips.get("/{drive_id}/track")
 def get_trip_track(drive_id: int):
-    """单条行程全精度轨迹 (与地图页点选轨迹同规格: 全球框 + 5000 点/条)。"""
-    rows = _query_detail([drive_id], 5000,
-                         {"w": -180, "s": -90, "e": 180, "n": 90})
-    tracks = _group_detail(rows)
-    if not tracks:
+    """单条行程全精度轨迹: pts 为 [lng, lat, speed_km_h]。"""
+    rows = query(TRIP_TRACK_SQL, {"id": drive_id, "per": 5000})
+    pts = [[round(float(r["longitude"]), 5), round(float(r["latitude"]), 5),
+            r["speed"] or 0] for r in rows]
+    if len(pts) < 2:
         raise HTTPException(404, "该行程没有轨迹数据")
-    return {"id": drive_id, "pts": tracks[0]["pts"]}
+    return {"id": drive_id, "pts": pts}
 
 
 # ---------------------------------------------------------------- 静态页面

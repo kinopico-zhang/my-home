@@ -145,6 +145,18 @@ main { max-width: 1180px; margin: 0 auto; }
   z-index: 10; text-align: center; padding: 0 30px;
 }
 .trip-msg .spin { margin: 0 auto; }
+.spd-legend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 20;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; color: var(--ink-2);
+  background: rgba(10,10,12,.72); -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-radius: 999px; padding: 5px 10px; pointer-events: none;
+}
+.spd-legend .bar {
+  width: 74px; height: 5px; border-radius: 3px;
+  background: linear-gradient(to right, #e5484d, #e08a2e, #d9b42a, #9dbb32, #1fa349);
+}
 </style>
 </head>
 <body>
@@ -193,6 +205,7 @@ main { max-width: 1180px; margin: 0 auto; }
   </div>
   <div class="trip-map-wrap">
     <div id="trip-map"></div>
+    <div class="spd-legend"><span>慢</span><i class="bar"></i><span>快</span></div>
     <div class="trip-msg" id="trip-msg">
       <div class="spin" id="trip-spin" hidden></div>
       <div id="trip-msg-text">正在加载轨迹…</div>
@@ -399,15 +412,19 @@ async function openTrip(it) {
     }
     if (seq !== openSeq) return;
 
-    // GPS 断档处拆段 (飞线修复) + WGS-84 → GCJ-02
-    const segs = TrackUtil.splitGaps(pts);
-    const lines = segs.map(seg => new AMap.Polyline({
-      path: seg.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
-      strokeColor: "#3987e5", strokeOpacity: 1, strokeWeight: 4,
-      lineJoin: "round", zIndex: 50,
-    }));
-    tripMap.add(lines);
-    tripMap.setFitView(lines, false, [46, 46, 46, 46]);
+    // GPS 断档处拆段 (飞线修复), 每段按车速着色 (慢红快绿) + WGS-84 → GCJ-02
+    const polylines = [];
+    for (const seg of TrackUtil.splitGaps(pts)) {
+      for (const band of TrackUtil.speedLines(seg)) {
+        polylines.push(new AMap.Polyline({
+          path: band.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
+          strokeColor: band.color, strokeOpacity: 1, strokeWeight: 4,
+          lineJoin: "round", zIndex: 50,
+        }));
+      }
+    }
+    tripMap.add(polylines);
+    tripMap.setFitView(polylines, false, [46, 46, 46, 46]);
     tripMsg(null, false);
   } catch (e) {
     if (seq === openSeq) tripMsg(String(e.message || e), false);
