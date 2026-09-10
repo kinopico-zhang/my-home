@@ -271,3 +271,12 @@ def test_tracks_date_filtering(auth, monkeypatch):
     assert ids("?from=2026-07-01") == [2, 3]
     assert ids("?to=2026-08-31") == [1, 2]
     assert ids("?from=2026-07-01&to=2026-08-31") == [2]
+
+
+def test_tracks_rejects_bad_date(auth, monkeypatch):
+    """坏日期参数 (如前端 NaN bug 产生的 "NaN-NaN-NaN") 必须 400, 不能打穿到数据库。"""
+    monkeypatch.setattr(m, "_tracks_mem", {"max_id": 1, "tracks": []})
+    monkeypatch.setattr(m, "_drive_max_id", lambda: 1)
+    assert auth.get("/tesla/map/api/tracks?from=NaN-NaN-NaN").status_code == 400
+    assert auth.get("/tesla/map/api/tracks?to=2026-13-99").status_code == 400  # 月日越界
+    assert auth.get("/tesla/map/api/tracks?from=abc").status_code == 400
