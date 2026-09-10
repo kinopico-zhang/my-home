@@ -76,7 +76,7 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 .nav-menu .chev { transition: transform .18s; }
 .nav-menu[open] .chev { transform: rotate(180deg); }
 .nav-menu .menu {
-  position: absolute; top: calc(100% + 8px); right: 0; min-width: 128px;
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 128px; z-index: 30;
   display: flex; flex-direction: column; padding: 5px;
   background: rgba(44,44,46,.88);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -90,9 +90,32 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 }
 .nav-menu .menu a:active { background: var(--surface-3); }
 .nav-menu .menu a.on { color: #7db3f0; }
-/* 筛选: 一行, 在所有图表之上 (同一数据切片) */
-.filters { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
-.filters::-webkit-scrollbar { display: none; }
+.nav-menu + .nav-menu { margin-left: 0; }   /* 顶栏两个菜单靠右并排, 只有第一个吃 auto 边距 */
+.nav-menu .menu button {
+  font-size: 14px; color: var(--ink-1); text-align: left;
+  padding: 9px 12px; border-radius: 10px; white-space: nowrap;
+}
+.nav-menu .menu button.on { color: #7db3f0; }
+.nav-menu .menu button:active { background: var(--surface-3); }
+/* 时间菜单的自定义日历 (原生 date 输入, 移动端唤起系统日历) */
+.time-menu .tm-custom { border-top: 1px solid var(--hairline); margin-top: 5px; padding-top: 5px; }
+.tm-dates { display: flex; align-items: center; gap: 5px; padding: 6px 8px 3px; }
+.tm-dates span { color: var(--ink-3); }
+.tm-dates input {
+  flex: 1; min-width: 0; background: var(--surface-2);
+  border: 1px solid var(--hairline); border-radius: 8px;
+  color: var(--ink-1); font-size: 12px; padding: 6px 7px;
+}
+.tm-dates input::-webkit-calendar-picker-indicator { filter: invert(.75); }
+.tm-dates #tm-apply {
+  flex: none; background: #3987e5; color: #fff;
+  border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 11px;
+}
+/* 筛选: 一行, 在所有图表之上 (同一数据切片); 下拉不能被横向滚动裁掉 → 不用 overflow */
+.filters { display: flex; gap: 8px; margin-top: 10px; }
+.filters .nav-menu { margin-left: 0; }              /* 不吃顶栏的靠右边距 */
+.filters .nav-menu .menu { left: 0; right: auto; }  /* 下拉锚左, 行首也不出屏 */
+.filt .fl { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg {
   display: flex; flex: none; background: rgba(118,118,128,.24);
   border-radius: 9px; padding: 2px;
@@ -321,6 +344,26 @@ main { max-width: 760px; margin: 0 auto; }
   <div class="nav-row">
     <h1>My Tesla</h1>
     <span class="car-pill" id="car-pill">Tesla</span>
+    <details class="nav-menu time-menu" id="time-menu">
+      <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="time-opts">
+        <button data-v="24h">最近 24 小时</button>
+        <button data-v="7d">最近一周</button>
+        <button data-v="30d">最近一个月</button>
+        <button data-v="180d">最近半年</button>
+        <button data-v="1y">最近一年</button>
+        <button data-v="all" class="on">全部</button>
+        <div class="tm-custom">
+          <button data-v="custom">自定义…</button>
+          <div class="tm-dates" id="tm-dates" hidden>
+            <input type="date" id="tm-from" aria-label="开始日期">
+            <span>–</span>
+            <input type="date" id="tm-to" aria-label="结束日期">
+            <button id="tm-apply">确定</button>
+          </div>
+        </div>
+      </div>
+    </details>
     <details class="nav-menu" id="nav-menu">
       <summary>充电<svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
@@ -337,12 +380,10 @@ main { max-width: 760px; margin: 0 auto; }
       <button data-v="fast">⚡ 快充</button>
       <button data-v="slow">🔌 慢充</button>
     </div>
-    <div class="chips" id="chips-range">
-      <button class="chip on" data-v="all">全部</button>
-      <button class="chip" data-v="30d">近30天</button>
-      <button class="chip" data-v="90d">近90天</button>
-      <button class="chip" data-v="ytd">今年</button>
-    </div>
+    <details class="nav-menu filt" id="city-menu">
+      <summary><span class="fl" id="city-lb">城市: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="city-opts"></div>
+    </details>
   </div>
 </header>
 
@@ -473,20 +514,67 @@ async function getJSON(url) {
 
 /* ============================ 状态 ============================ */
 const PAGE = 24;
-const state = { type: "all", range: "all", offset: 0, total: 0, loading: false, done: false, err: null };
+/* ---------- 顶栏时间筛选: 快捷档位下拉, 编码进 ?range= (分享/刷新保留) ---------- */
+const TIME_RANGES = [
+  { v: "24h", days: 1, lb: "24小时" },
+  { v: "7d", days: 7, lb: "近一周" },
+  { v: "30d", days: 30, lb: "近一月" },
+  { v: "180d", days: 180, lb: "近半年" },
+  { v: "1y", days: 365, lb: "近一年" },
+  { v: "all", days: 0, lb: "全部" },
+];
+function timeFrom(v) {   // 档位 → from 本地日期 (含今天共 N 天; 24h 即"昨天起")
+  const r = TIME_RANGES.find(x => x.v === v);
+  if (!r || !r.days) return null;
+  const d = new Date(); d.setDate(d.getDate() - (r.days - 1));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+// URL → 初始筛选: ?range= 快捷档; ?from=&to= 自定义区间; ?type= / ?city= 筛选行
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const qs0 = new URLSearchParams(location.search);
+let range0 = TIME_RANGES.some(r => r.v === qs0.get("range")) ? qs0.get("range") : "all";
+let cFrom0 = null, cTo0 = null;
+if (range0 === "all") {
+  const f = qs0.get("from"), t = qs0.get("to");
+  if (DATE_RE.test(f || "") && DATE_RE.test(t || "") && f <= t) { range0 = "custom"; cFrom0 = f; cTo0 = t; }
+}
+const state = {
+  type: ["fast", "slow"].includes(qs0.get("type")) ? qs0.get("type") : "all",
+  city: qs0.get("city") || "",
+  range: range0, cFrom: cFrom0, cTo: cTo0,
+  offset: 0, total: 0, loading: false, done: false, err: null,
+};
 const detailCache = new Map();
 const hasEcharts = typeof echarts !== "undefined";
 
 function rangeParams() {
-  if (state.range === "all") return {};
-  const now = new Date();
-  if (state.range === "ytd") return { from: `${now.getFullYear()}-01-01` };
-  const d = new Date(now.getTime() - (state.range === "30d" ? 30 : 90) * 864e5);
-  return { from: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` };
+  if (state.range === "custom") {   // 自定义起止 (日历)
+    const p = {};
+    if (state.cFrom) p.from = state.cFrom;
+    if (state.cTo) p.to = state.cTo;
+    return p;
+  }
+  const from = timeFrom(state.range);
+  return from ? { from } : {};
 }
 function sessionParams(extra) {
   const p = new URLSearchParams({ type: state.type, ...rangeParams(), ...(extra || {}) });
+  if (state.city) p.set("city", state.city);
   return p.toString();
+}
+function syncURL() {   // 筛选写进地址栏 (默认值不写, 链接保持干净)
+  const u = new URL(location.href);
+  if (state.range === "custom") {
+    u.searchParams.delete("range");
+    u.searchParams.set("from", state.cFrom); u.searchParams.set("to", state.cTo);
+  } else {
+    u.searchParams.delete("from"); u.searchParams.delete("to");
+    if (state.range === "all") u.searchParams.delete("range");
+    else u.searchParams.set("range", state.range);
+  }
+  if (state.type === "all") u.searchParams.delete("type"); else u.searchParams.set("type", state.type);
+  if (state.city) u.searchParams.set("city", state.city); else u.searchParams.delete("city");
+  history.replaceState(null, "", u);
 }
 
 /* ============================ 统计卡片 ============================ */
@@ -734,12 +822,70 @@ function showErr(e) { $("#errmsg").textContent = "数据加载失败: " + e.mess
 $("#seg-type").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.classList.contains("on")) return;
   $("#seg-type .on").classList.remove("on"); b.classList.add("on");
-  state.type = b.dataset.v; refetch();
+  state.type = b.dataset.v; syncURL(); refetch();
 });
-$("#chips-range").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b || b.classList.contains("on")) return;
-  $("#chips-range .on").classList.remove("on"); b.classList.add("on");
-  state.range = b.dataset.v; refetch();
+function timeLabel() {
+  if (state.range === "custom")   // 自定义显示紧凑区间, 如 01/01–03/31
+    return `${state.cFrom.slice(5).replace("-", "/")}–${state.cTo.slice(5).replace("-", "/")}`;
+  return TIME_RANGES.find(r => r.v === state.range).lb;
+}
+function setTimeRange(v, skipFetch) {
+  state.range = v;
+  $("#time-lb").textContent = timeLabel();
+  document.querySelectorAll("#time-opts button[data-v]").forEach(b =>
+    b.classList.toggle("on", b.dataset.v === v));
+  if (v !== "custom") $("#tm-dates").hidden = true;   // 回到快捷档, 收起日历
+  syncURL();
+  if (!skipFetch) refetch();
+}
+$("#time-opts").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || b.id === "tm-apply") return;
+  if (b.dataset.v === "custom") {   // 展开/收起日历, 选好再点确定生效
+    const box = $("#tm-dates");
+    box.hidden = !box.hidden;
+    if (!box.hidden) {
+      $("#tm-from").value = state.cFrom || timeFrom("30d");
+      const n = new Date();
+      $("#tm-to").value = state.cTo ||
+        `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
+    }
+    return;
+  }
+  if (b.dataset.v === state.range) return;
+  $("#time-menu").removeAttribute("open");
+  setTimeRange(b.dataset.v);
+});
+$("#tm-apply").addEventListener("click", () => {
+  const f = $("#tm-from").value, t = $("#tm-to").value;
+  if (!f || !t) return;                       // 没选完整不生效
+  $("#time-menu").removeAttribute("open");
+  state.cFrom = f <= t ? f : t;               // 起止填反自动交换
+  state.cTo = f <= t ? t : f;
+  setTimeRange("custom");
+});
+setTimeRange(state.range, true);
+if (state.type !== "all") {                   // URL 带类型/城市时同步选中态
+  $("#seg-type .on").classList.remove("on");
+  $(`#seg-type button[data-v="${state.type}"]`).classList.add("on");
+}
+$("#city-lb").textContent = state.city ? "城市: " + state.city : "城市: 全部";
+(async () => {   // 城市筛选选项 (按充电次数降序); 拉不到就只有"全部"
+  try {
+    const cs = await getJSON("/tesla/charging/api/cities");
+    $("#city-opts").innerHTML =
+      `<button data-c=""${state.city ? "" : ' class="on"'}>全部</button>` +
+      cs.map(c => `<button data-c="${esc(c.city)}"${c.city === state.city ? ' class="on"' : ""}>` +
+                  `${esc(c.city)} (${c.count})</button>`).join("");
+  } catch (_e) { /* keep 全部 */ }
+})();
+$("#city-opts").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  $("#city-menu").removeAttribute("open");
+  state.city = b.dataset.c;
+  $("#city-opts .on").classList.remove("on"); b.classList.add("on");
+  $("#city-lb").textContent = state.city ? "城市: " + state.city : "城市: 全部";
+  syncURL(); refetch();
 });
 $("#retry").addEventListener("click", () => { state.err = null; $("#errbox").hidden = true; refetch(); });
 

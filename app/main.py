@@ -30,6 +30,7 @@ from .schemas import (
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
+    CityCount,
     CostUpdateRequest,
     CostUpdateResult,
     LocationStat,
@@ -40,6 +41,7 @@ from .schemas import (
     OkResponse,
     TracksDetailResponse,
     TracksResponse,
+    TripCities,
     TripItem,
     TripTrack,
     TripsPage,
@@ -175,20 +177,28 @@ def get_charging_summary(
     return repository.charging_summary(db, _date_range_or_400(frm, to))
 
 
+@charging.get("/cities")
+def get_charging_cities(
+        db: Session = Depends(database.get_db)) -> list[CityCount]:
+    """充电城市列表 (筛选下拉数据源, 次数降序)。"""
+    return repository.list_charging_cities(db)
+
+
 @charging.get("/sessions")
 def get_sessions(
         offset: int = 0, limit: int = 50, sort: str = "date_desc",
         type_: str = Query("all", alias="type"), q: str | None = None,
+        city: str | None = None,
         frm: str | None = Query(None, alias="from"), to: str | None = None,
         db: Session = Depends(database.get_db)) -> ChargingSessionsPage:
-    """充电列表: 过滤 (日期/快慢/地址搜索) → 排序 → 分页。"""
+    """充电列表: 过滤 (日期/快慢/城市/地址搜索) → 排序 → 分页。"""
     if sort not in repository.SORT_OPTIONS:
         raise HTTPException(400, f"不支持的排序: {sort}")
     if offset < 0 or limit < 0:
         raise HTTPException(400, "分页参数非法")
     flt = repository.SessionFilter(
-        date_range=_date_range_or_400(frm, to), charge_type=type_, query=q,
-        sort=sort, offset=offset, limit=limit)
+        date_range=_date_range_or_400(frm, to), charge_type=type_,
+        city=city or None, query=q, sort=sort, offset=offset, limit=limit)
     total, items = repository.list_charging_sessions(db, flt)
     return ChargingSessionsPage(total=total, items=items)
 
@@ -300,12 +310,31 @@ async def map_diag(request: Request) -> OkResponse:
 
 @trips.get("/sessions")
 def get_trip_sessions(offset: int = 0, limit: int = 24,
+                      frm: str | None = Query(None, alias="from"),
+                      to: str | None = Query(None, alias="to"),
+                      from_city: str | None = None, to_city: str | None = None,
+                      km_min: float | None = None, km_max: float | None = None,
                       db: Session = Depends(database.get_db)) -> TripsPage:
-    """行程列表 (最新在前, 只含已结束行程)。"""
+    """行程列表 (最新在前, 只含已结束行程); from/to 按出发时间过滤 (本地日期),
+    from_city/to_city 按起终城市, km_min/km_max 按里程 (km) 过滤。"""
     if offset < 0 or not 1 <= limit <= 100:
         raise HTTPException(400, "分页参数非法")
-    total, items = repository.list_trips(db, offset, limit)
+    for v in (km_min, km_max):
+        if v is not None and not 0 <= v <= 1e6:
+            raise HTTPException(400, "里程参数非法")
+    if km_min is not None and km_max is not None and km_min > km_max:
+        raise HTTPException(400, "里程参数非法")
+    total, items = repository.list_trips(db, offset, limit, repository.TripFilter(
+        date_range=_date_range_or_400(frm, to),
+        from_city=from_city or None, to_city=to_city or None,
+        km_min=km_min, km_max=km_max))
     return TripsPage(total=total, items=items)
+
+
+@trips.get("/cities")
+def get_trip_cities(db: Session = Depends(database.get_db)) -> TripCities:
+    """行程起终点城市列表 (筛选下拉数据源)。"""
+    return repository.list_trip_cities(db)
 
 
 @trips.get("/sessions/{drive_id}")

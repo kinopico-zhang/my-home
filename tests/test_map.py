@@ -227,6 +227,19 @@ def test_diag_endpoint_logs_and_requires_auth(auth, capsys):
         "/tesla/map/api/diag", json={"stage": "x"}).status_code == 401
 
 
+def test_map_page_time_menu_in_filters_row(auth):
+    """足迹页没有独有筛选: 时间下拉 (含自定义日历) 放顶栏下方的筛选栏。"""
+    html = auth.get("/tesla/map").text
+    for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
+                 'data-v="180d"', 'data-v="1y"', 'data-v="all"',
+                 'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
+                 'class="filters"']:
+        assert frag in html, f"足迹页缺少 {frag}"
+    # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留页签菜单; 旧的 chips 行已删
+    assert '<div class="filters">\n    <details class="nav-menu time-menu" id="time-menu">' in html
+    assert "chips-range" not in html and ".chip {" not in html
+
+
 # ---------------------------------------------------------------- 视野内高精度轨迹
 BOX = {"w": 113, "s": 22, "e": 115, "n": 24}
 

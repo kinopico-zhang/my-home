@@ -16,8 +16,7 @@ from datetime import timezone as dt_timezone
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, case, func, or_, select
-from sqlalchemy.orm import (InstrumentedAttribute, Session, aliased,
-                            sessionmaker)
+from sqlalchemy.orm import InstrumentedAttribute, Session, aliased, sessionmaker
 from sqlalchemy.sql.selectable import Subquery
 
 from . import config
@@ -28,6 +27,7 @@ from .schemas import (
     ChargingSession,
     ChargingSessionDetail,
     ChargingSummary,
+    CityCount,
     CostUpdateResult,
     LocationStat,
     MapDetailTrack,
@@ -35,6 +35,7 @@ from .schemas import (
     MapTrack,
     MergedTrack,
     MonthlyStat,
+    TripCities,
     TripItem,
     TripTrack,
 )
@@ -314,6 +315,7 @@ class SessionFilter:
     sort: str               # SORT_OPTIONS 之一
     offset: int
     limit: int
+    city: str | None = None    # 充电城市 (空 = 全部)
 
 
 def list_charging_sessions(session: Session,
@@ -324,6 +326,9 @@ def list_charging_sessions(session: Session,
         rows = [row for row in rows if row.agg.is_fast]
     elif flt.charge_type == "slow":
         rows = [row for row in rows if not row.agg.is_fast]
+    if flt.city:      # 无地址/无城市的充电不参与城市筛选
+        rows = [row for row in rows
+                if row.address is not None and row.address.city == flt.city]
     total = len(rows)
     rows = _sorted_charge_rows(rows, flt.sort)
     page = rows[flt.offset:flt.offset + flt.limit]
@@ -381,6 +386,17 @@ def update_charging_cost(session: Session, session_id: int,
     session.commit()
     price = round(cost / base, 3) if cost is not None and base else None
     return CostUpdateResult(ok=True, cost=cost, price_per_kwh=price)
+
+
+def list_charging_cities(session: Session) -> list[CityCount]:
+    """充电城市列表 (按充电次数降序); 无城市信息的充电不参与筛选。"""
+    rows = session.execute(
+        select(Address.city, func.count())
+        .join(ChargingProcess, ChargingProcess.address_id == Address.id)
+        .where(Address.city.is_not(None), Address.city != "")
+        .group_by(Address.city)
+        .order_by(func.count().desc())).all()
+    return [CityCount(city=city, count=int(n)) for city, n in rows]
 
 
 def charging_summary(session: Session,
@@ -468,32 +484,90 @@ def _trip_item(drive: Drive, start_addr: str | None,
         to=_clean_addr(end_addr))
 
 
-def _trip_rows_stmt() -> Select[Any]:
-    """行程查询骨架: 只取已结束行程, 带起终点地址 (结束时间降序交给调用方)。"""
-    start_addr = aliased(Address)
-    end_addr = aliased(Address)
+@dataclass(frozen=True)
+class TripFilter:
+    """行程列表过滤条件 (顶栏时间 + 筛选行城市 / 里程)。"""
+
+    date_range: DateRange | None = None
+    from_city: str | None = None    # 起点城市 (空 = 全部)
+    to_city: str | None = None      # 终点城市 (空 = 全部)
+    km_min: float | None = None     # 里程下限 (km)
+    km_max: float | None = None     # 里程上限 (km)
+
+
+def _trip_rows_stmt(start_addr: type[Address],
+                    end_addr: type[Address]) -> Select[Any]:
+    """行程查询骨架: 只取已结束行程, 带起终点地址 (结束时间降序交给调用方)。
+
+    别名由调用方创建传入: 按起终城市过滤时, 计数与列表要共用同一组别名。
+    """
     return (select(Drive, start_addr.display_name, end_addr.display_name)
             .join(start_addr, Drive.start_address_id == start_addr.id, isouter=True)
             .join(end_addr, Drive.end_address_id == end_addr.id, isouter=True)
             .where(Drive.end_date.is_not(None)))
 
 
-def list_trips(session: Session, offset: int,
-               limit: int) -> tuple[int, list[TripItem]]:
-    """行程列表 (最新在前), total 为已结束行程总数。"""
+def _trip_conditions(start_addr: type[Address],
+                     end_addr: type[Address],
+                     flt: TripFilter | None) -> list[ColumnElement[bool]]:
+    """时间 / 起终城市 / 里程过滤条件 (计数与列表共用)。"""
+    conds = _range_conditions(Drive.start_date, flt.date_range if flt else None)
+    if flt:
+        if flt.from_city:
+            conds.append(start_addr.city == flt.from_city)
+        if flt.to_city:
+            conds.append(end_addr.city == flt.to_city)
+        if flt.km_min is not None:
+            conds.append(Drive.distance >= flt.km_min)
+        if flt.km_max is not None:
+            conds.append(Drive.distance <= flt.km_max)
+    return conds
+
+
+def list_trips(session: Session, offset: int, limit: int,
+               flt: TripFilter | None = None) -> tuple[int, list[TripItem]]:
+    """行程列表 (最新在前), total 为已结束行程数; 按出发时间/起终城市/里程过滤。"""
+    start_addr, end_addr = aliased(Address), aliased(Address)
+    conds = _trip_conditions(start_addr, end_addr, flt)
     total = session.scalar(
         select(func.count()).select_from(Drive)
-        .where(Drive.end_date.is_not(None))) or 0
+        .join(start_addr, Drive.start_address_id == start_addr.id, isouter=True)
+        .join(end_addr, Drive.end_address_id == end_addr.id, isouter=True)
+        .where(Drive.end_date.is_not(None), *conds)) or 0
     rows = session.execute(
-        _trip_rows_stmt().order_by(Drive.start_date.desc())
+        _trip_rows_stmt(start_addr, end_addr).where(*conds)
+        .order_by(Drive.start_date.desc())
         .offset(offset).limit(limit)).all()
     return int(total), [_trip_item(d, s, e) for d, s, e in rows]
+
+
+def _drive_city_counts(session: Session,
+                       address_id: InstrumentedAttribute[int | None]) -> list[CityCount]:
+    """某个地址角色 (起点/终点) 的城市计数 (按次数降序, 未结束行程不计)。"""
+    addr = aliased(Address)
+    rows = session.execute(
+        select(addr.city, func.count())
+        .select_from(Drive)
+        .join(addr, address_id == addr.id, isouter=True)
+        .where(Drive.end_date.is_not(None),
+               addr.city.is_not(None), addr.city != "")
+        .group_by(addr.city)
+        .order_by(func.count().desc())).all()
+    return [CityCount(city=city, count=int(n)) for city, n in rows]
+
+
+def list_trip_cities(session: Session) -> TripCities:
+    """行程起终点城市列表 (筛选下拉数据源)。"""
+    return TripCities(
+        start=_drive_city_counts(session, Drive.start_address_id),
+        end=_drive_city_counts(session, Drive.end_address_id))
 
 
 def get_trip(session: Session, drive_id: int) -> TripItem | None:
     """单条行程 (未结束 / 不存在返回 None)。"""
     rows = session.execute(
-        _trip_rows_stmt().where(Drive.id == drive_id)).all()
+        _trip_rows_stmt(aliased(Address), aliased(Address))
+        .where(Drive.id == drive_id)).all()
     return _trip_item(rows[0][0], rows[0][1], rows[0][2]) if rows else None
 
 
@@ -528,7 +602,8 @@ def merged_track(session: Session, ids: Sequence[int]) -> MergedTrack:
     - 每段下采样到 max(MERGED_TRACK_PER_MIN, 预算/段数) 点。
     """
     drive_rows = session.execute(
-        _trip_rows_stmt().where(Drive.id.in_(ids))
+        _trip_rows_stmt(aliased(Address), aliased(Address))
+        .where(Drive.id.in_(ids))
         .order_by(Drive.start_date)).all()
     if len(drive_rows) != len(set(ids)):
         raise NotFound("包含不存在或未完成的行程")

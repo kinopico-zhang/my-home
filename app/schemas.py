@@ -186,6 +186,20 @@ class TripsPage(BaseModel):
     items: list[TripItem]
 
 
+class CityCount(BaseModel):
+    """城市筛选项 (下拉数据源: 城市名 + 出现次数)。"""
+
+    city: str
+    count: int
+
+
+class TripCities(BaseModel):
+    """行程页起点 / 终点城市列表。"""
+
+    start: list[CityCount]
+    end: list[CityCount]
+
+
 class TripTrack(BaseModel):
     """单条行程全精度轨迹: pts 为 [lng, lat, speed_km_h, power_W]
     (power 正=放电 负=动能回收, 可能为 null); ts 为相对起点的秒偏移
