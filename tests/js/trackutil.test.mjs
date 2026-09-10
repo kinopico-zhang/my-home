@@ -250,3 +250,23 @@ test("bearingDeg: 北 0 东 90 南 180 西 270", () => {
   assert.equal(Math.round(TrackUtil.bearingDeg([114, 22], [114, 22 - 0.01])), 180);
   assert.equal(Math.round(TrackUtil.bearingDeg([114, 22], [114 - 0.01, 22])), 270);
 });
+
+/* ---- lngLatToTile (播放前预载沿途瓦片: slippy 瓦片格坐标) ---- */
+test("lngLatToTile: 原点/边界 (z1 半球格)", () => {
+  assert.deepEqual(TrackUtil.lngLatToTile(0, 0, 1), [1, 1]);
+  assert.deepEqual(TrackUtil.lngLatToTile(-180, 0, 1), [0, 1]);
+  assert.deepEqual(TrackUtil.lngLatToTile(0, 85.05, 1), [1, 0]);
+  assert.deepEqual(TrackUtil.lngLatToTile(0, -85.05, 1), [1, 1]);
+});
+
+test("lngLatToTile: 北京 z10 = 843/387 (OSM 标准参考值)", () => {
+  assert.deepEqual(TrackUtil.lngLatToTile(116.39, 39.91, 10), [843, 387]);
+});
+
+test("lngLatToTile: 纬度超出墨卡托范围被钳制, 不产生 NaN", () => {
+  /* 恰在 ±85.05112878° 边界上 floor 结果有 1 格浮点抖动, 断言"有限且贴边" */
+  const north = TrackUtil.lngLatToTile(116, 99, 10);
+  const south = TrackUtil.lngLatToTile(116, -99, 10);
+  assert.ok(north.every(Number.isFinite) && north[1] <= 1);
+  assert.ok(south.every(Number.isFinite) && south[1] >= 1022);
+});
