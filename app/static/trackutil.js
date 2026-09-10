@@ -62,6 +62,16 @@
     return lines;
   }
 
-  return { splitGaps: splitGaps, speedLines: speedLines,
+  /* ---- 动画: 已播放毫秒 → 当前点序号 ----
+     Chrome 的 rAF 回调时间戳是"帧开始时刻", 可能早于 scheduling 前一刻取的
+     performance.now() (t0)。命中缓存的轨迹在同一帧内开播就会得到负 t →
+     负下标 → 读 pts[-3][2] 直接崩溃, 表现为"这条轨迹没有动画" (Safari 时间戳
+     不回退所以不复现)。钳制 elapsed 到 [0, dur], 序号到 [0, n-1]。 */
+  function animIndex(elapsed, dur, n) {
+    const t = Math.min(Math.max(elapsed / dur, 0), 1);
+    return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
+  }
+
+  return { splitGaps: splitGaps, speedLines: speedLines, animIndex: animIndex,
            speedBucket: speedBucket, SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
 });

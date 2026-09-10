@@ -91,6 +91,9 @@ def test_public_paths_accessible_without_login(client):
     assert client.get("/tesla/static/gcj02.js").status_code == 200
     assert client.get("/tesla/static/trackutil.js").status_code == 200
     assert client.get("/tesla/static/favicon.svg").status_code == 200
+    # Safari 不支持 SVG favicon, 需要 PNG 版 + iOS 主屏 apple-touch-icon
+    assert client.get("/tesla/static/favicon-32.png").status_code == 200
+    assert client.get("/tesla/static/apple-touch-icon.png").status_code == 200
 
 
 def test_old_paths_are_gone(client):
@@ -132,3 +135,14 @@ def test_cache_control_headers(auth):
     assert anon.get("/tesla/map/api/config").headers["cache-control"] == "no-store"
     for path in ("/tesla/charging", "/tesla/map", "/tesla/trips", "/tesla/login"):
         assert auth.get(path).headers["cache-control"] == "no-cache", path
+
+
+def test_all_pages_declare_png_and_touch_icons(client):
+    """每个页面都要有 PNG favicon + apple-touch-icon (Safari/iOS 看不见 SVG)。"""
+    for page in ["login", "index", "map", "trips"]:
+        r = client.get(f"/tesla/{page}", follow_redirects=False)
+        if r.status_code == 302:      # 未登录跳转的页面换成登录后取
+            r = client.get(f"/tesla/{page}")
+        body = r.text
+        assert 'favicon-32.png' in body, f"{page} 缺 PNG favicon"
+        assert 'apple-touch-icon.png' in body, f"{page} 缺 apple-touch-icon"

@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<link rel="icon" type="image/png" sizes="32x32" href="/tesla/static/favicon-32.png">
 <link rel="icon" type="image/svg+xml" href="/tesla/static/favicon.svg">
+<link rel="apple-touch-icon" href="/tesla/static/apple-touch-icon.png">
   <title>行程轨迹 · My Tesla</title>
 <style>
 /* ---------- 设计令牌: 与充电/地图页一致的 iOS 暗色 ---------- */
@@ -215,7 +217,7 @@ main { max-width: 1180px; margin: 0 auto; }
 </div>
 
 <script src="/tesla/static/gcj02.js?v=1"></script>
-<script src="/tesla/static/trackutil.js?v=3"></script>
+<script src="/tesla/static/trackutil.js?v=4"></script>
 <script>
 "use strict";
 /* ============================ 工具 ============================ */
@@ -382,13 +384,25 @@ function tripMsg(text, spin) {
 let animRaf = 0;
 let animating = false;
 let animFinish = null;      // 当前动画的收尾函数 (跳过时直接呈现最终状态)
+let animShift = 0;          // 标签页处于后台的累计时长, 从动画时钟中扣除
+let animHiddenAt = 0;       // 转入后台的时刻 (0 = 当前在前台)
 
 function stopAnim() {
   if (animRaf) cancelAnimationFrame(animRaf);
   animRaf = 0;
   animating = false;
   animFinish = null;
+  animShift = 0;
+  animHiddenAt = 0;
 }
+
+/* 切后台时 rAF 停发; 回前台把后台时长从动画时钟里扣除, 动画从暂停处继续
+   (而不是按流逝的墙钟时间直接跳到终点)。 */
+document.addEventListener("visibilitychange", () => {
+  if (!animating) { animHiddenAt = 0; return; }
+  if (document.hidden) animHiddenAt = performance.now();
+  else if (animHiddenAt) { animShift += performance.now() - animHiddenAt; animHiddenAt = 0; }
+});
 
 function skipAnim() {
   if (!animating || !animFinish) return;
@@ -444,8 +458,9 @@ function playTrack(pts) {
   (function frame(now) {
     if (!animating) return;
     try {
-      const t = Math.min((now - t0) / dur, 1);
-      const idx = Math.round(t * (N - 1));
+      // Chrome 的 rAF 时间戳可能早于 t0 (见 trackutil.animIndex 注释), 必须钳制
+      const elapsed = now - t0 - animShift;
+      const idx = TrackUtil.animIndex(elapsed, dur, N);
       if (idx !== lastIdx) {
         lastIdx = idx;
         head.setCenter(path[idx]);
@@ -456,7 +471,7 @@ function playTrack(pts) {
           progress.setPath(path.slice(0, idx + 1));
         }
       }
-      if (t < 1) { animRaf = requestAnimationFrame(frame); return; }
+      if (elapsed < dur) { animRaf = requestAnimationFrame(frame); return; }
     } catch (e) {
       console.error("轨迹动画异常, 直接展示全程", e);   // 兜底: 不留冻结画面
     }
