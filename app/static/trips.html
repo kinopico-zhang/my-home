@@ -57,16 +57,14 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 }
 .logout-btn:active { color: var(--ink-1); }
 
-main { max-width: 1180px; margin: 0 auto; }
+main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
 
-/* ---------- 瀑布流 ---------- */
-#masonry { display: flex; gap: 10px; padding: 8px 14px 10px; align-items: flex-start; transition: opacity .25s; }
-#masonry.dim { opacity: .45; pointer-events: none; }
-.m-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-@media (max-width: 719px) { #masonry { padding: 8px 12px 10px; } }
+/* ---------- 行程列表 (单列) ---------- */
+#list { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; }
+@media (max-width: 719px) { #list { padding: 8px 12px 10px; } }
 
 /* ---------- 行程卡片 ---------- */
 .card-t {
@@ -160,6 +158,34 @@ main { max-width: 1180px; margin: 0 auto; }
   width: 74px; height: 5px; border-radius: 3px;
   background: linear-gradient(to right, #e5484d, #e08a2e, #d9b42a, #9dbb32, #1fa349);
 }
+.spd-legend .gap { width: 16px; border-top: 2.5px dashed #3987e5; }
+
+/* ---------- 播放控制条 ---------- */
+.playbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 4px 4px 10px; }
+.pb-btn {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface-3); color: var(--ink-1);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .12s;
+}
+.pb-btn:active { transform: scale(.9); }
+.pb-speed {
+  flex: none; width: 44px; font-size: 12px; color: var(--ink-2);
+  border: 1px solid var(--hairline); border-radius: 999px; padding: 5px 0;
+  font-variant-numeric: tabular-nums;
+}
+.pb-seek { flex: 1; -webkit-appearance: none; appearance: none; height: 28px; background: transparent; cursor: pointer; }
+.pb-seek::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--blue) var(--pb, 0%), var(--surface-3) var(--pb, 0%));
+}
+.pb-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: #fff; margin-top: -5.5px; box-shadow: 0 1px 4px rgba(0,0,0,.55);
+}
+.pb-seek::-moz-range-track { height: 4px; border-radius: 2px; background: var(--surface-3); }
+.pb-seek::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--blue); }
+.pb-seek::-moz-range-thumb { width: 15px; height: 15px; border: 0; border-radius: 50%; background: #fff; }
 </style>
 </head>
 <body>
@@ -181,7 +207,7 @@ main { max-width: 1180px; margin: 0 auto; }
     <h2>行程轨迹</h2>
     <span class="count-badge" id="count-badge"></span>
   </div>
-  <div id="masonry"></div>
+  <div id="list"></div>
 
   <div class="tail" id="tail" hidden>
     <div class="spin" id="loader-spin" hidden></div>
@@ -204,11 +230,16 @@ main { max-width: 1180px; margin: 0 auto; }
   <div class="sh-cells">
     <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
     <div class="sh-cell"><div class="lb">时长</div><div class="val" id="sh-dur">–</div></div>
-    <div class="sh-cell"><div class="lb">最高车速</div><div class="val" id="sh-spd">–</div></div>
+    <div class="sh-cell"><div class="lb" id="sh-spd-lb">最高车速</div><div class="val" id="sh-spd">–</div></div>
+  </div>
+  <div class="playbar" id="playbar" hidden>
+    <button id="pb-toggle" class="pb-btn" aria-label="暂停"></button>
+    <input type="range" id="pb-seek" class="pb-seek" min="0" max="1000" step="1" value="0">
+    <button id="pb-speed" class="pb-speed">1×</button>
   </div>
   <div class="trip-map-wrap">
     <div id="trip-map"></div>
-    <div class="spd-legend"><span>慢</span><i class="bar"></i><span>快</span></div>
+    <div class="spd-legend"><span>慢</span><i class="bar"></i><span>快</span><i class="gap"></i><span>缺失</span></div>
     <div class="trip-msg" id="trip-msg">
       <div class="spin" id="trip-spin" hidden></div>
       <div id="trip-msg-text">正在加载轨迹…</div>
@@ -217,7 +248,7 @@ main { max-width: 1180px; margin: 0 auto; }
 </div>
 
 <script src="/tesla/static/gcj02.js?v=1"></script>
-<script src="/tesla/static/trackutil.js?v=4"></script>
+<script src="/tesla/static/trackutil.js?v=5"></script>
 <script>
 "use strict";
 /* ============================ 工具 ============================ */
@@ -246,6 +277,12 @@ function fmtDur(min) {
   return h ? `${h}小时${m ? m + "分" : ""}` : `${m}分钟`;
 }
 const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
+/* 播放中实时时长: 秒 → "m:ss" / "h:mm:ss" */
+function fmtDurLive(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -254,29 +291,12 @@ async function getJSON(url) {
   return r.json();
 }
 
-/* ============================ 瀑布流列表 ============================ */
+/* ============================ 行程列表 (单列) ============================ */
 const PAGE = 24;
 const state = { offset: 0, total: 0, loading: false, done: false, err: null };
-const itemsById = new Map();
-const trackCache = new Map();       // id → 全精度 pts
+const trackCache = new Map();       // id → {pts, ts} 全精度轨迹
 
-const masonryEl = $("#masonry");
-let mCols = [], cardEls = [];
-
-function colCount(w) { return w >= 1100 ? 4 : w >= 720 ? 3 : 2; }
-function buildColumns() {
-  const n = colCount(masonryEl.clientWidth);
-  if (mCols.length === n) return;
-  mCols.forEach(c => c.remove());
-  mCols = Array.from({ length: n }, () => {
-    const c = document.createElement("div");
-    c.className = "m-col"; masonryEl.appendChild(c); return c;
-  });
-  cardEls.forEach(el => shortestCol().appendChild(el));
-}
-function shortestCol() {
-  return mCols.reduce((a, b) => (a.offsetHeight <= b.offsetHeight ? a : b));
-}
+const listEl = $("#list");
 
 function renderCard(it) {
   const el = document.createElement("article");
@@ -307,6 +327,8 @@ function setTail() {
   $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
 }
 
+const PRELOAD_PX = 800;   // 触底前多远开始预加载 (IO rootMargin 与链式续载共用)
+
 async function loadMore() {
   if (state.loading || state.done) return;
   state.loading = true; state.err = null; setTail();
@@ -314,28 +336,23 @@ async function loadMore() {
     const d = await getJSON(`/tesla/trips/api/sessions?offset=${state.offset}&limit=${PAGE}`);
     state.total = d.total; state.offset += d.items.length;
     if (state.offset >= d.total) state.done = true;
-    buildColumns();
-    d.items.forEach(it => {
-      itemsById.set(it.id, it);
-      const el = renderCard(it); cardEls.push(el); shortestCol().appendChild(el);
-    });
+    d.items.forEach(it => listEl.appendChild(renderCard(it)));
   } catch (e) {
     state.err = "数据加载失败: " + e.message;
   }
   state.loading = false; setTail();
+  /* 首页填不满"视口+预载区"时, tail 一直留在交叉区里, IntersectionObserver
+     只在进出过渡时回调, 不会再触发 —— 主动续载直到 tail 滚出预载区。
+     (Chrome 桌面端宽屏下 24 张卡不足一屏, 曾因此永远卡在第一页。) */
+  if (!state.done && !state.err &&
+      tailEl.getBoundingClientRect().top < window.innerHeight + PRELOAD_PX)
+    loadMore();
 }
 
-/* 懒加载: 触底前 800px 预加载下一页 */
+/* 懒加载: 触底前 PRELOAD_PX 预加载下一页 */
 new IntersectionObserver(es => {
   if (es[0].isIntersecting) loadMore();
-}, { rootMargin: "800px" }).observe(tailEl);
-
-/* 列数变化时重排 (保持时间顺序) */
-let resizeTimer;
-new ResizeObserver(() => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(buildColumns, 120);
-}).observe(document.body);
+}, { rootMargin: PRELOAD_PX + "px" }).observe(tailEl);
 
 $("#retry").addEventListener("click", () => { state.err = null; loadMore(); });
 $("#logout").addEventListener("click", async () => {
@@ -382,52 +399,50 @@ function tripMsg(text, spin) {
 /* ---------- 轨迹动画: 起点跑到终点, 视角跟随, 结束后拉远看全局 ----------
    背景: 速度色全程线 (淡); 前进: 白色亮线逐帧生长; 头部: 当前速度色圆点。 */
 let animRaf = 0;
-let animating = false;
-let animFinish = null;      // 当前动画的收尾函数 (跳过时直接呈现最终状态)
-let animShift = 0;          // 标签页处于后台的累计时长, 从动画时钟中扣除
-let animHiddenAt = 0;       // 转入后台的时刻 (0 = 当前在前台)
+let anim = null;            // 当前播放会话 (playTrack 创建, 控制条/收尾引用)
 
 function stopAnim() {
   if (animRaf) cancelAnimationFrame(animRaf);
   animRaf = 0;
-  animating = false;
-  animFinish = null;
-  animShift = 0;
-  animHiddenAt = 0;
+  anim = null;
+  $("#playbar").hidden = true;
 }
 
-/* 切后台时 rAF 停发; 回前台把后台时长从动画时钟里扣除, 动画从暂停处继续
-   (而不是按流逝的墙钟时间直接跳到终点)。 */
-document.addEventListener("visibilitychange", () => {
-  if (!animating) { animHiddenAt = 0; return; }
-  if (document.hidden) animHiddenAt = performance.now();
-  else if (animHiddenAt) { animShift += performance.now() - animHiddenAt; animHiddenAt = 0; }
-});
-
+/* 播放中点一下地图 = 跳过动画, 直接收尾 (亮线删除, 淡线变亮, 拉远全局) */
 function skipAnim() {
-  if (!animating || !animFinish) return;
-  const f = animFinish;
-  stopAnim();
-  f();                      // 亮线删除, 淡线变亮, 拉远全局
+  if (anim) anim.finish();
 }
 
-function playTrack(pts) {
+function playTrack(pts, ts, it) {
   stopAnim();
-  animating = true;
   const gcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
   const path = pts.map(gcj);                    // 全量坐标转换一次, 逐帧只切片
   const N = path.length;
+  const cum = TrackUtil.cumDistKm(pts);         // 播放中的实时里程
+  // 跟随时长按点数缩放: 4~12s (1× 基准)
+  const dur = Math.min(Math.max(N / 400, 4), 12) * 1000;
+  const growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
   // 背景全程速度线 (淡) —— 终点拉远后就是完整的速度色全局图
+  const segs = TrackUtil.splitGaps(pts);
   const bgLines = [];
-  for (const seg of TrackUtil.splitGaps(pts))
+  for (const seg of segs)
     for (const b of TrackUtil.speedLines(seg))
       bgLines.push(new AMap.Polyline({
         path: b.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
         strokeColor: b.color, strokeOpacity: 0.28, strokeWeight: 4,
         lineJoin: "round", zIndex: 50,
       }));
-  tripMap.add(bgLines);
+  // GPS 断档处 (隧道/信号丢失) 没有真实采样, 用蓝色虚线示意连接
+  const gapLines = [];
+  for (const g of TrackUtil.gapsBetween(segs))
+    gapLines.push(new AMap.Polyline({
+      path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
+      strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
+      lineJoin: "round", zIndex: 50,
+    }));
+  const allLines = bgLines.concat(gapLines);
+  tripMap.add(allLines);
 
   const progress = new AMap.Polyline({
     path: [path[0]], strokeColor: "#f5f5f7", strokeWeight: 4.5,
@@ -439,44 +454,72 @@ function playTrack(pts) {
   });
   tripMap.add([progress, head]);
 
-  const finish = () => {
-    stopAnim();
-    animFinish = null;
-    tripMap.remove([progress, head]);
-    bgLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));   // 淡线变亮
-    tripMap.setFitView(bgLines, false, [46, 46, 46, 46]);       // 拉远 → 全局视角
+  /* 播放中: 里程/时长/车速实时跳动; 收尾停在整体值, 车速标签换回"最高车速" */
+  $("#sh-spd-lb").textContent = "车速";
+  const setLive = idx => {
+    $("#sh-km").innerHTML = cum[idx].toFixed(1) + "<small>km</small>";
+    $("#sh-dur").textContent = fmtDurLive(ts[idx] || 0);
+    $("#sh-spd").innerHTML = Math.round(pts[idx][2] || 0) + "<small>km/h</small>";
+  };
+  const setOfficial = () => {
+    $("#sh-km").innerHTML = num(it.km) + "<small>km</small>";
+    $("#sh-dur").textContent = fmtDur(it.min);
+    $("#sh-spd-lb").textContent = "最高车速";
+    $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
   };
 
-  animFinish = finish;      // 播放中点地图 → 跳过动画直接收尾
-
-  // 跟随时长按点数缩放: 4~12s
-  const dur = Math.min(Math.max(N / 400, 4), 12) * 1000;
-  tripMap.setZoomAndCenter(15, path[0], true);
-  const t0 = performance.now();
-  const growStep = Math.max(1, Math.floor(N / 200));   // 亮线分块生长: 每帧全量重建太卡
-  let lastIdx = -1, drawn = 0;
-  (function frame(now) {
-    if (!animating) return;
-    try {
-      // Chrome 的 rAF 时间戳可能早于 t0 (见 trackutil.animIndex 注释), 必须钳制
-      const elapsed = now - t0 - animShift;
-      const idx = TrackUtil.animIndex(elapsed, dur, N);
-      if (idx !== lastIdx) {
-        lastIdx = idx;
-        head.setCenter(path[idx]);
-        head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[idx][2] || 0)] });
-        tripMap.setCenter(path[idx], true);     // 视角紧贴头部 (immediately=不排队动画)
-        if (idx - drawn >= growStep) {          // 头部圆点/视角逐帧, 白线按块追长
-          drawn = idx;
-          progress.setPath(path.slice(0, idx + 1));
-        }
+  const s = {
+    pts, N, dur, playT: 0, speed: 1, paused: false, seeking: false,
+    finished: false, lastIdx: -1, drawn: 0,
+    apply(idx) {                 // 播放头落到 idx: 地图与统计一起走 (拖进度条也走这里)
+      if (idx === s.lastIdx) return;
+      s.lastIdx = idx;
+      head.setCenter(path[idx]);
+      head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[idx][2] || 0)] });
+      tripMap.setCenter(path[idx], true);     // 视角紧贴头部 (immediately=不排队动画)
+      if (idx < s.drawn) s.drawn = 0;         // 拖进度条回退: 白线从头重建
+      if (idx - s.drawn >= growStep || idx === N - 1) {
+        s.drawn = idx;
+        progress.setPath(path.slice(0, idx + 1));
       }
-      if (elapsed < dur) { animRaf = requestAnimationFrame(frame); return; }
-    } catch (e) {
-      console.error("轨迹动画异常, 直接展示全程", e);   // 兜底: 不留冻结画面
-    }
-    finish();
-  })(t0);
+      setLive(idx);
+    },
+    finish() {
+      if (s.finished) return;
+      s.finished = true;
+      stopAnim();
+      tripMap.remove([progress, head]);
+      allLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));  // 淡线变亮
+      tripMap.setFitView(allLines, false, [46, 46, 46, 46]);      // 拉远 → 全局视角
+      setOfficial();
+    },
+  };
+  anim = s;
+
+  // 播放控制条复位 (图标/倍速标签由各控件自己的 state 恢复)
+  pbSeek.value = 0;
+  pbSeek.style.setProperty("--pb", "0%");
+  pbToggle.innerHTML = ICON_PAUSE;
+  pbToggle.setAttribute("aria-label", "暂停");
+  pbSpeed.textContent = "1×";
+  $("#playbar").hidden = false;
+
+  tripMap.setZoomAndCenter(15, path[0], true);
+  let lastNow = 0;
+  (function frame(now) {
+    if (anim !== s) return;                    // 会话已被停止/跳过/替换
+    // 帧间隔钳制 [0, 100ms]: Chrome 的 rAF 时间戳可能比上一帧还早 (见
+    // trackutil.animIndex 注释); 切后台回来会有超大间隔 —— 都不该让播放头跳跃
+    const dt = Math.max(0, Math.min(now - lastNow, 100));
+    lastNow = now;
+    if (!s.paused && !s.seeking)
+      s.playT = Math.min(s.playT + dt * s.speed, dur);
+    s.apply(TrackUtil.animIndex(s.playT, dur, N));
+    pbSeek.value = Math.round(s.playT / dur * 1000);
+    pbSeek.style.setProperty("--pb", (s.playT / dur * 100).toFixed(1) + "%");
+    if (s.playT >= dur) { s.finish(); return; }   // 播完自动收尾
+    animRaf = requestAnimationFrame(frame);
+  })(performance.now());
 }
 
 function closeTrip() {
@@ -491,6 +534,7 @@ async function openTrip(it) {
   $("#sh-time").textContent = (it.end ? fmtTime(it.start) + " – " + fmtTime(it.end) : "");
   $("#sh-km").innerHTML = num(it.km) + "<small>km</small>";
   $("#sh-dur").textContent = fmtDur(it.min);
+  $("#sh-spd-lb").textContent = "最高车速";
   $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
   $("#sheet").classList.add("show");
   $("#backdrop").classList.add("show");
@@ -509,20 +553,45 @@ async function openTrip(it) {
     }
     tripMap.clearMap();
 
-    let pts = trackCache.get(it.id);
-    if (!pts) {
-      const d = await getJSON(`/tesla/trips/api/${it.id}/track`);
-      trackCache.set(it.id, d.pts);
-      pts = d.pts;
+    let c = trackCache.get(it.id);
+    if (!c) {
+      c = await getJSON(`/tesla/trips/api/${it.id}/track`);
+      trackCache.set(it.id, c);
     }
     if (seq !== openSeq) return;
 
     tripMsg(null, false);
-    playTrack(pts);      // 动态播放: 起点跑向终点, 视角跟随, 结束后拉远全局
+    playTrack(c.pts, c.ts || [], it);   // 动态播放: 起点跑向终点, 视角跟随, 结束后拉远全局
   } catch (e) {
     if (seq === openSeq) tripMsg(String(e.message || e), false);
   }
 }
+
+/* ---------- 播放控制条: 只绑定一次, 操作当前 anim 会话 ---------- */
+const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed");
+const PB_SPEEDS = [1, 2, 4, 8];
+const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7.5 4.6v14.8L20 12z" fill="currentColor"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M6.6 4.8h4.1v14.4H6.6zM13.3 4.8h4.1v14.4h-4.1z" fill="currentColor"/></svg>';
+
+pbToggle.addEventListener("click", () => {
+  if (!anim) return;
+  anim.paused = !anim.paused;
+  pbToggle.innerHTML = anim.paused ? ICON_PLAY : ICON_PAUSE;
+  pbToggle.setAttribute("aria-label", anim.paused ? "播放" : "暂停");
+});
+pbSeek.addEventListener("input", () => {         // 拖动进度: 立即生效 (暂停中也生效)
+  if (!anim) return;
+  anim.playT = pbSeek.value / 1000 * anim.dur;
+  anim.apply(TrackUtil.animIndex(anim.playT, anim.dur, anim.N));
+});
+pbSeek.addEventListener("pointerdown", () => { if (anim) anim.seeking = true; });
+for (const ev of ["pointerup", "pointercancel"])
+  pbSeek.addEventListener(ev, () => { if (anim) anim.seeking = false; });
+pbSpeed.addEventListener("click", () => {        // 倍速循环 1×→2×→4×→8×
+  if (!anim) return;
+  anim.speed = PB_SPEEDS[(PB_SPEEDS.indexOf(anim.speed) + 1) % PB_SPEEDS.length];
+  pbSpeed.textContent = anim.speed + "×";
+});
 
 $("#backdrop").addEventListener("click", closeTrip);
 $("#grab").addEventListener("click", closeTrip);
