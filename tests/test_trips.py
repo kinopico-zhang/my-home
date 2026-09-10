@@ -339,6 +339,11 @@ def test_trips_page_time_menu_and_filter_row(auth):
                  'p.set("from_city", state.fromCity)', 'p.set("km_min", kb.min)']:
         assert frag in html, f"行程页缺少 {frag}"
     assert "chips-range" not in html
+    for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu',
+              'fc-opts', 'tc-opts', 'km-opts'):
+        assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
+
+
 def test_trips_page_has_playbar_and_single_column(auth):
     """播放控制条 (暂停/进度/倍速) + 单列列表 + 断档图例 都在页面上。"""
     html = auth.get("/tesla/trips").text

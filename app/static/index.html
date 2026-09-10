@@ -52,11 +52,18 @@ header {
   backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--hairline);
 }
-.nav-row { display: flex; align-items: baseline; gap: 10px; }
-h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
-.car-pill { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+/* 顶栏一行: 全部 nowrap + 不许压缩换行 (窄屏字号收一档);
+   车名 pill 兜底吸收挤压 (省略号), 更窄 (≤359px) 干脆让位隐藏 */
+.nav-row { display: flex; align-items: baseline; gap: 8px; }
+.nav-row > * { flex-shrink: 0; }
+h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
+.car-pill {
+  font-size: 11px; color: var(--ink-2); font-weight: 500; flex-shrink: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+@media (max-width: 359px) { .car-pill { display: none; } }
 .logout-btn {
-  align-self: center; font-size: 12px; color: var(--ink-3);
+  align-self: center; font-size: 11.5px; color: var(--ink-3); white-space: nowrap;
   padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
   transition: color .15s;
 }
@@ -66,8 +73,8 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 .nav-menu { position: relative; align-self: center; margin-left: auto; }
 .nav-menu summary {
   display: flex; align-items: center; gap: 5px;
-  font-size: 12.5px; color: var(--ink-1); background: var(--surface-2);
-  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  font-size: 12px; color: var(--ink-1); background: var(--surface-2);
+  padding: 4px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
   list-style: none; -webkit-user-select: none; user-select: none;
 }
 .nav-menu summary::-webkit-details-marker { display: none; }
