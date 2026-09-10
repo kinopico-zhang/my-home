@@ -109,7 +109,7 @@ h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
 }
 .chip.on { background: rgba(57,135,229,.20); color: #7db3f0; border-color: rgba(57,135,229,.35); }
 
-main { max-width: 1200px; margin: 0 auto; }
+main { max-width: 760px; margin: 0 auto; }
 
 /* ---------- 统计卡片横滑行 ---------- */
 .snap-row {
@@ -133,6 +133,7 @@ main { max-width: 1200px; margin: 0 auto; }
 .charts-grid::-webkit-scrollbar { display: none; }
 @media (min-width: 900px) {
   .charts-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: visible; }
+  .charts-grid .chart-card { width: auto; }   /* 覆盖 min(86vw,430px): 填满网格单元 */
 }
 .chart-card {
   flex: none; width: min(86vw, 430px); scroll-snap-align: start;
@@ -158,9 +159,9 @@ main { max-width: 1200px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
-#masonry { display: flex; gap: 10px; padding: 8px 14px 10px; align-items: flex-start; transition: opacity .25s; }
+/* 单列列表 (与行程页一致, 手机优先) */
+#masonry { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; transition: opacity .25s; }
 #masonry.dim { opacity: .45; pointer-events: none; }
-.m-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .card-s {
   background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
   padding: 12px 13px; cursor: pointer; overflow: hidden;
@@ -639,23 +640,9 @@ bindViewToggle("#loc-view", [locEl], $("#table-loc"));
 
 /* ============================ 瀑布流 ============================ */
 const masonryEl = $("#masonry");
-let mCols = [], cardEls = [];
 const itemsById = new Map();
 
-function colCount(w) { return w >= 1100 ? 4 : w >= 720 ? 3 : 2; }
-function buildColumns(force) {
-  const n = colCount(masonryEl.clientWidth);
-  if (!force && mCols.length === n) return;
-  mCols = Array.from({ length: n }, () => {
-    const c = document.createElement("div");
-    c.className = "m-col"; masonryEl.appendChild(c); return c;
-  });
-  cardEls.forEach(el => shortestCol().appendChild(el));
-}
-function shortestCol() {
-  return mCols.reduce((a, b) => (a.offsetHeight <= b.offsetHeight ? a : b));
-}
-function clearCards() { mCols.forEach(c => (c.innerHTML = "")); cardEls = []; itemsById.clear(); }
+function clearCards() { masonryEl.innerHTML = ""; itemsById.clear(); }
 
 function renderCard(it) {
   const el = document.createElement("article");
@@ -688,6 +675,8 @@ function setTail() {
   $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
 }
 
+const PRELOAD_PX = 800;   // 触底前多远开始预加载 (IO rootMargin 与链式续载共用)
+
 async function loadMore(reset) {
   if (state.loading || (state.done && !reset)) return;
   state.loading = true; state.err = null; setTail();
@@ -698,29 +687,30 @@ async function loadMore(reset) {
     if (state.offset >= d.total) state.done = true;
     d.items.forEach(it => {
       itemsById.set(it.id, it);
-      const el = renderCard(it); cardEls.push(el); shortestCol().appendChild(el);
+      masonryEl.appendChild(renderCard(it));
     });
   } catch (e) {
     state.err = "数据加载失败: " + e.message;
   }
   state.loading = false; setTail();
+  /* 首页填不满"视口+预载区"时, tail 一直留在交叉区里, IntersectionObserver
+     只在进出过渡时回调, 不会再触发 —— 主动续载直到 tail 滚出预载区。
+     (Chrome 桌面端宽屏下 24 张卡不足一屏, 曾因此永远卡在第一页。) */
+  if (!state.done && !state.err &&
+      tailEl.getBoundingClientRect().top < window.innerHeight + PRELOAD_PX)
+    loadMore(false);
 }
 
-/* 懒加载: 触底前 800px 预加载下一页 */
+/* 懒加载: 触底前 PRELOAD_PX 预加载下一页 */
 new IntersectionObserver(es => {
   if (es[0].isIntersecting) loadMore(false);
-}, { rootMargin: "800px" }).observe(tailEl);
+}, { rootMargin: PRELOAD_PX + "px" }).observe(tailEl);
 
-/* 列数变化时重排 (保持时间顺序) */
+/* 窗口尺寸变化: 图表重绘 (列表已单列, 无需重排) */
 let resizeTimer;
 new ResizeObserver(() => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    const n = colCount(masonryEl.clientWidth);
-    if (n !== mCols.length) {
-      masonryEl.querySelectorAll(".m-col").forEach(c => c.remove());
-      buildColumns(true);
-    }
     [chMonthlyKw, chMonthlyCost, chLoc].forEach(c => c && c.resize());
   }, 120);
 }).observe(document.body);
@@ -974,12 +964,8 @@ function applyCostUpdate(id, cost, ppk) {
   const it = itemsById.get(id);
   if (it) {
     it.cost = cost; it.price_per_kwh = ppk;
-    const old = cardEls.find(el => +el.dataset.id === id);
-    if (old) {
-      const nw = renderCard(it);
-      old.replaceWith(nw);
-      cardEls[cardEls.indexOf(old)] = nw;
-    }
+    const old = masonryEl.querySelector(`.card-s[data-id="${id}"]`);
+    if (old) old.replaceWith(renderCard(it));
   }
   const det = detailCache.get(id);
   if (det) { det.cost = cost; det.price_per_kwh = ppk; }
@@ -1011,7 +997,6 @@ $("#logout").addEventListener("click", async () => {
   location.href = "/tesla/login";
 });
 (async () => {
-  buildColumns(true);
   try {
     const cars = await getJSON("/tesla/charging/api/car");
     if (cars[0]) $("#car-pill").textContent = `${cars[0].model} · ${cars[0].name}`;
