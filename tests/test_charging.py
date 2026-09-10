@@ -293,3 +293,14 @@ def test_charging_page_single_column_and_lazy_chain(auth):
         assert frag in html, f"充电页缺少 {frag}"
     # 多列瀑布流的列容器/列数逻辑已删
     assert "m-col" not in html and "colCount" not in html
+
+
+def test_charging_page_soc_axis_fixed_and_dense(auth):
+    """SOC 轴固定 0-100% 量程: 标签按真实百分比定位 (贴边的 space-between 读起来像自适应);
+    电量与费用并入一行, 收紧卡片纵向留白。"""
+    html = auth.get("/tesla/charging").text
+    assert "soc-lbl" not in html                 # 贴边标签行已删
+    assert 'class="sa-lb"' in html               # 轴标签钉在真实位置
+    assert "Math.min(it.start_soc, 93)" in html  # 左标签左缘 = 充电起点
+    assert "right:${100 - it.end_soc}%" in html  # 右标签右缘 = 终点
+    assert 'class="cs-main"' in html             # 电量 + 费用同行
