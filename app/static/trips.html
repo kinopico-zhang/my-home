@@ -83,6 +83,12 @@ main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
+#merge-btn {
+  margin-left: auto; align-self: center; font-size: 12.5px; color: #7db3f0;
+  padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(57,135,229,.35);
+}
+#merge-btn:active { background: rgba(57,135,229,.15); }
+body.selecting #merge-btn { display: none; }
 
 /* ---------- 行程列表 (单列) ---------- */
 #list { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; }
@@ -101,6 +107,19 @@ main { max-width: 760px; margin: 0 auto; }
 .ct-arrow {
   flex: none; font-size: 10.5px; font-weight: 600; color: #7db3f0;
   background: rgba(57,135,229,.14); padding: 2px 8px; border-radius: 999px;
+}
+/* 多选模式: 卡片右上角 → 查看轨迹 换成选圈 */
+.card-t .pick { display: none; }
+body.selecting .ct-arrow { display: none; }
+body.selecting .card-t .pick {
+  display: inline-block; flex: none; width: 22px; height: 22px;
+  border-radius: 50%; border: 1.5px solid rgba(255,255,255,.25); box-sizing: border-box;
+}
+body.selecting .card-t.picked { border-color: rgba(57,135,229,.55); background: #20242b; }
+body.selecting .card-t.picked .pick { border-color: var(--blue); background: var(--blue); }
+body.selecting .card-t.picked .pick::after {
+  content: ""; display: block; width: 9px; height: 5px; margin: 5px auto 0;
+  border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg);
 }
 .ct-dist { font-size: 23px; font-weight: 650; letter-spacing: -.4px; margin: 8px 0 1px; }
 .ct-dist small { font-size: 11px; color: var(--ink-2); font-weight: 500; }
@@ -138,6 +157,25 @@ main { max-width: 760px; margin: 0 auto; }
   opacity: 0; pointer-events: none; transition: opacity .2s;
 }
 .backdrop.show { opacity: 1; pointer-events: auto; }
+/* 多选底栏: 固定底部 (弹层 z=91 更高, 开合并弹层时被盖住) */
+.selbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px);
+  background: rgba(28,28,30,.94);
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--hairline);
+}
+.selbar[hidden] { display: none; }
+.sel-info { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-2); }
+.sel-info b { color: var(--ink-1); font-weight: 650; }
+.sel-go {
+  flex: none; background: var(--blue); color: #fff; font-size: 13.5px; font-weight: 600;
+  padding: 9px 16px; border-radius: 999px;
+}
+.sel-go:disabled { opacity: .4; }
+.sel-go:active { transform: scale(.96); }
+.sel-cancel { flex: none; font-size: 13px; color: var(--ink-2); padding: 9px 4px; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
   height: 78vh; height: 78dvh;
@@ -237,6 +275,7 @@ main { max-width: 760px; margin: 0 auto; }
   <div class="sec-head">
     <h2>行程轨迹</h2>
     <span class="count-badge" id="count-badge"></span>
+    <button id="merge-btn" hidden>多选</button>
   </div>
   <div id="list"></div>
 
@@ -251,6 +290,11 @@ main { max-width: 760px; margin: 0 auto; }
   </div>
 </main>
 
+<div class="selbar" id="selbar" hidden>
+  <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km</div>
+  <button class="sel-cancel" id="sel-cancel">取消</button>
+  <button class="sel-go" id="sel-go" disabled>查看连续轨迹</button>
+</div>
 <div class="backdrop" id="backdrop"></div>
 <div class="sheet" id="sheet">
   <div class="grab" id="grab"></div>
@@ -335,6 +379,7 @@ async function getJSON(url) {
 const PAGE = 24;
 const state = { offset: 0, total: 0, loading: false, done: false, err: null };
 const trackCache = new Map();       // id → {pts, ts} 全精度轨迹
+const items = [];                   // 已加载卡片数据 (与 #list 子元素一一对应, 多选用)
 
 const listEl = $("#list");
 
@@ -346,6 +391,7 @@ function renderCard(it) {
     <div class="ct-top">
       <span class="ct-date">${esc(fmtCardDate(it.start))}</span>
       <span class="ct-arrow">→ 查看轨迹</span>
+      <span class="pick" aria-hidden="true"></span>
     </div>
     <div class="ct-dist">${num(it.km)}<small>km</small></div>
     <div class="ct-addr">
@@ -353,7 +399,10 @@ function renderCard(it) {
       <div class="line to"><i class="dot"></i><span class="txt">${esc(it.to)}</span></div>
     </div>
     <div class="ct-sub">${fmtDur(it.min)}${avg ? ` · 均速 ${avg} km/h` : ""}${it.speed_max != null ? ` · 最高 ${it.speed_max} km/h` : ""}</div>`;
-  el.addEventListener("click", () => openTrip(it));
+  el.addEventListener("click", () => {
+    if (document.body.classList.contains("selecting")) pickCard(el);
+    else openTrip(it);
+  });
   return el;
 }
 
@@ -365,6 +414,7 @@ function setTail() {
   $("#empty").hidden = !(state.done && state.total === 0 && !state.err);
   $("#errbox").hidden = !state.err;
   $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
+  $("#merge-btn").hidden = listEl.children.length < 2;   // 至少两张卡才能多选
 }
 
 const PRELOAD_PX = 800;   // 触底前多远开始预加载 (IO rootMargin 与链式续载共用)
@@ -376,7 +426,7 @@ async function loadMore() {
     const d = await getJSON(`/tesla/trips/api/sessions?offset=${state.offset}&limit=${PAGE}`);
     state.total = d.total; state.offset += d.items.length;
     if (state.offset >= d.total) state.done = true;
-    d.items.forEach(it => listEl.appendChild(renderCard(it)));
+    d.items.forEach(it => { items.push(it); listEl.appendChild(renderCard(it)); });
   } catch (e) {
     state.err = "数据加载失败: " + e.message;
   }
@@ -400,11 +450,69 @@ $("#logout").addEventListener("click", async () => {
   location.replace("/tesla/login");
 });
 
+/* ============================ 多选: 连续行程拼成一条轨迹 ============================ */
+let selAnchor = -1;                 // 范围锚点 (点选的第一张卡)
+let selRange = [-1, -1];            // 当前选中范围 [from, to] (闭区间, 必连续)
+
+function applyPick() {
+  const [a, b] = selRange, on = a >= 0;
+  [...listEl.children].forEach((el, i) => el.classList.toggle("picked", on && i >= a && i <= b));
+  const n = on ? b - a + 1 : 0;
+  const km = on ? items.slice(a, b + 1).reduce((s, it) => s + (it.km || 0), 0) : 0;
+  $("#sel-count").textContent = n;
+  $("#sel-km").textContent = num(km);
+  $("#sel-go").disabled = n < 2;
+}
+
+/* 两段式点选: 点第一张卡定锚, 点另一张 → 锚点到该处的连续范围; 再点锚点清空重来 */
+function pickCard(el) {
+  const i = [...listEl.children].indexOf(el);
+  if (i < 0) return;
+  if (selAnchor < 0) { selAnchor = i; selRange = [i, i]; }
+  else if (i === selAnchor) { selAnchor = -1; selRange = [-1, -1]; }
+  else selRange = [Math.min(selAnchor, i), Math.max(selAnchor, i)];
+  applyPick();
+}
+
+function enterSelect() {
+  document.body.classList.add("selecting");
+  $("#selbar").hidden = false;
+  selAnchor = -1; selRange = [-1, -1];
+  applyPick();
+}
+function exitSelect() {
+  document.body.classList.remove("selecting");
+  $("#selbar").hidden = true;
+  selAnchor = -1; selRange = [-1, -1];
+  applyPick();
+}
+$("#merge-btn").addEventListener("click", enterSelect);
+$("#sel-cancel").addEventListener("click", exitSelect);
+$("#sel-go").addEventListener("click", () => {
+  const ids = items.slice(selRange[0], selRange[1] + 1).map(it => it.id);
+  exitSelect();
+  openMerged(ids);
+});
+
 /* ============================ 轨迹弹层 ============================ */
 let amapLoading = null;             // Promise<true>: 高德脚本就绪
 let tripMap = null;                 // 弹层内地图实例, 复用不销毁
 let openSeq = 0;                    // 连续点开多条时, 只认最后一次
-let curItemId = null;               // 弹层当前行程 id (地址栏 ?id= 同步用)
+let curKey = null;                  // 弹层当前行程 key (单条 "2200" / 合并 "1836,1839"), 地址栏同步用
+const mergedCache = new Map();      // "id,id" → 合并轨迹响应 (含 pts/ts/汇总)
+
+/* 多选的连续行程 → 一条轨迹: 后端拼好 pts/ts + 汇总, 弹层照常播放动画。
+   id 归一成升序去重: 与后端返回的 ids 顺序一致, 分享 URL/缓存键稳定,
+   用户先点哪张卡都不影响链接。 */
+async function openMerged(ids, fromUrl) {
+  const key = [...new Set(ids)].sort((a, b) => a - b).join(",");
+  let d = mergedCache.get(key);
+  if (!d) {
+    d = await getJSON(`/tesla/trips/api/merged?ids=${key}`);
+    mergedCache.set(key, d);
+  }
+  openTrip({ ...d, id: "m:" + key, merged: true }, fromUrl);
+}
 
 function loadAMapScript(key, securityCode) {
   return new Promise((resolve, reject) => {
@@ -714,16 +822,17 @@ function playTrack(pts, ts, it) {
   frameLoop();
 }
 
-/* ---------- 地址栏深链: 打开行程变 /tesla/trips?id=X, 方便分享/回退 ---------- */
-function urlTripId() {
-  const m = /[?&]id=(\d+)/.exec(location.search);
-  return m ? +m[1] : null;
+/* ---------- 地址栏深链: 打开变 /tesla/trips?id=X 或 ?ids=a,b, 方便分享/回退 ---------- */
+function urlTripKey() {
+  const m = /[?&](?:id|ids)=([\d,]+)/.exec(location.search);
+  return m ? m[1] : null;
 }
 
-async function openById(id) {
-  /* 分享直开 / 后退再前进: 手里没有卡片数据, 从单条接口取 (404 → 抹掉参数) */
+async function openByKey(key) {
+  /* 分享直开 / 后退再前进: 手里没有卡片数据, 单条走单条接口, 合并走合并接口 (404 → 抹掉参数) */
   try {
-    openTrip(await getJSON(`/tesla/trips/api/sessions/${id}`), true);
+    if (key.includes(",")) await openMerged(key.split(",").map(Number), true);
+    else openTrip(await getJSON(`/tesla/trips/api/sessions/${key}`), true);
   } catch (e) {
     history.replaceState(null, "", "/tesla/trips");
   }
@@ -737,23 +846,32 @@ function hideSheet() {
 }
 
 function closeTrip() {
-  const id = curItemId;
+  const key = curKey;
   hideSheet();
-  curItemId = null;
-  if (id == null) return;
-  if (history.state && history.state.t === id)
+  curKey = null;
+  if (key == null) return;
+  if (history.state && history.state.k === key)
     history.back();   // 弹层是本页推入的 → 回退 (popstate 会再走一遍 hideSheet, 无害)
-  else if (urlTripId() != null)
+  else if (urlTripKey() != null)
     history.replaceState(null, "", "/tesla/trips");   // 分享直开 → 只抹参数不增历史
 }
 
 async function openTrip(it, fromUrl) {
-  curItemId = it.id;
-  if (!fromUrl && urlTripId() !== it.id)
-    history.pushState({ t: it.id }, "", `/tesla/trips?id=${it.id}`);
+  curKey = it.merged ? it.ids.join(",") : String(it.id);
+  if (!fromUrl && urlTripKey() !== curKey)
+    history.pushState({ k: curKey }, "",
+      `/tesla/trips?${it.merged ? "ids=" : "id="}${curKey}`);
   const seq = ++openSeq;
-  $("#sh-date").textContent = fmtCardDate(it.start).replace(/ \d\d:\d\d$/, "");
-  $("#sh-time").textContent = (it.end ? fmtTime(it.start) + " – " + fmtTime(it.end) : "");
+  if (it.merged) {    // 合并多段: 跨天给日期区间, 同天照常; 时间列前缀段数
+    const d1 = parseLocal(it.start), d2 = parseLocal(it.end);
+    $("#sh-date").textContent = d1.toDateString() === d2.toDateString()
+      ? fmtCardDate(it.start).replace(/ \d\d:\d\d$/, "")
+      : (d1.getMonth() + 1) + "月" + d1.getDate() + "日 – " + (d2.getMonth() + 1) + "月" + d2.getDate() + "日";
+    $("#sh-time").textContent = it.n + " 段行程 · " + fmtTime(it.start) + " – " + fmtTime(it.end);
+  } else {
+    $("#sh-date").textContent = fmtCardDate(it.start).replace(/ \d\d:\d\d$/, "");
+    $("#sh-time").textContent = (it.end ? fmtTime(it.start) + " – " + fmtTime(it.end) : "");
+  }
   $("#sh-km").innerHTML = num(it.km) + "<small>km</small>";
   $("#sh-dur").textContent = fmtDur(it.min);
   $("#sh-spd-lb").textContent = "最高车速";
@@ -777,7 +895,7 @@ async function openTrip(it, fromUrl) {
     }
     tripMap.clearMap();
 
-    let c = trackCache.get(it.id);
+    let c = it.pts ? it : trackCache.get(it.id);   // 合并轨迹: 数据随 it 一起来
     if (!c) {
       c = await getJSON(`/tesla/trips/api/${it.id}/track`);
       trackCache.set(it.id, c);
@@ -825,17 +943,17 @@ $("#grab").addEventListener("click", closeTrip);
 
 /* 浏览器后退/前进: 只切界面不动历史, 与地址栏保持同步 */
 addEventListener("popstate", () => {
-  const id = urlTripId();
-  if (id == null) {
-    if (curItemId != null) { hideSheet(); curItemId = null; }
-  } else if (id !== curItemId) {
-    openById(id);
+  const key = urlTripKey();
+  if (key == null) {
+    if (curKey != null) { hideSheet(); curKey = null; }
+  } else if (key !== curKey) {
+    openByKey(key);
   }
 });
 
 /* 首页列表加载完后, 后台预载高德脚本 (首次点开更快); 分享链接 (?id=X) 直开弹层 */
 loadMore().then(() => { ensureAMap().catch(() => {}); });
-if (urlTripId() != null) openById(urlTripId());
+if (urlTripKey() != null) openByKey(urlTripKey());
 </script>
 </body>
 </html>

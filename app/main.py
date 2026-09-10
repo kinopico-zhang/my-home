@@ -751,6 +751,20 @@ TRIPS_SQL = TRIPS_BASE + """
  LIMIT %(limit)s OFFSET %(offset)s
 """
 TRIPS_ONE_SQL = TRIPS_BASE + " AND d.id = %(id)s"
+TRIPS_IDS_SQL = TRIPS_BASE + " AND d.id = ANY(%(ids)s) ORDER BY d.start_date"
+MERGED_TRACK_SQL = """
+WITH p AS (
+    SELECT pos.drive_id, pos.longitude, pos.latitude, pos.speed, pos.power, pos.date,
+           row_number() OVER (PARTITION BY pos.drive_id ORDER BY pos.date) AS rn,
+           count(*) OVER (PARTITION BY pos.drive_id) AS cnt
+      FROM positions pos
+     WHERE pos.drive_id = ANY(%(ids)s)
+)
+SELECT p.drive_id, p.longitude, p.latitude, p.speed, p.power, p.date
+  FROM p
+ WHERE rn = 1 OR rn = cnt OR (rn - 1) %% greatest((cnt / %(per)s)::int, 1) = 0
+ ORDER BY p.date
+"""
 
 
 def _clean_addr(s: str | None) -> str:
@@ -790,6 +804,53 @@ def get_trip_session(drive_id: int):
     if not rows:
         raise HTTPException(404, "行程不存在或未完成")
     return _trip_item(rows[0])
+
+
+@trips.get("/merged")
+def get_merged_track(ids: str):
+    """多选连续行程 → 一条连续轨迹 (分享链接 /tesla/trips?ids=a,b,c)。
+    ts 为"累计行驶秒": 行程间的停驶时间剔除, 否则跨天合并后播放进度和
+    实时时长全被停车时间淹没; pts/ts 结构与单条轨迹接口一致。"""
+    try:
+        id_list = list(dict.fromkeys(int(x) for x in ids.split(",")))
+    except ValueError:
+        raise HTTPException(400, "ids 参数非法")
+    if not 2 <= len(id_list) <= 50:
+        raise HTTPException(400, "ids 需为 2~50 个行程")
+    drows = query(TRIPS_IDS_SQL, {"ids": id_list})
+    if len(drows) != len(id_list):
+        raise HTTPException(404, "包含不存在或未完成的行程")
+    # 下采样预算: 每条行程最多 ~4000/n 个点, 多条合并总量与单条相当
+    prows = query(MERGED_TRACK_SQL,
+                  {"ids": id_list, "per": max(200, 4000 // len(id_list))})
+    if len(prows) < 2:
+        raise HTTPException(404, "这些行程没有轨迹数据")
+    pts, ts = [], []
+    base = 0.0                    # 已计入的行驶秒 (不含行程间停驶)
+    cur_drive, t0, last = None, None, None
+    for r in prows:
+        if r["drive_id"] != cur_drive:          # 换行程: 累计上一段的行驶时长
+            if t0 is not None:
+                base += (last - t0).total_seconds()
+            cur_drive, t0 = r["drive_id"], r["date"]
+        last = r["date"]
+        pts.append([round(float(r["longitude"]), 5), round(float(r["latitude"]), 5),
+                    r["speed"] or 0, r["power"]])
+        ts.append(round(base + (r["date"] - t0).total_seconds()))
+    first, last_row = drows[0], drows[-1]
+    return {
+        "ids": [r["id"] for r in drows],
+        "n": len(drows),
+        "pts": pts, "ts": ts,
+        "date": fdate(first["start_date"]),
+        "start": ftime(first["start_date"]),
+        "end": ftime(last_row["end_date"]),
+        "km": round(sum(r["distance"] or 0 for r in drows), 2),
+        "min": sum(r["duration_min"] or 0 for r in drows),
+        "speed_max": max((r["speed_max"] or 0) for r in drows) or None,
+        "from": _clean_addr(first["start_addr"]),
+        "to": _clean_addr(last_row["end_addr"]),
+    }
 
 
 # 行程弹层轨迹: 整条 (无视野框), 每点带车速 km/h, 供前端按速度着色 (慢红快绿)
