@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { splitGaps } = require("../../app/static/trackutil.js");
+const TrackUtil = require("../../app/static/trackutil.js");
+const { splitGaps } = TrackUtil;
 
 const M = 0.00001;   // ~1.1m, 城市打点步长
 
@@ -61,4 +62,39 @@ test("短轨迹原样返回", () => {
 test("全是孤立大跳点时退回整条, 不让轨迹消失", () => {
   const pts = [[114, 22.5], [115, 23.5], [113, 21.5]];
   assert.deepEqual(splitGaps(pts), [pts]);
+});
+
+
+/* ---------------- speedLines: 速度着色分档 ---------------- */
+const C0 = "#e5484d", C4 = "#1fa349";   // 最慢红 / 最快绿
+
+test("匀速轨迹只出一段, 颜色按速度档", () => {
+  const slow = Array.from({ length: 10 }, (_, i) => [114 + i * 1e-4, 22.5, 8]);
+  const fast = Array.from({ length: 10 }, (_, i) => [114 + i * 1e-4, 22.5, 120]);
+  assert.equal(splitGaps, splitGaps);   // import 自检
+  const ls = TrackUtil.speedLines(slow);
+  assert.equal(ls.length, 1);
+  assert.equal(ls[0].color, C0);
+  assert.equal(ls[0].pts.length, 10);
+  assert.equal(TrackUtil.speedLines(fast)[0].color, C4);
+});
+
+test("变速轨迹分段着色, 相邻段共享端点不留缝", () => {
+  // 5 段: 0 → 20 → 50 → 80 → 120 km/h, 每档 3 个点
+  const speeds = [0, 0, 0, 20, 20, 20, 50, 50, 50, 80, 80, 80, 120, 120, 120];
+  const pts = speeds.map((s, i) => [114 + i * 1e-4, 22.5, s]);
+  const ls = TrackUtil.speedLines(pts);
+  assert.equal(ls.length, 5);
+  assert.deepEqual(ls.map(l => l.color), TrackUtil.SPEED_COLORS);
+  for (let i = 1; i < ls.length; i++) {
+    // 前一段末点 == 后一段首点 (共享端点)
+    assert.deepEqual(ls[i].pts[0], ls[i - 1].pts[ls[i - 1].pts.length - 1]);
+  }
+});
+
+test("速度缺失按 0 处理", () => {
+  const pts = [[114, 22.5, null], [114.001, 22.5, undefined], [114.002, 22.5, 5]];
+  const ls = TrackUtil.speedLines(pts);
+  assert.equal(ls.length, 1);
+  assert.equal(ls[0].color, C0);
 });
