@@ -117,6 +117,13 @@ def test_pages_served_after_login(auth):
         assert marker in r.text, path
 
 
+def test_static_js_must_revalidate(client):
+    """JS 工具文件必须 no-cache 重新校验, 否则浏览器启发式缓存用旧版 (动画曾因此冻住)。"""
+    r = client.get("/tesla/static/trackutil.js")
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "no-cache"
+
+
 def test_cache_control_headers(auth):
     """API 响应禁止缓存 (配置更新要即时生效), 页面允许缓存但必须重新校验。"""
     assert auth.get("/tesla/map/api/config?_=1").headers["cache-control"] == "no-store"
