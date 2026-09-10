@@ -114,8 +114,39 @@ def test_trips_sessions_filters_by_date(auth, db):
     assert auth.get(base, params={"to": "2026-13-99"}).status_code == 400
 
 
-def test_trips_sessions_filters_by_city_and_km(auth, db):
-    """from_city/to_city 按起终城市, km_min/km_max 按里程; 可叠加。"""
+def test_parse_region_osm_and_legacy_formats():
+    """display_name → (省, 市, 区县): OSM 逗号链 / 旧连写 / 各种真实脏数据。
+
+    真库 547 条地址全量验证过的样本: 街道邮编中国大陆尾巴、区县重复
+    ("…, 顺德区, 佛山市, 顺德区, 广东省")、POI 名带区字样、省直辖县、自治州。
+    """
+    p = repository.parse_region
+    assert p("竹村, 福城街道, 龙华区, 深圳市, 广东省, 518110, 中国") == \
+        ("广东省", "深圳市", "龙华区")
+    # 尾巴带 "中国大陆" + 邮编
+    assert p("广百新一城, 宝岗大道, 龙凤街道, 海珠区, 广州市, 广东省, "
+             "中国大陆, 510250, 中国") == ("广东省", "广州市", "海珠区")
+    # 区县重复: 从省向左先找到市 (佛山市), 再向左找到区 (顺德区)
+    assert p("容山路, 食品厂, 容桂街道, 顺德区, 佛山市, 顺德区, 广东省, "
+             "528300, 中国") == ("广东省", "佛山市", "顺德区")
+    # POI 名带 "区" 字样 (A区/园区) 不会误当行政区
+    assert p("华为溪流背坡村A区, 松山湖园区, 大朗镇, 东莞市, 广东省, "
+             "523003, 中国") == ("广东省", "东莞市", "大朗镇")
+    # 省直辖县: 没有市级, 区县提升到市层 (与级联菜单的第二级对齐)
+    assert p("曼旦村, 勐腊县, 云南省, 666300, 中国") == ("云南省", "勐腊县", None)
+    # 自治州作市层, 县级市作区县层
+    assert p("广场大道, 曼景兰, 允景洪街道, 景洪市, 西双版纳傣族自治州, "
+             "云南省, 666100, 中国") == ("云南省", "西双版纳傣族自治州", "景洪市")
+    # 旧版连写格式 (conftest 种子 / 老数据)
+    assert p("广东省深圳市龙岗区坂田街道") == ("广东省", "深圳市", "龙岗区")
+    assert p("广东省东莞市长安镇") == ("广东省", "东莞市", "长安镇")
+    # 解析不出省 = 无地区信息
+    assert p("某处") == (None, None, None)
+    assert p("") == (None, None, None)
+
+
+def test_trips_sessions_filters_by_region_and_km(auth, db):
+    """from_loc/to_loc 按省/市/区县路径过滤 (段数即精确度), km 按里程; 可叠加。"""
     db.add(Address(id=3, name="花城广场", city="广州市",
                    display_name="广东省广州市天河区"))
     db.commit()
@@ -129,14 +160,20 @@ def test_trips_sessions_filters_by_city_and_km(auth, db):
     def ids(**params):
         return [i["id"] for i in auth.get(base, params=params).json()["items"]]
 
-    assert ids(from_city="深圳市") == [1, 3]
-    assert ids(to_city="东莞市") == [1]
-    assert ids(from_city="深圳市", to_city="东莞市") == [1]
-    assert ids(km_min=20, km_max=100) == [1]        # 42.5km
+    assert ids(from_loc="广东省") == [1, 2, 3]        # 省级: 整省
+    assert ids(from_loc="广东省/深圳市") == [1, 3]    # 市级
+    assert ids(from_loc="广东省/深圳市/龙岗区") == [1, 3]   # 区县级
+    assert ids(to_loc="广东省/东莞市") == [1]
+    assert ids(to_loc="广东省/东莞市/长安镇") == [1]
+    assert ids(from_loc="广东省/深圳市", to_loc="广东省/东莞市") == [1]
+    assert ids(km_min=20, km_max=100) == [1]          # 42.5km
     assert ids(km_min=300) == [2]
-    assert ids(km_max=20) == [3]                    # 里程档 "20km 内"
-    assert ids(from_city="深圳市", km_min=300) == []  # 叠加无交集 → 空列表, 不报错
-    assert ids(from_city="不存在的城市") == []
+    assert ids(km_max=20) == [3]                      # 里程档 "20km 内"
+    assert ids(from_loc="广东省/深圳市", km_min=300) == []  # 叠加无交集 → 空
+    assert ids(from_loc="不存在的省") == []
+    # 路径超过 3 段 → 400
+    assert auth.get(base, params={"from_loc": "广东省/深圳市/龙岗区/坂田街道"}
+                    ).status_code == 400
 
 
 def test_trips_sessions_rejects_bad_km(auth):
@@ -148,24 +185,40 @@ def test_trips_sessions_rejects_bad_km(auth):
                     params={"km_max": 1e7}).status_code == 400
 
 
-def test_trips_cities_endpoint(auth, db):
-    """起终点城市列表 (次数降序): 未结束行程不计, 无城市地址不参与筛选。"""
+def test_trips_regions_endpoint(auth, db):
+    """起终点省市区树: 三级嵌套 + 计数 (次数降序); 未结束行程不计,
+    解析不出省的地址不进树。"""
     db.add(Address(id=3, name="花城广场", city="广州市",
                    display_name="广东省广州市天河区"))
-    db.add(Address(id=4, name="无名地", city=None, display_name="某处"))
+    db.add(Address(id=6, name="曼旦村", city=None,
+                   display_name="曼旦村, 勐腊县, 云南省, 666300, 中国"))
+    db.add(Address(id=7, name="无名地", city=None, display_name="某处"))
     db.commit()
     seed_addresses(db)
-    # 1: 深圳→东莞; 2: 东莞→广州; 3: 深圳→东莞; 4: (无城市起) 未结束不计数
+    # 1: 深圳→东莞; 2: 东莞→广州; 3: 深圳→东莞; 5: 云南→东莞;
+    # 4: 起点"某处"且未结束 → 两边都不计
     seed_drive(db, id=1, distance=10.0, start_address_id=1, end_address_id=2)
     seed_drive(db, id=2, distance=10.0, start_address_id=2, end_address_id=3)
     seed_drive(db, id=3, distance=10.0, start_address_id=1, end_address_id=2)
-    seed_drive(db, id=4, distance=10.0, start_address_id=4, end_address_id=2,
+    seed_drive(db, id=5, distance=10.0, start_address_id=6, end_address_id=2)
+    seed_drive(db, id=4, distance=10.0, start_address_id=7, end_address_id=2,
                end_date=None)
-    d = auth.get("/tesla/trips/api/cities").json()
-    assert d == {"start": [{"city": "深圳市", "count": 2},
-                           {"city": "东莞市", "count": 1}],
-                 "end": [{"city": "东莞市", "count": 2},
-                         {"city": "广州市", "count": 1}]}
+    d = auth.get("/tesla/trips/api/regions").json()
+    assert d == {"start": [
+        {"name": "广东省", "count": 3, "children": [
+            {"name": "深圳市", "count": 2, "children": [
+                {"name": "龙岗区", "count": 2, "children": []}]},
+            {"name": "东莞市", "count": 1, "children": [
+                {"name": "长安镇", "count": 1, "children": []}]}]},
+        {"name": "云南省", "count": 1, "children": [
+            {"name": "勐腊县", "count": 1, "children": []}]},
+    ], "end": [
+        {"name": "广东省", "count": 4, "children": [
+            {"name": "东莞市", "count": 3, "children": [
+                {"name": "长安镇", "count": 3, "children": []}]},
+            {"name": "广州市", "count": 1, "children": [
+                {"name": "天河区", "count": 1, "children": []}]}]},
+    ]}
 
 
 # ---------------------------------------------------------------- 轨迹
@@ -326,7 +379,7 @@ def test_merged_track_404_when_no_points(auth, db):
 
 # ---------------------------------------------------------------- 页面
 def test_trips_page_time_menu_and_filter_row(auth):
-    """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行 (起点/终点城市, 里程档),
+    """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行 (起终点省市区级联, 里程档),
     全部编码进 URL, 且与 ?id=/ ?ids= 深链共存。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
@@ -334,11 +387,12 @@ def test_trips_page_time_menu_and_filter_row(auth):
                  'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
                  'id="fc-menu"', 'id="tc-menu"', 'id="km-menu"',
                  'data-k="0-20"', 'data-k="20-100"', 'data-k="100-300"',
-                 'data-k="300+"', "/tesla/trips/api/cities",
+                 'data-k="300+"', "/tesla/trips/api/regions",
                  "function filterQS()", "function listURL(", "function syncURL()",
-                 'p.set("from_city", state.fromCity)', 'p.set("km_min", kb.min)']:
+                 "function bindLocMenu(", 'class="menu loc-menu"',
+                 'p.set("from_loc", state.fromLoc)', 'p.set("km_min", kb.min)']:
         assert frag in html, f"行程页缺少 {frag}"
-    assert "chips-range" not in html
+    assert "chips-range" not in html and "/tesla/trips/api/cities" not in html
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu',
               'fc-opts', 'tc-opts', 'km-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"

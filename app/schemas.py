@@ -193,11 +193,19 @@ class CityCount(BaseModel):
     count: int
 
 
-class TripCities(BaseModel):
-    """行程页起点 / 终点城市列表。"""
+class RegionNode(BaseModel):
+    """省市区三级筛选项 (children 为下一级, 区县层为空列表)。"""
 
-    start: list[CityCount]
-    end: list[CityCount]
+    name: str
+    count: int
+    children: list["RegionNode"] = []
+
+
+class TripRegions(BaseModel):
+    """行程页起点 / 终点省市区树 (级联下拉数据源)。"""
+
+    start: list[RegionNode]
+    end: list[RegionNode]
 
 
 class TripTrack(BaseModel):
