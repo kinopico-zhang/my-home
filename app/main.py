@@ -136,6 +136,10 @@ async def auth_middleware(request: Request, call_next):
     if is_api:
         # API 数据 (如 map config) 禁止缓存, 否则配置更新后浏览器仍用旧响应
         resp.headers["Cache-Control"] = "no-store"
+    elif path.startswith("/tesla/static/"):
+        # JS 工具 (trackutil 等) 迭代频繁, 必须重新校验; ETag 命中时 304 很便宜。
+        # 只发 Last-Modified 时浏览器走启发式缓存, 会继续用旧 JS (动画因此冻住过)。
+        resp.headers["Cache-Control"] = "no-cache"
     return resp
 
 
