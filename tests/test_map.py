@@ -233,7 +233,10 @@ def test_map_page_time_menu_in_filters_row(auth):
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
-                 'class="filters"']:
+                 'class="filters"',
+                 # 手机: 下拉面板锚全宽 header (本页 header 不滚动无定位, 要补 relative)
+                 '@media (max-width: 479px)', 'header { position: relative; }',
+                 '.nav-menu { position: static; }']:
         assert frag in html, f"足迹页缺少 {frag}"
     # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留页签菜单; 旧的 chips 行已删
     assert '<div class="filters">\n    <details class="nav-menu time-menu" id="time-menu">' in html
