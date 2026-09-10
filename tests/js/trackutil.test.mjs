@@ -98,3 +98,23 @@ test("速度缺失按 0 处理", () => {
   assert.equal(ls.length, 1);
   assert.equal(ls[0].color, C0);
 });
+
+
+/* ---------------- animIndex: 动画帧 → 点序号 (负时间戳钳制) ---------------- */
+
+test("正常播放: 中点时刻取到中间点", () => {
+  assert.equal(TrackUtil.animIndex(5000, 10000, 101), 50);
+  assert.equal(TrackUtil.animIndex(0, 10000, 101), 0);
+  assert.equal(TrackUtil.animIndex(10000, 10000, 101), 100);
+});
+
+test("Chrome rAF 时间戳早于 t0 (缓存命中同帧开播) → 钳制为 0, 不产生负下标", () => {
+  // 实测抓到过 elapsed = -7.5ms → idx = -3 → pts[-3][2] 崩溃 → "没有动画"
+  assert.equal(TrackUtil.animIndex(-7.5, 9600, 3845), 0);
+  assert.equal(TrackUtil.animIndex(-1000, 9600, 3845), 0);
+});
+
+test("超出时长 (后台切回/帧延迟) → 钳制到末点", () => {
+  assert.equal(TrackUtil.animIndex(999999, 9600, 3845), 3844);
+  assert.equal(TrackUtil.animIndex(999999, 9600, 2), 1);
+});
