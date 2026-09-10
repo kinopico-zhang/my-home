@@ -403,6 +403,7 @@ $("#logout").addEventListener("click", async () => {
 let amapLoading = null;             // Promise<true>: 高德脚本就绪
 let tripMap = null;                 // 弹层内地图实例, 复用不销毁
 let openSeq = 0;                    // 连续点开多条时, 只认最后一次
+let curItemId = null;               // 弹层当前行程 id (地址栏 ?id= 同步用)
 
 function loadAMapScript(key, securityCode) {
   return new Promise((resolve, reject) => {
@@ -648,14 +649,43 @@ function playTrack(pts, ts, it) {
   frameLoop();
 }
 
-function closeTrip() {
+/* ---------- 地址栏深链: 打开行程变 /tesla/trips?id=X, 方便分享/回退 ---------- */
+function urlTripId() {
+  const m = /[?&]id=(\d+)/.exec(location.search);
+  return m ? +m[1] : null;
+}
+
+async function openById(id) {
+  /* 分享直开 / 后退再前进: 手里没有卡片数据, 从单条接口取 (404 → 抹掉参数) */
+  try {
+    openTrip(await getJSON(`/tesla/trips/api/sessions/${id}`), true);
+  } catch (e) {
+    history.replaceState(null, "", "/tesla/trips");
+  }
+}
+
+function hideSheet() {
   stopAnim();
   if (curSess) { curSess.alive = false; curSess = null; }
   $("#sheet").classList.remove("show");
   $("#backdrop").classList.remove("show");
 }
 
-async function openTrip(it) {
+function closeTrip() {
+  const id = curItemId;
+  hideSheet();
+  curItemId = null;
+  if (id == null) return;
+  if (history.state && history.state.t === id)
+    history.back();   // 弹层是本页推入的 → 回退 (popstate 会再走一遍 hideSheet, 无害)
+  else if (urlTripId() != null)
+    history.replaceState(null, "", "/tesla/trips");   // 分享直开 → 只抹参数不增历史
+}
+
+async function openTrip(it, fromUrl) {
+  curItemId = it.id;
+  if (!fromUrl && urlTripId() !== it.id)
+    history.pushState({ t: it.id }, "", `/tesla/trips?id=${it.id}`);
   const seq = ++openSeq;
   $("#sh-date").textContent = fmtCardDate(it.start).replace(/ \d\d:\d\d$/, "");
   $("#sh-time").textContent = (it.end ? fmtTime(it.start) + " – " + fmtTime(it.end) : "");
@@ -728,8 +758,19 @@ pbSpeed.addEventListener("click", () => {        // 倍速循环 1×→2×→4×
 $("#backdrop").addEventListener("click", closeTrip);
 $("#grab").addEventListener("click", closeTrip);
 
-/* 首页列表加载完后, 后台预载高德脚本 (首次点开更快) */
+/* 浏览器后退/前进: 只切界面不动历史, 与地址栏保持同步 */
+addEventListener("popstate", () => {
+  const id = urlTripId();
+  if (id == null) {
+    if (curItemId != null) { hideSheet(); curItemId = null; }
+  } else if (id !== curItemId) {
+    openById(id);
+  }
+});
+
+/* 首页列表加载完后, 后台预载高德脚本 (首次点开更快); 分享链接 (?id=X) 直开弹层 */
 loadMore().then(() => { ensureAMap().catch(() => {}); });
+if (urlTripId() != null) openById(urlTripId());
 </script>
 </body>
 </html>

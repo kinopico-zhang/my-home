@@ -159,3 +159,11 @@ def test_trips_page_has_playbar_and_single_column(auth):
         assert frag in html, f"行程页缺少 {frag}"
     # 瀑布流的列容器已删
     assert "m-col" not in html
+
+
+def test_trips_page_has_url_deeplink(auth):
+    """打开行程地址栏变 ?id=X: pushState/popstate 同步 + 分享直开。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ["urlTripId", "openById", "history.pushState", "addEventListener(\"popstate\"",
+                 "/tesla/trips/api/sessions/${", "history.replaceState(null, \"\", \"/tesla/trips\")"]:
+        assert frag in html, f"行程页缺少深链片段 {frag}"
