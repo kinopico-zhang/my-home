@@ -186,3 +186,15 @@ def test_cost_patch_clear_with_null(auth, monkeypatch):
     assert r.status_code == 200
     assert r.json()["cost"] is None
     assert m.pool.conn.cur.params == {"cost": None, "id": 332}
+
+
+def test_charging_page_single_column_and_lazy_chain(auth):
+    """充电列表单列 (手机优先, 对齐行程页) + Chrome 懒加载修复 (装载后链式续载)。"""
+    html = auth.get("/tesla/charging").text
+    for frag in ['id="masonry"', "flex-direction: column", "PRELOAD_PX = 800",
+                 'rootMargin: PRELOAD_PX + "px"',
+                 "getBoundingClientRect().top < window.innerHeight + PRELOAD_PX",
+                 "max-width: 760px"]:
+        assert frag in html, f"充电页缺少 {frag}"
+    # 多列瀑布流的列容器/列数逻辑已删
+    assert "m-col" not in html and "colCount" not in html
