@@ -735,15 +735,22 @@ async def map_diag(request: Request):
 # 页面: /tesla/trips —— 行程卡片瀑布流 + 点击查看单条全精度轨迹
 trips = APIRouter(prefix="/tesla/trips/api")
 
-TRIPS_SQL = """
+# 只列已完成的行程: TeslaMate 记录中断会留下 end_date 为空的"未关闭"行程
+# (无里程/起终点, Grafana 行程面板同样不显示), 与地图页 TRACKS_SQL
+# (d.distance IS NOT NULL) 的过滤口径一致。
+TRIPS_BASE = """
 SELECT d.id, d.start_date, d.end_date, d.distance, d.duration_min, d.speed_max,
        sa.display_name AS start_addr, ea.display_name AS end_addr
   FROM drives d
   LEFT JOIN addresses sa ON sa.id = d.start_address_id
   LEFT JOIN addresses ea ON ea.id = d.end_address_id
+ WHERE d.end_date IS NOT NULL
+"""
+TRIPS_SQL = TRIPS_BASE + """
  ORDER BY d.start_date DESC
  LIMIT %(limit)s OFFSET %(offset)s
 """
+TRIPS_ONE_SQL = TRIPS_BASE + " AND d.id = %(id)s"
 
 
 def _clean_addr(s: str | None) -> str:
@@ -751,13 +758,9 @@ def _clean_addr(s: str | None) -> str:
     return (s or "未知位置").rstrip(", ").strip()[:80] or "未知位置"
 
 
-@trips.get("/sessions")
-def get_trip_sessions(offset: int = 0, limit: int = 24):
-    if offset < 0 or not 1 <= limit <= 100:
-        raise HTTPException(400, "分页参数非法")
-    total = query("SELECT count(*) AS n FROM drives")[0]["n"]
-    rows = query(TRIPS_SQL, {"limit": limit, "offset": offset})
-    items = [{
+def _trip_item(r):
+    """drives 行 → 前端行程卡片字段 (列表与单条共用)。"""
+    return {
         "id": r["id"],
         "date": fdate(r["start_date"]),
         "start": ftime(r["start_date"]),
@@ -767,8 +770,26 @@ def get_trip_sessions(offset: int = 0, limit: int = 24):
         "speed_max": r["speed_max"],
         "from": _clean_addr(r["start_addr"]),
         "to": _clean_addr(r["end_addr"]),
-    } for r in rows]
-    return {"total": total, "items": items}
+    }
+
+
+@trips.get("/sessions")
+def get_trip_sessions(offset: int = 0, limit: int = 24):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(400, "分页参数非法")
+    total = query("SELECT count(*) AS n FROM drives "
+                  "WHERE end_date IS NOT NULL")[0]["n"]
+    rows = query(TRIPS_SQL, {"limit": limit, "offset": offset})
+    return {"total": total, "items": [_trip_item(r) for r in rows]}
+
+
+@trips.get("/sessions/{drive_id}")
+def get_trip_session(drive_id: int):
+    """单条行程信息: 分享链接 /tesla/trips?id=X 直开弹层时前端拉取。"""
+    rows = query(TRIPS_ONE_SQL, {"id": drive_id})
+    if not rows:
+        raise HTTPException(404, "行程不存在或未完成")
+    return _trip_item(rows[0])
 
 
 # 行程弹层轨迹: 整条 (无视野框), 每点带车速 km/h, 供前端按速度着色 (慢红快绿)

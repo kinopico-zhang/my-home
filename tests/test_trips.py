@@ -65,6 +65,50 @@ def test_trips_sessions_rejects_bad_pagination(auth, monkeypatch):
     assert auth.get(base, params={"limit": 101}).status_code == 400
 
 
+def test_trips_sessions_excludes_unfinished(auth, monkeypatch):
+    """未关闭行程 (TeslaMate 记录中断留下的 end_date 空行) 不进列表,
+    口径与 Grafana 行程面板 / 地图页 TRACKS_SQL 一致。"""
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen.setdefault("calls", []).append(sql)
+        return [{"n": 1}] if "count(*)" in sql else [drive_row()]
+
+    monkeypatch.setattr(m, "query", fake_query)
+    assert auth.get("/tesla/trips/api/sessions").status_code == 200
+    count_sql, list_sql = seen["calls"]
+    assert "end_date IS NOT NULL" in count_sql
+    assert "end_date IS NOT NULL" in list_sql
+    assert "end_date IS NOT NULL" in m.TRIPS_ONE_SQL
+    assert "AND d.id = %(id)s" in m.TRIPS_ONE_SQL
+
+
+def test_trip_session_one(auth, monkeypatch):
+    """单条行程接口: 分享链接 /tesla/trips?id=X 直开弹层时前端拉取。"""
+    seen = {}
+
+    def fake_query(sql, params=None):
+        seen["sql"], seen["params"] = sql, params
+        return [drive_row(id=1838)]
+
+    monkeypatch.setattr(m, "query", fake_query)
+    r = auth.get("/tesla/trips/api/sessions/1838")
+    assert r.status_code == 200
+    assert seen["params"] == {"id": 1838}
+    assert r.json() == {
+        "id": 1838, "date": "2026-09-10",
+        "start": "2026-09-10 08:32", "end": "2026-09-10 09:44",
+        "km": 42.5, "min": 72, "speed_max": 118,
+        "from": "广东省深圳市南山区", "to": "广东省东莞市长安镇",
+    }
+
+
+def test_trip_session_one_404(auth, monkeypatch):
+    """不存在 / 未完成的行程 → 404 (前端抹掉地址栏参数)。"""
+    monkeypatch.setattr(m, "query", lambda sql, params=None: [])
+    assert auth.get("/tesla/trips/api/sessions/9999").status_code == 404
+
+
 # ---------------------------------------------------------------- 轨迹
 def test_trip_track_full_resolution_with_speed(auth, monkeypatch):
     seen = {}
