@@ -53,13 +53,14 @@ def resolve_db_host() -> str:
         f"无法定位数据库容器 {DB_CONTAINER}，请设置 TMDB_HOST 环境变量指向 PostgreSQL 地址")
 
 
-def build_db_url() -> str:
-    """拼接 SQLAlchemy 连接串 (postgres 容器定位 + env 覆盖)。"""
-    user = os.environ.get("TMDB_USER", "teslamate")
-    password = os.environ.get("TMDB_PASS", "123456")
-    host = os.environ.get("TMDB_HOST") or resolve_db_host()
-    port = os.environ.get("TMDB_PORT", "5432")
-    name = os.environ.get("TMDB_NAME", "teslamate")
+def build_db_url(overrides: dict[str, str] | None = None) -> str:
+    """拼接 SQLAlchemy 连接串: 设置页字段 > env > docker 容器定位。"""
+    ov = {k: v for k, v in (overrides or {}).items() if v}   # 空串 = 未设, 走下层
+    user = ov.get("user") or os.environ.get("TMDB_USER", "teslamate")
+    password = ov.get("password") or os.environ.get("TMDB_PASS", "123456")
+    host = ov.get("host") or os.environ.get("TMDB_HOST") or resolve_db_host()
+    port = ov.get("port") or os.environ.get("TMDB_PORT", "5432")
+    name = ov.get("name") or os.environ.get("TMDB_NAME", "teslamate")
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
 
 
@@ -73,6 +74,14 @@ def init_engine(url: str | None = None) -> None:
         url, pool_size=4, max_overflow=2, pool_pre_ping=True,
         connect_args=connect_args)
     _EngineState.factory = sessionmaker(_EngineState.engine, expire_on_commit=False)
+
+
+def rebuild_engine(url: str) -> None:
+    """换库重连 (设置页保存 TeslaMate 连接后调用): 旧池释放, 新引擎顶上。
+
+    进行中的请求还攥着旧会话, dispose 只关空闲连接, 不打断它们。"""
+    dispose_engine()
+    init_engine(url)
 
 
 def dispose_engine() -> None:

@@ -9,7 +9,6 @@ repository 层 (SQLAlchemy, 方言中立); 测试通过 database.init_engine()
 import hmac
 import json
 import math
-import os
 import re
 import threading
 from collections.abc import AsyncIterator
@@ -25,7 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import authentication, config, database, repository, tracks_cache
+from . import (authentication, config, database, repository, settings_store,
+                tracks_cache)
 from .models import OwnBase
 from .schemas import (
     AmapConfig,
@@ -36,6 +36,9 @@ from .schemas import (
     CityCount,
     CostUpdateRequest,
     CostUpdateResult,
+    DriverIn,
+    DriverInfo,
+    DriverUpdate,
     GapFillRequest,
     GapFillResponse,
     LocationStat,
@@ -44,6 +47,8 @@ from .schemas import (
     MergedTrack,
     MonthlyStat,
     OkResponse,
+    SettingsState,
+    SettingsUpdate,
     TracksDetailResponse,
     TracksResponse,
     TripItem,
@@ -61,6 +66,8 @@ charging = APIRouter(prefix="/tesla/charging/api")
 mapapi = APIRouter(prefix="/tesla/map/api")
 # 行程轨迹 API (页面: /tesla/trips —— 行程卡片瀑布流 + 点击查看单条全精度轨迹)
 trips = APIRouter(prefix="/tesla/trips/api")
+# 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 司机)
+settingsapi = APIRouter(prefix="/tesla/api")
 
 
 @asynccontextmanager
@@ -69,9 +76,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
     自有库 (SQLite) 的表由应用自己建 (create_all), 与 TeslaMate
     原库 (迁移建的表, 只读) 完全隔离。"""
-    database.init_engine()
+    # 先建自有库再读设置: TeslaMate 连接可被设置页覆盖 (未设回落 env 定位)
     database.init_own_engine()
     OwnBase.metadata.create_all(database.own_engine())
+    with database.own_session_factory()() as own:   # pylint: disable=not-callable
+        url = settings_store.engine_url(own)
+    database.init_engine(url)
     # 后台预热轨迹缓存 (全量下采样 ~15s, 不阻塞启动)
     threading.Thread(target=tracks_cache.warm,
                      args=(database.session_factory(),), daemon=True).start()
@@ -259,10 +269,10 @@ def get_locations(
 # ---------------------------------------------------------------- 足迹地图 API
 
 @mapapi.get("/config")
-def map_config() -> AmapConfig:
-    """高德地图 Key (env: AMAP_KEY / AMAP_SECURITY_CODE, 见 .env.example)。"""
-    return AmapConfig(amap_key=os.environ.get("AMAP_KEY"),
-                      security_code=os.environ.get("AMAP_SECURITY_CODE"))
+def map_config(own: Session = Depends(database.get_own_db)) -> AmapConfig:
+    """高德 Key: 设置页可改 (存自有库), 未设回落 env; 每次现读, 改完即生效。"""
+    key, code = settings_store.amap_values(own)
+    return AmapConfig(amap_key=key, security_code=code)
 
 
 @mapapi.get("/summary")
@@ -539,7 +549,76 @@ def trips_page() -> FileResponse:
     return _page("trips.html")
 
 
+@app.get("/tesla/settings")
+def settings_page() -> FileResponse:
+    """设置页: TeslaMate 数据库 / 高德 Key / 司机。"""
+    return _page("settings.html")
+
+
+@settingsapi.get("/settings")
+def get_settings(own: Session = Depends(database.get_own_db)) -> SettingsState:
+    """设置现值 (秘密打码, 密码只报是否在用)。"""
+    return settings_store.settings_state(own)
+
+
+@settingsapi.post("/settings")
+def save_settings(body: SettingsUpdate,
+                  own: Session = Depends(database.get_own_db)) -> SettingsState:
+    """保存设置: 留空字段不动; TeslaMate 连接变了 → 换引擎实测, 连不上整体回滚。"""
+    try:
+        state, engine_changed = settings_store.save_settings(own, body)
+    except settings_store.EngineError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if engine_changed:
+        # 换库了: 旧轨迹缓存全作废, 后台重灌 (不阻塞响应)
+        tracks_cache.reset()
+        threading.Thread(target=tracks_cache.warm,
+                         args=(database.session_factory(),), daemon=True).start()
+    return state
+
+
+@settingsapi.get("/drivers")
+def get_drivers(own: Session = Depends(database.get_own_db)) -> list[DriverInfo]:
+    """全部司机。"""
+    return settings_store.list_drivers(own)
+
+
+@settingsapi.post("/drivers")
+def add_driver(body: DriverIn,
+               own: Session = Depends(database.get_own_db)) -> DriverInfo:
+    """添加司机。"""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "名字不能为空")
+    return settings_store.create_driver(own, name)
+
+
+@settingsapi.patch("/drivers/{driver_id}")
+def change_driver(driver_id: int, body: DriverUpdate,
+                  own: Session = Depends(database.get_own_db)) -> DriverInfo:
+    """改司机: 改名 / 设默认 (全库至多一个默认)。"""
+    name = body.name.strip() if body.name is not None else None
+    if name == "":
+        raise HTTPException(400, "名字不能为空")
+    try:
+        return settings_store.update_driver(own, driver_id, name, body.is_default)
+    except repository.NotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@settingsapi.delete("/drivers/{driver_id}")
+def remove_driver(driver_id: int,
+                  own: Session = Depends(database.get_own_db)) -> OkResponse:
+    """删司机。"""
+    try:
+        settings_store.delete_driver(own, driver_id)
+    except repository.NotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return OkResponse(ok=True)
+
+
 app.include_router(charging)
 app.include_router(mapapi)
 app.include_router(trips)
+app.include_router(settingsapi)
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
