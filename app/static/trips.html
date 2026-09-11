@@ -422,6 +422,19 @@ body.selecting #refresh-btn { display: none; }
   font-variant-numeric: tabular-nums;
 }
 .pb-seek { flex: 1; -webkit-appearance: none; appearance: none; height: 28px; background: transparent; cursor: pointer; }
+/* 视角基线微调: 整条随速变焦曲线平移 (慢近快远不变, 只挪基准远近) */
+.pb-zoom { flex: none; display: flex; align-items: center; gap: 3px; }
+.pb-zb {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-3); color: var(--ink-1); font-size: 15px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .12s;
+}
+.pb-zb:active { transform: scale(.9); }
+#pb-zval {
+  flex: none; min-width: 24px; text-align: center; font-size: 11px;
+  color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
 .pb-seek::-webkit-slider-runnable-track {
   height: 4px; border-radius: 2px;
   background: linear-gradient(to right, var(--blue) var(--pb, 0%), var(--surface-3) var(--pb, 0%));
@@ -553,6 +566,11 @@ body.selecting #refresh-btn { display: none; }
     <button id="pb-toggle" class="pb-btn" aria-label="暂停"></button>
     <input type="range" id="pb-seek" class="pb-seek" min="0" max="1000" step="1" value="0">
     <button id="pb-speed" class="pb-speed">1×</button>
+    <div class="pb-zoom" title="视角基线: 随速变焦整体拉近/拉远 (慢近快远不变)">
+      <button id="pb-zout" class="pb-zb" aria-label="视角拉远">−</button>
+      <span id="pb-zval">0</span>
+      <button id="pb-zin" class="pb-zb" aria-label="视角拉近">+</button>
+    </div>
   </div>
   <div class="trip-map-wrap">
     <div id="trip-map"></div>
@@ -1448,7 +1466,13 @@ function splitSegments(pts, starts) {
    下 set 14.12 → 读回 14.12)。用户接管见建图处的输入事件监听 (重播恢复)。 */
 let followZoomOn = false, followZoomCur = 0;    // 开关 / 目标档 (迟滞簿记)
 let zoomShown = 0, zoomApplied = 0, zoomLastT = 0;   // 缓动值 / 已下发值 / 上帧时刻
-const speedZoom = v => Math.max(13.5, Math.min(16.3, 16.3 - v / 46));
+let zoomBias = 0;   // 视角基线: 随速变焦整条曲线平移 (±2.5, 0.5 步进, localStorage 记住)
+try {
+  zoomBias = Math.max(-2.5, Math.min(2.5,
+    Math.round((parseFloat(localStorage.getItem("trip-zoom-bias")) || 0) * 2) / 2));
+} catch { /* 无痕模式等 localStorage 不可用 → 当 0 */ }
+const speedZoom = v => Math.max(10.5, Math.min(18.5,
+  Math.max(13.5, Math.min(16.3, 16.3 - v / 46)) + zoomBias));
 
 /* 开播/重播: 视角中心先到位, 档位从地图当前值开始缓动到初始档 ——
    不硬切也不依赖 AMap 动画 (会被逐帧 setCenter 打断), 换轨迹/收尾拉远
@@ -1459,6 +1483,26 @@ function zoomEaseStart(zoom) {
   zoomShown = zoomApplied = tripMap.getZoom();
   zoomLastT = performance.now();
 }
+
+/* 视角基线加减: 整条慢近快远曲线跟着平移 (不动曲线形状)。手动缩放接管过
+   (followZoomOn=false) 时按它 = 从当前档重新接管随速变焦。播放结束后按
+   无效果 (缓动循环已停), 重播照常。 */
+function bumpZoomBias(d) {
+  const next = Math.max(-2.5, Math.min(2.5, Math.round((zoomBias + d) * 2) / 2));
+  if (next === zoomBias) return;
+  zoomBias = next;
+  try { localStorage.setItem("trip-zoom-bias", String(zoomBias)); } catch { /* 同上 */ }
+  $("#pb-zval").textContent = zoomBias > 0 ? `+${zoomBias}` : String(zoomBias);
+  if (!followZoomOn) {
+    followZoomOn = true;                     // 重新接管: 从当前档缓动到新目标
+    zoomShown = zoomApplied = tripMap.getZoom();
+    zoomLastT = performance.now();
+  }
+  followZoomCur = Math.round(speedZoom(curSess ? curSess.lastV : 0));
+}
+$("#pb-zout").addEventListener("click", () => bumpZoomBias(-0.5));
+$("#pb-zin").addEventListener("click", () => bumpZoomBias(0.5));
+$("#pb-zval").textContent = zoomBias > 0 ? `+${zoomBias}` : String(zoomBias);
 
 /* 播放轨迹动画。more=true 表示轨迹还会通过 append 追加 (合并轨迹流式
    下载边下边播): 播到当前末尾时停在原地等数据, 全部到齐后调用方关掉 more。 */
@@ -1785,9 +1829,11 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
    瓦片 img) 抄不到模板, 或瓦片请求超时, 都静默跳过, 照常播放。 */
 const TILE_HOSTS = ["webrd01", "webrd02", "webrd03", "webrd04"];
 
-/* 跟随倍率按里程: 260km 的路线跟 15 级视口基本"没在动", 放到 12 级看得出走线 */
+/* 跟随倍率按里程: 260km 的路线跟 15 级视口基本"没在动", 放到 12 级看得出走线。
+   基线平移同步生效 (预载瓦片的倍率跟实际开播档一致) */
 function followZoom(km) {
-  return km < 20 ? 15 : km < 80 ? 14 : km < 200 ? 13 : 12;
+  return Math.max(10.5, Math.min(18.5,
+    (km < 20 ? 15 : km < 80 ? 14 : km < 200 ? 13 : 12) + zoomBias));
 }
 
 /* 从地图 DOM 抄一张真实瓦片 URL 当模板 (lang/style/scale 跟实际渲染走, 高德改版不用跟)。
