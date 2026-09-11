@@ -138,3 +138,17 @@ class TrackFill(OwnBase):
     km: Mapped[float]
     source: Mapped[str] = mapped_column(String, default="amap")
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
+class TripGroup(OwnBase):
+    """轨迹分组: 多选的行程存成命名分组 (逻辑分组, TeslaMate 原库不动)。
+
+    ids 为升序去重后的 drive id 逗号串; 段数/里程/日期跨度不落库,
+    展示时按当前行程数据现算 (行程列表同口径, 只认已结束行程)。"""
+
+    __tablename__ = "trip_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    ids: Mapped[str] = mapped_column(String)     # "2195,2197,2200" 升序去重
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)

@@ -148,12 +148,13 @@ main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
-#merge-btn {
+#merge-btn, #groups-btn {
   margin-left: auto; align-self: center; font-size: 12.5px; color: #7db3f0;
   padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(57,135,229,.35);
 }
-#merge-btn:active { background: rgba(57,135,229,.15); }
-body.selecting #merge-btn { display: none; }
+#groups-btn { margin-left: 0; }   // auto 只给第一个 (多选), 分组接着排
+#merge-btn:active, #groups-btn:active { background: rgba(57,135,229,.15); }
+body.selecting #merge-btn, body.selecting #groups-btn { display: none; }
 
 /* ---------- 行程列表 (单列) ---------- */
 #list { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; }
@@ -232,7 +233,10 @@ body.selecting .card-t.picked .pick::after {
   border-top: 1px solid var(--hairline);
 }
 .selbar[hidden] { display: none; }
-.sel-info { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-2); }
+.sel-info {
+  flex: 1; min-width: 0; font-size: 13px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .sel-info b { color: var(--ink-1); font-weight: 650; }
 .sel-info #sel-cap { color: #e08a2e; }   // 划选超上限: 提示为什么按钮置灰
 .sel-go {
@@ -244,6 +248,69 @@ body.selecting .card-t.picked .pick::after {
 .sel-all { flex: none; font-size: 13px; color: var(--blue); font-weight: 600; padding: 9px 4px; }
 .sel-all:disabled { opacity: .4; }
 .sel-cancel { flex: none; font-size: 13px; color: var(--ink-2); padding: 9px 4px; }
+.sel-row, .gp-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.selbar.naming .sel-row { display: none; }
+.gp-row { display: none; }
+.selbar.naming .gp-row { display: flex; }
+.gp-row input {
+  flex: 1; min-width: 0; font-size: 14px; color: var(--ink-1);
+  padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--hairline); background: rgba(255,255,255,.06); outline: none;
+}
+.gp-row input:focus { border-color: var(--blue); }
+/* 手机窄屏: 选中信息独占一行, 按钮行换到下面 */
+@media (max-width: 479px) {
+  .sel-row { flex-wrap: wrap; gap: 8px 10px; }
+  .sel-info { flex-basis: 100%; }
+}
+
+/* ---------- 轨迹分组面板 ---------- */
+.gpanel {
+  position: fixed; inset: 0; z-index: 92; background: var(--bg);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform .28s cubic-bezier(.32,.72,.33,1);
+}
+.gpanel.show { transform: translateX(0); }
+.gpanel[hidden] { display: none; }
+.gp-head {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--hairline);
+}
+.gp-head h2 { flex: 1; font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
+.gp-close { font-size: 13px; color: var(--ink-2); padding: 6px 10px; }
+.gp-list { flex: 1; overflow-y: auto; padding: 4px 16px; -webkit-overflow-scrolling: touch; }
+.gp-item { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+.gp-main { flex: 1; min-width: 0; text-align: left; }
+.gp-name {
+  font-size: 15px; font-weight: 600; color: var(--ink-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gp-meta { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+.gp-act {
+  flex: none; font-size: 12.5px; color: var(--ink-2); padding: 6px 10px;
+  border-radius: 999px; border: 1px solid var(--hairline);
+}
+.gp-act.arm { color: #ff6961; border-color: rgba(255,105,97,.4); }   // 删除二次确认态
+.gp-input {
+  flex: 1; min-width: 0; font-size: 15px; color: var(--ink-1);
+  padding: 7px 10px; border-radius: 10px;
+  border: 1px solid var(--blue); background: rgba(255,255,255,.06); outline: none;
+}
+.gp-empty { padding: 60px 24px; text-align: center; font-size: 15px; color: var(--ink-2); }
+.gp-empty span { display: block; margin-top: 8px; font-size: 12.5px; color: var(--ink-3); }
+
+/* ---------- 轻提示 ---------- */
+#toast {
+  position: fixed; top: calc(env(safe-area-inset-top) + 60px); left: 50%;
+  transform: translateX(-50%) translateY(-8px); z-index: 99;
+  max-width: 80vw; font-size: 13px; color: #fff; text-align: center;
+  background: rgba(10,10,12,.85);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-radius: 999px; padding: 9px 16px;
+  opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast[hidden] { display: none; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
   height: 78vh; height: 78dvh;
@@ -390,6 +457,7 @@ body.selecting .card-t.picked .pick::after {
     <h2>行程轨迹</h2>
     <span class="count-badge" id="count-badge"></span>
     <button id="merge-btn" hidden>多选</button>
+    <button id="groups-btn">分组</button>
   </div>
   <div id="list"></div>
 
@@ -405,10 +473,18 @@ body.selecting .card-t.picked .pick::after {
 </main>
 
 <div class="selbar" id="selbar" hidden>
-  <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km<span id="sel-cap" hidden> · 一次最多 50 段</span></div>
-  <button class="sel-all" id="sel-all">全选</button>
-  <button class="sel-cancel" id="sel-cancel">取消</button>
-  <button class="sel-go" id="sel-go" disabled>查看连续轨迹</button>
+  <div class="sel-row">
+    <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km<span id="sel-cap" hidden> · 一次最多 50 段</span></div>
+    <button class="sel-all" id="gp-btn" disabled>存为分组</button>
+    <button class="sel-all" id="sel-all">全选</button>
+    <button class="sel-cancel" id="sel-cancel">取消</button>
+    <button class="sel-go" id="sel-go" disabled>查看连续轨迹</button>
+  </div>
+  <div class="gp-row">
+    <input id="gp-name" maxlength="30" placeholder="分组名字" autocomplete="off">
+    <button class="sel-go" id="gp-save">保存</button>
+    <button class="sel-cancel" id="gp-name-cancel">取消</button>
+  </div>
 </div>
 <div class="backdrop" id="backdrop"></div>
 <div class="sheet" id="sheet">
@@ -437,6 +513,16 @@ body.selecting .card-t.picked .pick::after {
     </div>
   </div>
 </div>
+
+<div class="gpanel" id="gpanel" hidden>
+  <div class="gp-head">
+    <h2>轨迹分组</h2>
+    <button class="gp-close" id="gp-close">关闭</button>
+  </div>
+  <div class="gp-list" id="gp-list"></div>
+  <div class="gp-empty" id="gp-empty" hidden>还没有分组<span>多选行程后点「存为分组」</span></div>
+</div>
+<div id="toast" hidden></div>
 
 <script src="/tesla/static/gcj02.js?v=1"></script>
 <script src="/tesla/static/trackutil.js?v=8"></script>
@@ -828,6 +914,7 @@ function applyPick() {
   $("#sel-km").textContent = num(km);
   $("#sel-cap").hidden = n <= MERGE_MAX;   // 划选超上限 (全选已封顶, 只会手动划出)
   $("#sel-go").disabled = n < 2 || n > MERGE_MAX;
+  $("#gp-btn").disabled = n < 2 || n > MERGE_MAX;   // 存分组与合并播放同一上限
   $("#sel-all").textContent =             // 已选全部 → 再点一次变清空
     on && a === 0 && b === items.length - 1 ? "清空" : "全选";
 }
@@ -851,6 +938,7 @@ function enterSelect() {
 function exitSelect() {
   document.body.classList.remove("selecting");
   $("#selbar").hidden = true;
+  $("#selbar").classList.remove("naming");
   selAnchor = -1; selRange = [-1, -1];
   applyPick();
 }
@@ -879,6 +967,169 @@ $("#sel-go").addEventListener("click", () => {
   const ids = items.slice(selRange[0], selRange[1] + 1).map(it => it.id);
   exitSelect();
   openMerged(ids);
+});
+
+/* ============================ 轨迹分组 ============================ */
+/* 逻辑分组存自有库 (api/groups), 行程原数据不动; 打开分组 = 合并播放。
+   深链用逗号串原样直通 —— 不能折叠成头尾区间, 区间会把中间没选进的行程
+   也算进来 (分组本就不要求 id 连续)。 */
+let gpIds = [];         // 进入命名模式时快照的选中 ids (之后划选变动不影响本次保存)
+let gpGroups = [];      // 分组面板当前数据 (渲染 + 委托处理器查用)
+let toastTimer = null;
+
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.hidden = false;
+  requestAnimationFrame(() => el.classList.add("on"));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.classList.remove("on");
+    setTimeout(() => { el.hidden = true; }, 250);
+  }, 1800);
+}
+
+// ---- 多选栏: 存为分组 (命名模式, 预填日期跨度) ----
+$("#gp-btn").addEventListener("click", () => {
+  gpIds = items.slice(selRange[0], selRange[1] + 1).map(it => it.id);
+  const dNew = items[selRange[0]].date.slice(5);   // 列表时间倒序: [0] 最新 [末] 最旧
+  const dOld = items[selRange[1]].date.slice(5);
+  $("#gp-name").value = dNew === dOld ? dNew : `${dOld}~${dNew}`;   // 预填日期跨度, 可改
+  $("#gp-save").disabled = false;
+  $("#selbar").classList.add("naming");
+  setTimeout(() => $("#gp-name").select(), 50);    // 等命名行布局稳定再全选
+});
+
+$("#gp-name-cancel").addEventListener("click", () =>
+  $("#selbar").classList.remove("naming"));
+
+$("#gp-name").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); $("#gp-save").click(); }
+  else if (e.key === "Escape") { $("#selbar").classList.remove("naming"); }
+});
+
+$("#gp-save").addEventListener("click", async () => {
+  const name = $("#gp-name").value.trim();
+  if (!name) { toast("名字不能为空"); return; }
+  const btn = $("#gp-save");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/tesla/trips/api/groups", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, ids: gpIds }),
+    });
+    if (r.status === 401) { location.replace("/tesla/login"); return; }
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status}`);
+    toast(`已存分组「${name}」`);
+    exitSelect();
+  } catch (err) {
+    toast(`存分组失败: ${err.message}`);
+    btn.disabled = false;
+  }
+});
+
+// ---- 分组面板 ----
+function gpRowHTML(g) {
+  return `<div class="gp-item" data-gid="${g.id}" data-ids="${g.ids.join(",")}">` +
+    `<button class="gp-main"><div class="gp-name">${esc(g.name)}</div>` +
+    `<div class="gp-meta">${g.n} 段 · ${num(g.km)} km` +
+    (g.span ? ` · ${esc(g.span)}` : "") + `</div></button>` +
+    `<button class="gp-act gp-rename">改名</button>` +
+    `<button class="gp-act gp-del">删除</button></div>`;
+}
+
+function gpRender() {
+  $("#gp-empty").hidden = gpGroups.length > 0;
+  $("#gp-list").innerHTML = gpGroups.map(gpRowHTML).join("");
+}
+
+async function openGroups() {
+  const panel = $("#gpanel");
+  panel.hidden = false;
+  requestAnimationFrame(() => panel.classList.add("show"));
+  $("#gp-list").innerHTML = "";
+  $("#gp-empty").hidden = true;
+  try {
+    gpGroups = await getJSON("/tesla/trips/api/groups");
+  } catch {
+    gpGroups = [];
+    toast("分组加载失败");
+  }
+  gpRender();
+}
+
+function closeGroups() {
+  const panel = $("#gpanel");
+  panel.classList.remove("show");
+  setTimeout(() => { panel.hidden = true; }, 300);
+}
+
+$("#groups-btn").addEventListener("click", openGroups);
+$("#gp-close").addEventListener("click", closeGroups);
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("#gpanel").hidden) closeGroups();
+});
+
+/* 面板点击委托: 点条目开合并播放; 改名行内编辑; 删除二次确认 (3s 内再点才删)。
+   行内重渲染会脱链事件目标 —— 委托先判 isConnected (与页签菜单同一坑)。 */
+$("#gp-list").addEventListener("click", async e => {
+  const t = e.target;
+  if (!(t instanceof Element) || !t.isConnected) return;
+  const item = t.closest(".gp-item");
+  if (!item) return;
+  const gid = +item.dataset.gid;
+  const group = gpGroups.find(g => g.id === gid);
+  if (t.closest(".gp-del")) {
+    const btn = t.closest(".gp-del");
+    if (!btn.classList.contains("arm")) {          // 第一次点: 挂起 3s
+      btn.classList.add("arm"); btn.textContent = "确认删除";
+      setTimeout(() => { btn.classList.remove("arm"); btn.textContent = "删除"; }, 3000);
+      return;
+    }
+    try {
+      const r = await fetch(`/tesla/trips/api/groups/${gid}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(`${r.status}`);
+      gpGroups = gpGroups.filter(g => g.id !== gid);
+      gpRender();
+      toast("已删除分组");
+    } catch { toast("删除失败"); }
+  } else if (t.closest(".gp-rename")) {
+    item.innerHTML =
+      `<input class="gp-input" value="${esc(group.name)}" maxlength="30">` +
+      `<button class="gp-act gp-ok">确定</button>` +
+      `<button class="gp-act gp-no">取消</button>`;
+    const inp = item.querySelector(".gp-input");
+    inp.focus(); inp.select();
+  } else if (t.closest(".gp-ok")) {
+    const name = item.querySelector(".gp-input").value.trim();
+    if (!name) { toast("名字不能为空"); return; }
+    try {
+      const r = await fetch(`/tesla/trips/api/groups/${gid}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!r.ok) throw new Error(`${r.status}`);
+      group.name = name;
+      gpRender();
+    } catch { toast("改名失败"); }
+  } else if (t.closest(".gp-no")) {
+    gpRender();
+  } else if (t.closest(".gp-main")) {
+    closeGroups();
+    openMerged(item.dataset.ids);   // 逗号串原样直通 (保成员, 不折叠区间)
+  }
+});
+
+$("#gp-list").addEventListener("keydown", e => {
+  if (!(e.target instanceof Element)) return;
+  if (e.key === "Enter" && e.target.classList.contains("gp-input")) {
+    e.preventDefault();
+    e.target.closest(".gp-item").querySelector(".gp-ok").click();
+  } else if (e.key === "Escape") {
+    e.stopPropagation();   // 阻断冒泡, 别再触发面板级 Esc 关面板
+    gpRender();            // 行内改名的输入框: Esc 放弃
+  }
 });
 
 /* ============================ 轨迹弹层 ============================ */

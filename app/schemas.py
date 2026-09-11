@@ -243,6 +243,27 @@ class MergedTrack(BaseModel):
     to: str
 
 
+class TripGroupIn(BaseModel):
+    """存分组: 名字 + 行程 id 列表 (2~50 段, 与合并播放同上限)。"""
+    name: str = Field(min_length=1, max_length=30)
+    ids: list[int] = Field(min_length=2, max_length=50)
+
+
+class TripGroupRename(BaseModel):
+    """分组改名 (只改名字, 成员不动)。"""
+    name: str = Field(min_length=1, max_length=30)
+
+
+class TripGroupInfo(BaseModel):
+    """分组条目: 段数/里程/日期跨度按当前行程数据现算。"""
+    id: int
+    name: str
+    ids: list[int]
+    n: int
+    km: float
+    span: str
+
+
 class GapFillRequest(BaseModel):
     """断档补路回传 (前端高德路径规划成功后 POST, 坐标一律 WGS-84)。
 

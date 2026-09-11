@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 
 from app import repository
-from app.models import Address, Position, TrackFill
+from app.models import Address, Drive, Position, TrackFill
 from tests.conftest import seed_addresses, seed_drive, seed_position
 
 
@@ -568,7 +568,7 @@ def test_gap_fill_overwrites_same_gap(auth, db, owndb):
     assert len(track["pts"]) == 30
 
 
-def test_gap_fill_anchors_with_inbetween_points_keep_ts_monotonic(auth, db, owndb):
+def test_gap_fill_anchors_with_inbetween_points_keep_ts_monotonic(auth, db):
     """锚点区间内夹着原始点 (客户端按下采样视图挑锚点) → 按日期归并, ts 单调。
 
     实锤场景: 合并轨迹按段下采样, 客户端在它收到的序列里看到断档, 回传的
@@ -599,7 +599,7 @@ def test_gap_fill_anchors_with_inbetween_points_keep_ts_monotonic(auth, db, ownd
     assert [114.0205, 22.5, 60.0, 45000.0] in track["pts"]
 
 
-def test_gap_fill_points_survive_downsampling(auth, db, owndb):
+def test_gap_fill_points_survive_downsampling(auth, db):
     """大行程 (原始点 3 倍于预算, stride=3) 的补路点全保留不被抽掉。
 
     补路点相距 ~78m, 若被 stride 抽掉 2/3, 间距飙到 ~235m —— 超过断档
@@ -749,3 +749,85 @@ def test_trips_page_has_multiselect(auth):
     assert "function splitSegments(" in html
     assert "splitSegments(pts, it.seg_starts)" in html
     assert "TrackUtil.splitGaps(pts)" in html
+
+
+# ---------------------------------------------------------------- 轨迹分组
+
+def test_trip_group_save_list_rename_delete(auth, db):
+    """存分组: ids 排序去重落库; 列表段数/里程/日期跨度按当前数据现算;
+    改名只动名字; 删除只删自有库记录 (行程原数据不动)。"""
+    t = datetime(2026, 5, 1, 0, 32)
+    seed_drive(db, id=11, start_date=t, end_date=t + timedelta(hours=1),
+               distance=42.5)
+    seed_drive(db, id=12, start_date=t + timedelta(days=2),
+               end_date=t + timedelta(days=2, hours=1), distance=10.04)
+    seed_drive(db, id=13, start_date=t + timedelta(days=2, hours=3),
+               end_date=t + timedelta(days=2, hours=4), distance=8.0)
+
+    r = auth.post("/tesla/trips/api/groups",
+                  json={"name": "五一小长途", "ids": [13, 11, 12, 11]})  # 乱序 + 重复
+    assert r.status_code == 200
+    g = r.json()
+    assert g["ids"] == [11, 12, 13]           # 升序去重
+    assert g["n"] == 3 and g["km"] == 60.5
+    assert g["span"] == "2026-05-01~2026-05-03"   # 最早~最晚出发日
+
+    r = auth.get("/tesla/trips/api/groups")
+    assert [x["name"] for x in r.json()] == ["五一小长途"]
+
+    assert auth.patch(f"/tesla/trips/api/groups/{g['id']}",
+                      json={"name": "改名了"}).json()["name"] == "改名了"
+    # 行程原数据没被动过
+    assert db.get(Drive, 11).distance == 42.5
+
+    assert auth.delete(f"/tesla/trips/api/groups/{g['id']}").json() == {"ok": True}
+    assert auth.get("/tesla/trips/api/groups").json() == []
+    assert auth.delete(f"/tesla/trips/api/groups/{g['id']}").status_code == 404
+
+
+def test_trip_group_span_single_date_and_km_rounding(auth, db):
+    """同一天的分组 span 就是那一天; 里程按现算求和。"""
+    t = datetime(2026, 5, 1, 8, 0)
+    seed_drive(db, id=21, start_date=t, end_date=t + timedelta(hours=1),
+               distance=1.11)
+    seed_drive(db, id=22, start_date=t + timedelta(hours=2),
+               end_date=t + timedelta(hours=3), distance=2.22)
+    r = auth.post("/tesla/trips/api/groups", json={"name": "同城", "ids": [21, 22]})
+    assert r.json()["span"] == "2026-05-01"
+    assert r.json()["km"] == 3.3
+
+
+def test_trip_group_validation(auth, db):
+    """校验: 无效行程 (不存在/未结束) 404; 名字/段数越界 422;
+    去重后不足 2 段 / 名字 strip 后为空 400。"""
+    t = datetime(2026, 5, 1, 0, 32)
+    seed_drive(db, id=31, start_date=t, end_date=t + timedelta(hours=1))
+    seed_drive(db, id=32, start_date=t, end_date=None)          # 未结束行程
+    post = "/tesla/trips/api/groups"
+
+    assert auth.post(post, json={"name": "x", "ids": [31, 99]}).status_code == 404
+    assert auth.post(post, json={"name": "x", "ids": [31, 32]}).status_code == 404
+    assert auth.post(post, json={"name": "x", "ids": [31, 31]}).status_code == 400
+    assert auth.post(post, json={"name": "   ", "ids": [31, 32]}).status_code == 400
+    assert auth.post(post, json={"name": "x" * 31, "ids": [31, 99]}).status_code == 422
+    assert auth.post(post, json={"name": "x", "ids": [31]}).status_code == 422
+
+    # 改名: 未知分组 404
+    assert auth.patch("/tesla/trips/api/groups/999",
+                      json={"name": "y"}).status_code == 404
+
+
+def test_trips_page_has_group_panel(auth):
+    """轨迹分组: 头部入口 + 全屏面板 + 存分组命名模式 + 轻提示都挂在页面上。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ['id="groups-btn"', 'id="gpanel"', '轨迹分组', 'id="gp-list"',
+                 'id="gp-btn"', "存为分组", 'id="gp-name"', 'id="gp-save"',
+                 'id="gp-close"', "api/groups", "function toast(", 'id="toast"',
+                 "openMerged(item.dataset.ids)"]:
+        assert frag in html, f"行程页缺少分组片段 {frag}"
+    # 面板条目渲染 + 改名/删除两段式委托 (isConnected 防脱链)
+    assert "function gpRowHTML(" in html
+    assert 'gp-list").addEventListener("click"' in html
+    assert "!t.isConnected" in html
+    # 存分组按钮与查看连续轨迹同一上限联动
+    assert '$("#gp-btn").disabled = n < 2 || n > MERGE_MAX' in html
