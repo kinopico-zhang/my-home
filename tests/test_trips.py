@@ -568,6 +568,37 @@ def test_gap_fill_overwrites_same_gap(auth, db, owndb):
     assert len(track["pts"]) == 30
 
 
+def test_gap_fill_anchors_with_inbetween_points_keep_ts_monotonic(auth, db, owndb):
+    """锚点区间内夹着原始点 (客户端按下采样视图挑锚点) → 按日期归并, ts 单调。
+
+    实锤场景: 合并轨迹按段下采样, 客户端在它收到的序列里看到断档, 回传的
+    锚点在原始流里中间还夹着未被抽掉的点 —— 旧实现把补路点整块插到锚点后,
+    中间的原始点日期回退, 合并轨迹 ts 出现 12 秒乱序 (播放节拍错乱)。"""
+    seed_addresses(db)
+    seed_drive(db, id=8)
+    t0 = datetime(2026, 9, 10, 0, 32)
+    rows = [(0, 114.000, 22.50, 30.0),
+            (10, 114.001, 22.50, 30.0),    # ← 锚点 a
+            (11, 114.0015, 22.50, 30.0),   # 区间内原始点 (客户端视图抽掉的)
+            (79, 114.0205, 22.50, 60.0),   # 区间内原始点
+            (80, 114.021, 22.50, 60.0),    # ← 锚点 b
+            (90, 114.022, 22.50, 60.0)]
+    for sec, lng, lat, spd in rows:
+        seed_position(db, 8, id=None, date=t0 + timedelta(seconds=sec),
+                      longitude=lng, latitude=lat, speed=spd, power=45000.0)
+    r = auth.post("/tesla/trips/api/gap_fill", json=dict(FILL_BODY, drive_id=8))
+    assert r.status_code == 200 and r.json()["ok"] is True
+    track = auth.get("/tesla/trips/api/8/track").json()
+    assert track["ts"] == sorted(track["ts"])    # 修复前: 补路点块后 ts 回退
+    assert track["ts"][0] == 0 and track["ts"][-1] == 90
+    assert track["pts"][0][:2] == [114.0, 22.5]
+    assert track["pts"][-1][:2] == [114.022, 22.5]
+    assert len(track["pts"]) == 6 + 25           # 原始 6 + 补路 25 (27 加密点
+    # 去掉与锚点重合的首尾), 区间内两个原始点一个不丢 —— 归并后按日期穿插
+    assert [114.0015, 22.5, 30.0, 45000.0] in track["pts"]
+    assert [114.0205, 22.5, 60.0, 45000.0] in track["pts"]
+
+
 def test_gap_fill_points_survive_downsampling(auth, db, owndb):
     """大行程 (原始点 3 倍于预算, stride=3) 的补路点全保留不被抽掉。
 
