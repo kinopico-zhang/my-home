@@ -622,7 +622,7 @@ function filterQS() {   // 时间/起终点/里程 → 参数串 (无 ? 前缀),
 }
 function listURL(key) {   // 行程页地址栏: 筛选参数 + 可选行程深链 (?id=/ ?ids=)
   const parts = [filterQS(),
-                 key ? `${key.includes(",") ? "ids=" : "id="}${key}` : null].filter(Boolean);
+                 key ? `${/[-,]/.test(key) ? "ids=" : "id="}${key}` : null].filter(Boolean);
   return "/tesla/trips" + (parts.length ? "?" + parts.join("&") : "");
 }
 function syncURL() {   // 筛选写进地址栏 (默认值不写, 保留打开中的行程深链)
@@ -883,20 +883,16 @@ $("#sel-go").addEventListener("click", () => {
 let amapLoading = null;             // Promise<true>: 高德脚本就绪
 let tripMap = null;                 // 弹层内地图实例, 复用不销毁
 let openSeq = 0;                    // 连续点开多条时, 只认最后一次
-let curKey = null;                  // 弹层当前行程 key (单条 "2200" / 合并 "1836,1839"), 地址栏同步用
-const mergedCache = new Map();      // "id,id" → 合并轨迹响应 (含 pts/ts/汇总)
+let curKey = null;                  // 弹层当前行程 key (单条 "2200" / 合并 "1836-1839"), 地址栏同步用
+const mergedCache = new Map();      // "首-尾" → 合并轨迹整包 (流式下完后存, 重开秒开)
 
-/* 多选的连续行程 → 一条轨迹: 后端拼好 pts/ts + 汇总, 弹层照常播放动画。
-   id 归一成升序去重: 与后端返回的 ids 顺序一致, 分享 URL/缓存键稳定,
-   用户先点哪张卡都不影响链接。 */
-async function openMerged(ids, fromUrl) {
-  const key = [...new Set(ids)].sort((a, b) => a - b).join(",");
-  let d = mergedCache.get(key);
-  if (!d) {
-    d = await getJSON(`/tesla/trips/api/merged?ids=${key}`);
-    mergedCache.set(key, d);
-  }
-  openTrip({ ...d, id: "m:" + key, merged: true }, fromUrl);
+/* 多选的连续行程 → 一条轨迹。ids 为多选数组 (必连续 → 只记头尾 id) 或
+   深链原始串 ("首-尾" / 旧版逗号)。弹层立即打开阻断其他操作, 轨迹数据
+   走流式接口边下边播 (见 loadMergedStream); 整包缓存命中则直接播。 */
+function openMerged(ids, fromUrl) {
+  const key = typeof ids === "string" ? ids
+    : `${Math.min(...ids)}-${Math.max(...ids)}`;
+  return openTrip({ id: "m:" + key, merged: true, mergeKey: key }, fromUrl);   // promise 传回 (深链失败抹参靠它)
 }
 
 function loadAMapScript(key, securityCode) {
@@ -975,6 +971,24 @@ function routeBetween(aGcj, bGcj) {
 
 const toGcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
 
+/* 规划成功的断档补路回传服务端: 存进 app 自有库 (TeslaMate 原库只读不动),
+   之后轨迹接口直接下发服务端拼好的连续轨迹, 前端不再重新规划。
+   高德路线是 GCJ, 转回 WGS 上传; 端点 g.pts 本就是 WGS 采样点, 服务端按
+   最近点锚定。回传失败无所谓 —— 下次播放这个断档还在, 会再规划再传。
+   只回传单条轨迹; 合并轨迹的断档服务端已拼好, 根本走不到这里。 */
+function postGapFill(it, g, route) {
+  if (typeof it.id !== "number") return;
+  fetch("/tesla/trips/api/gap_fill", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      drive_id: it.id,
+      a: g.pts[0].slice(0, 2), b: g.pts[1].slice(0, 2),
+      path: route.map(p => GCJ02.gcj02ToWgs84(p[0], p[1])),
+    }),
+  }).catch(() => {});
+}
+
 /* 断档补路的方向校验: 高德把断档端点吸附到对向车道时, 会规划出先朝反方向
    绕一大圈再回来的路 (实测 0.25km 的断档被规划成 3.6km 掉头环线, 起步方向
    与行驶方向差 176°)。判"病态": 绕行超直线 3 倍, 或起步方向背离断档前行
@@ -1034,39 +1048,39 @@ function splitSegments(pts, starts) {
   return segs.length ? segs : TrackUtil.splitGaps(pts);
 }
 
-function playTrack(pts, ts, it, zoom = 15) {
+/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。档位取整 (AMap
+   会把小数 zoom 吸附成整数, 回读值对不上), 只在档位变化时 setZoom;
+   用户手动捏合/滚轮缩放后本回合停用 (重播恢复)。 */
+let followZoomOn = false, followZoomCur = 0, selfZoomUntil = 0;
+const speedZoom = v => Math.round(Math.max(13.5, Math.min(16.3, 16.3 - v / 46)));
+
+/* 播放轨迹动画。more=true 表示轨迹还会通过 append 追加 (合并轨迹流式
+   下载边下边播): 播到当前末尾时停在原地等数据, 全部到齐后调用方关掉 more。 */
+function playTrack(pts, ts, it, zoom = 15, more = false) {
   stopAnim();
   if (curSess) curSess.alive = false;
   const gcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
   const path = pts.map(gcj);                    // 全量坐标转换一次, 逐帧只切片
-  const N = path.length;
+  let N = path.length;                          // 流式追加会变长
   const cum = TrackUtil.cumDistKm(pts);         // 播放中的实时里程
+  const vt = TrackUtil.animTimes(pts, ts);      // 播放节拍: 每点累计行驶秒
   // 跟随时长按点数与里程取大: 5~90s (1× 基准)。只看点数会亏待被下采样的
   // 超长轨迹 (260km 也被压到 12 秒放完, 根本看不清路), 里程分量让长途慢下来
-  const dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90) * 1000;
-  const growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
+  let dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90) * 1000;
+  let growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
   // 背景全程速度线 (淡) —— 拉远后就是完整的速度色全局图
   // 合并轨迹按段识别断档 (见 splitSegments), 单段照旧全局一套
-  const segs = splitSegments(pts, it.seg_starts);
-  const bgLines = [];
-  for (const seg of segs)
-    for (const b of TrackUtil.speedLines(seg))
-      bgLines.push(new AMap.Polyline({
-        path: b.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
-        strokeColor: b.color, strokeOpacity: 0.28, strokeWeight: 4,
-        lineJoin: "round", zIndex: 50,
-      }));
-  // GPS 断档处 (隧道/信号丢失) 没有真实采样: 蓝色虚线沿真实道路连接,
-  // 先画直线占位, 规划路径回来后整段替换 (见下方 gaps.forEach)
-  const gaps = TrackUtil.gapsBetween(segs);
-  const gapLines = gaps.map(g => new AMap.Polyline({
-    path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
-    strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
+  const speedLineOverlays = slice => TrackUtil.speedLines(slice).map(b => new AMap.Polyline({
+    path: b.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
+    strokeColor: b.color, strokeOpacity: 0.28, strokeWeight: 4,
     lineJoin: "round", zIndex: 50,
   }));
-  const allLines = bgLines.concat(gapLines);
-  tripMap.add(allLines);
+  const segs = splitSegments(pts, it.seg_starts);
+  const bgLines = [];
+  for (const seg of segs) bgLines.push(...speedLineOverlays(seg));
+  const allLines = [...bgLines];   // 断档虚线随时加进来 (见 addGap), 收尾拉远用
+  tripMap.add(bgLines);
 
   const progress = new AMap.Polyline({
     path: [path[0]], strokeColor: "#f5f5f7", strokeWeight: 4.5,
@@ -1083,13 +1097,20 @@ function playTrack(pts, ts, it, zoom = 15) {
   $("#sh-pw-lb").textContent = "功耗";
   // 这辆车的 API 上报的 power 常年 ~0 (实测全库 -94~254W, 真开车至少上万瓦),
   // 只有出现真实量级的数据才亮出功耗格, 不然一直显示 0.0kW 像是坏了
-  const hasPower = pts.some(p => Math.abs(p[3] || 0) > 500);
+  let hasPower = pts.some(p => Math.abs(p[3] || 0) > 500);   // 追加段可能点亮
   $("#sh-cell-pw").hidden = !hasPower;          // 没有可用的功耗数据就不占格子
-  const setLive = idx => {
-    $("#sh-km").innerHTML = cum[idx].toFixed(1) + "<small>km</small>";
-    $("#sh-dur").textContent = fmtDurLive(ts[idx] || 0);
-    $("#sh-spd").innerHTML = Math.round(pts[idx][2] || 0) + "<small>km/h</small>";
-    const pw = pts[idx][3];                     // W: 正=放电 负=动能回收
+  const setLive = (idx, frac) => {              // frac: 该步内进度 (断档中也在走)
+    const last = idx + 1 >= N;
+    const stepKm = last ? 0 : cum[idx + 1] - cum[idx];
+    const va = pts[idx][2] || 0, vb = last ? va : (pts[idx + 1][2] || 0);
+    const v = va + (vb - va) * frac;            // 车速两端线性插值 (断档推算模型)
+    $("#sh-km").innerHTML = (cum[idx] + stepKm * frac).toFixed(1) + "<small>km</small>";
+    const ta = ts[idx] || 0, tb = last ? ta : (ts[idx + 1] || ta);
+    $("#sh-dur").textContent = fmtDurLive(ta + (tb - ta) * frac);
+    $("#sh-spd").innerHTML = Math.round(v) + "<small>km/h</small>";
+    const pa = pts[idx][3], pb = last ? pa : pts[idx + 1][3];   // W: 正=放电 负=回收
+    const pw = pa == null && pb == null ? null :
+      pa == null ? pb : pb == null ? pa : pa + (pb - pa) * frac;
     $("#sh-pw").innerHTML = (pw == null ? "—" :
       (pw / 1000).toFixed(1).replace(/\.0$/, "")) + "<small>kW</small>";
   };
@@ -1104,23 +1125,106 @@ function playTrack(pts, ts, it, zoom = 15) {
       (mp / 1000).toFixed(1).replace(/\.0$/, "")) + "<small>kW</small>";
   };
 
-  const splices = [];   // 已解析的断档路由 [{aIdx, bIdx, route(同 path 坐标系)}] 按 aIdx 升序
+  const splices = [];   // 已解析的断档路由 [{aIdx, bIdx, route, rcum}] 按 aIdx 升序
+
+  /* 断档步的头部位置: 有道路路径沿道路走 (rcum 是它的累计里程), 没有则
+     两端直线插值 —— 车按插值速度驶过, 不瞬移到对岸。 */
+  function headPos(idx, frac) {
+    const sp = splices.find(g => g.aIdx === idx);
+    if (sp) return TrackUtil.pathPointAt(sp.route, sp.rcum, frac);
+    const a = path[idx], b = path[idx + 1];
+    return b ? [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac] : a;
+  }
+  /* 断档步内白线跟着头部往对岸长: 道路路径从头到当前进度处的一段 */
+  function routePrefix(sp, frac) {
+    const q = frac * sp.rcum[sp.rcum.length - 1];
+    let i = 0;
+    while (i < sp.route.length && sp.rcum[i] < q) i++;
+    return sp.route.slice(0, i).concat([headPos(sp.aIdx, frac)]);
+  }
   const s = {
-    pts, N, dur, playT: 0, speed: 1, paused: false, seeking: false,
-    finished: false, alive: true, lastIdx: -1, drawn: 0,
-    apply(idx) {                 // 播放头落到 idx: 地图与统计一起走 (拖进度条也走这里)
-      if (idx === s.lastIdx) return;
-      s.lastIdx = idx;
-      head.setCenter(path[idx]);
-      head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[idx][2] || 0)] });
-      tripMap.setCenter(path[idx], true);     // 视角紧贴头部 (immediately=不排队动画)
-      if (idx < s.drawn) s.drawn = 0;         // 拖进度条回退: 白线从头重建
-      if (idx - s.drawn >= growStep || idx === N - 1) {
-        s.drawn = idx;
-        // 断档跳变段替换成道路路径后, 白线也跟着沿道路走
-        progress.setPath(TrackUtil.splicePath(path, splices, idx));
+    pts, N, dur, vt, playT: 0, speed: 1, paused: false, seeking: false,
+    finished: false, alive: true, lastIdx: -1, lastFrac: -1, drawn: 0,
+    lineBase: null, gapDrawAt: 0,   // 白线末次重建快照 / 断档步内延伸节流
+    more, waiting: false,   // more: 还有段在路上; waiting: 播到末尾等数据
+    apply(idx, frac = 0) {       // 播放头落到 idx 步内 frac 进度 (拖进度条也走这里)
+      if (idx === s.lastIdx && frac === s.lastFrac) return;
+      const idxNew = idx !== s.lastIdx;
+      s.lastIdx = idx; s.lastFrac = frac;
+      const pos = headPos(idx, frac);          // 断档步沿道路/直线插值走过去
+      const va = pts[idx][2] || 0, vb = idx + 1 < N ? (pts[idx + 1][2] || 0) : va;
+      const v = va + (vb - va) * frac;         // 断档中车速两端线性插值
+      head.setCenter(pos);
+      head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(v)] });
+      tripMap.setCenter(pos, true);            // 视角紧贴头部 (immediately=不排队动画)
+      const z = speedZoom(v);                  // 慢速拉近 / 高速拉远 (手动缩放即停)
+      if (followZoomOn && z !== followZoomCur) {
+        followZoomCur = z;
+        selfZoomUntil = Date.now() + 700;   // 我们这次 setZoom 引发的 zoomend
+        tripMap.setZoom(z, true);   // (可能迟到/排队) 豁免, 不算用户接管
       }
-      setLive(idx);
+      if (idxNew) {
+        if (idx < s.drawn) s.drawn = 0;         // 拖进度条回退: 白线从头重建
+        if (idx - s.drawn >= growStep || idx === N - 1) {
+          s.drawn = idx;
+          // 断档跳变段替换成道路路径后, 白线也跟着沿道路走
+          s.lineBase = TrackUtil.splicePath(path, splices, idx);
+          progress.setPath(s.lineBase);
+        }
+      } else if (frac > 0 && cum[idx + 1] - cum[idx] >= TrackUtil.MIN_GAP_KM) {
+        // 断档步内推进: 白线跟着头部往对岸长 (有道路沿道路), 节流 ~8fps
+        if (Date.now() - s.gapDrawAt > 120) {
+          s.gapDrawAt = Date.now();
+          const sp = splices.find(g => g.aIdx === idx);
+          progress.setPath(TrackUtil.splicePath(path, splices, idx)
+            .concat(sp ? routePrefix(sp, frac) : [pos]));
+        }
+      }
+      setLive(idx, frac);
+    },
+    seek(frac) {                // 0..1: 拖进度条/外部跳转统一入口, 立即生效
+      s.playT = Math.min(Math.max(frac, 0), 1) * dur;
+      const p = TrackUtil.animAt(vt, s.playT, dur);
+      s.apply(p.idx, p.frac);
+    },
+    /* 流式追加一段 (见 loadMergedStream): 索引只增不改, 速度线/断档/里程
+       全部延伸; 播放头按当前 idx 重新锚定, 避免按新总量比例重算导致倒跳 */
+    append(segPts, segTs) {
+      if (!s.alive || s.finished || !segPts.length) return;
+      const startIdx = pts.length;
+      for (const p of segPts) { pts.push(p); path.push(gcj(p)); }
+      for (const t of segTs) ts.push(t);
+      for (let i = startIdx; i < pts.length; i++)
+        cum.push(cum[i - 1] + TrackUtil.ptDistKm(pts[i - 1], pts[i]));
+      for (let i = startIdx; i < pts.length; i++)   // 节拍同步延伸 (含段间边界步)
+        vt.push(vt[i - 1] + TrackUtil.animStepSec(pts[i - 1], pts[i],
+                 ts.length >= pts.length ? Math.max(0, ts[i] - ts[i - 1]) : 1));
+      N = pts.length;
+      dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90) * 1000;
+      growStep = Math.max(1, Math.floor(N / 200));
+      s.dur = dur; s.N = N;             // 进度条 seek 用的是对象上的快照
+      // 新段速度线 + 段内断档 (段内补路服务端已拼好, 这里只剩稀疏采样断档)
+      const segSegs = TrackUtil.splitGaps(segPts);
+      for (const seg of segSegs) {
+        const lines = speedLineOverlays(seg);
+        bgLines.push(...lines);
+        allLines.push(...lines);
+        tripMap.add(lines);
+      }
+      for (const g of TrackUtil.gapsBetween(segSegs))
+        addGap(g, startIdx + segPts.indexOf(g.pts[0]),
+               startIdx + segPts.indexOf(g.pts[1]));
+      // 段间边界 (上一段尾 → 本段头, 停车挪位): 距离阈值同 gapsBetween
+      for (const g of TrackUtil.gapsBetween([[pts[startIdx - 1]], segPts]))
+        addGap(g, startIdx - 1, startIdx);
+      // 新段可能带来真实量级的功耗数据
+      if (!hasPower && segPts.some(p => Math.abs(p[3] || 0) > 500)) {
+        hasPower = true;
+        $("#sh-cell-pw").hidden = false;
+      }
+      if (s.waiting) { s.waiting = false; tripMsg(null, false); }
+      // 播放头按行驶秒比例重锚 (不是下标比例), 头部在屏幕上原地不动
+      if (s.lastIdx >= 0) s.playT = vt[N - 1] > 0 ? dur * vt[s.lastIdx] / vt[N - 1] : 0;
     },
     /* 收尾: 停表+拉远, 但控制条留着 (重播/拖进度仍可用);
        stopAnim 只在关弹层/换轨迹时调用。 */
@@ -1129,6 +1233,9 @@ function playTrack(pts, ts, it, zoom = 15) {
       s.finished = true;
       if (animRaf) cancelAnimationFrame(animRaf);
       animRaf = 0;
+      tripMsg(null, false);
+      followZoomOn = false;              // 播放结束, 随速变焦停用 (重播恢复)
+      selfZoomUntil = Date.now() + 700;  // 拉远动画的 zoomend 不算用户接管
       tripMap.remove([progress, head]);
       allLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));  // 淡线变亮
       tripMap.setFitView(allLines, false, [46, 46, 46, 46]);      // 拉远 → 全局视角
@@ -1141,13 +1248,17 @@ function playTrack(pts, ts, it, zoom = 15) {
     replay() {                   // 重播: 从头再放 (播完点按钮 / 播完拖进度都会走这)
       if (!s.finished) return;
       s.finished = false;
-      s.playT = 0; s.paused = false; s.lastIdx = -1; s.drawn = 0;
+      s.playT = 0; s.paused = false; s.lastIdx = -1; s.lastFrac = -1; s.drawn = 0;
+      s.waiting = false; s.lineBase = null;
       allLines.forEach(l => l.setOptions({ strokeOpacity: 0.28 }));
       progress.setPath([path[0]]);
       head.setCenter(path[0]);
       head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[0][2] || 0)] });
       tripMap.add([progress, head]);
       tripMap.setZoomAndCenter(zoom, path[0], true);
+      followZoomOn = true;
+      followZoomCur = zoom;
+      selfZoomUntil = Date.now() + 700;  // 上一会话收尾拉远的迟到 zoomend 别误伤
       $("#sh-spd-lb").textContent = "车速";
       $("#sh-pw-lb").textContent = "功耗";
       resetPlaybar();
@@ -1157,18 +1268,27 @@ function playTrack(pts, ts, it, zoom = 15) {
   anim = s;
   curSess = s;
 
-  // 断档路径规划: 缓存命中立即换成道路线, 否则请求回来后替换 (失败保持直线);
-  // 规划病态 (吸附到对向车道绕回头路) 时改用上下文重规划 (同样有缓存)
-  gaps.forEach((g, i) => {
-    const aIdx = pts.indexOf(g.pts[0]), bIdx = pts.indexOf(g.pts[1]);
+  /* GPS 断档处 (隧道/信号丢失) 没有真实采样: 蓝色虚线沿真实道路连接,
+     先画直线占位, 规划路径回来后整段替换; 规划成功的还会回传服务端存档
+     (存自有库, 之后服务端直接下发拼好的连续轨迹)。 */
+  const addGap = (g, aIdx, bIdx) => {
+    const line = new AMap.Polyline({
+      path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
+      strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
+      lineJoin: "round", zIndex: 50,
+    });
+    allLines.push(line);
+    tripMap.add(line);
+    // 断档路径规划: 缓存命中立即换成道路线, 否则请求回来后替换 (失败保持直线);
+    // 规划病态 (吸附到对向车道绕回头路) 时改用上下文重规划 (同样有缓存)
     const key = `${it.id}:${aIdx}-${bIdx}`, ctxKey = key + ":ctx";
-    const line = gapLines[i];
     const applyRoute = route => {
       if (!s.alive || !route || route.length < 2) return;
       line.setPath(route);
-      splices.push({ aIdx, bIdx, route });
+      splices.push({ aIdx, bIdx, route, rcum: TrackUtil.cumDistKm(route) });
       splices.sort((x, y) => x.aIdx - y.aIdx);
       s.drawn = 0;      // 白线下帧重建: 跳变段改为沿道路
+      postGapFill(it, g, route);   // 规划成功 → 回传存档 (只单条; 合并的服务端已拼好)
     };
     const settle = plain => {
       if (!routeLooksWrong(plain, g, pts, aIdx)) return applyRoute(plain);
@@ -1191,7 +1311,9 @@ function playTrack(pts, ts, it, zoom = 15) {
     if (hit) settle(hit);
     else routeBetween(gcj(g.pts[0]), gcj(g.pts[1]))
       .then(r => { if (r) routeCache.set(key, r); settle(r); });
-  });
+  };
+  for (const g of TrackUtil.gapsBetween(segs))
+    addGap(g, pts.indexOf(g.pts[0]), pts.indexOf(g.pts[1]));
 
   const resetPlaybar = () => {
     pbSeek.value = 0;
@@ -1205,23 +1327,34 @@ function playTrack(pts, ts, it, zoom = 15) {
     (function frame(now) {
       if (anim !== s || s.finished) return;    // 会话已停止/替换, 或已收尾
       // 帧间隔钳制 [0, 100ms]: Chrome 的 rAF 时间戳可能比上一帧还早 (见
-      // trackutil.animIndex 注释); 切后台回来会有超大间隔 —— 都不该让播放头跳跃
+      // trackutil.animAt 注释); 切后台回来会有超大间隔 —— 都不该让播放头跳跃
       const dt = Math.max(0, Math.min(now - lastNow, 100));
       lastNow = now;
       if (!s.paused && !s.seeking)
         s.playT = Math.min(s.playT + dt * s.speed, dur);
-      s.apply(TrackUtil.animIndex(s.playT, dur, N));
+      const p = TrackUtil.animAt(vt, s.playT, dur);   // 按行驶秒 → 步 + 步内进度
+      s.apply(p.idx, p.frac);
       pbSeek.value = Math.round(s.playT / dur * 1000);
       pbSeek.style.setProperty("--pb", (s.playT / dur * 100).toFixed(1) + "%");
-      if (s.playT >= dur) { s.finish(); return; }   // 播完自动收尾 (控制条留着重播)
+      if (s.playT >= dur) {
+        if (!s.more) { s.finish(); return; }   // 播完自动收尾 (控制条留着重播)
+        if (!s.waiting) {                      // 流式还没下完: 停在末尾等追加
+          s.waiting = true;
+          tripMsg("等待后续轨迹…", true);
+        }
+      }
       animRaf = requestAnimationFrame(frame);
     })(performance.now());
   };
 
   resetPlaybar();
   pbSpeed.textContent = "1×";
+  followZoomOn = true;
+  followZoomCur = zoom;
+  selfZoomUntil = Date.now() + 700;   // 初始定位的 zoomend 别误判用户接管
   tripMap.setZoomAndCenter(zoom, path[0], true);
   frameLoop();
+  return s;
 }
 
 /* ---------- 播放前预载沿途瓦片 ----------
@@ -1237,11 +1370,14 @@ function followZoom(km) {
 
 /* 从地图 DOM 抄一张真实瓦片 URL 当模板 (lang/style/scale 跟实际渲染走, 高德改版不用跟)。
    首次建图时初始瓦片还没进 DOM, 轮询等一小会儿; 矢量渲染是 canvas 没有瓦片
-   img (请求走另一套接口), 预载无意义 → 放弃, 不浪费请求。 */
+   img (请求走另一套接口), 预载无意义 → 放弃, 不浪费请求。
+   抄到一次就缓存 (流式逐段预载共用, 风格/倍率不会变)。 */
+let tileTplCache = null;
 async function tileTemplate() {
+  if (tileTplCache) return tileTplCache;
   for (let i = 0; i < 12; i++) {
     const img = document.querySelector("#trip-map img[src*='appmaptile']");
-    if (img) return img.src;
+    if (img) return tileTplCache = img.src;
     if (document.querySelector("#trip-map canvas")) return null;
     await new Promise(r => setTimeout(r, 250));
   }
@@ -1286,16 +1422,18 @@ function preloadTiles(pts, z, tpl, onProgress) {
 /* ---------- 地址栏深链: 打开变 /tesla/trips?id=X 或 ?ids=a,b, 方便分享/回退 ---------- */
 /* listURL(): 筛选参数 + 行程深链 共同组成地址栏 (时间菜单/筛选行/深链共用) */
 function urlTripKey() {
-  const m = /[?&](?:id|ids)=([\d,]+)/.exec(location.search);
+  const m = /[?&](?:id|ids)=([\d,-]+)/.exec(location.search);
   return m ? m[1] : null;
 }
 
 async function openByKey(key) {
-  /* 分享直开 / 后退再前进: 手里没有卡片数据, 单条走单条接口, 合并走合并接口 (404 → 抹掉参数) */
+  /* 分享直开 / 后退再前进: 手里没有卡片数据, 单条走单条接口, 合并走合并
+     接口 (404 → 抹掉参数)。合并键两种形式: "首-尾" (现行) / 逗号 (旧链) */
   try {
-    if (key.includes(",")) await openMerged(key.split(",").map(Number), true);
-    else openTrip(await getJSON(`/tesla/trips/api/sessions/${key}`), true);
+    if (/[-,]/.test(key)) await openMerged(key, true);   // 必须 await: 流式失败要
+    else openTrip(await getJSON(`/tesla/trips/api/sessions/${key}`), true);  // rethrow 到这抹参
   } catch (e) {
+    hideSheet();
     history.replaceState(null, "", listURL());   // 坏链接 → 抹掉行程参数, 保留筛选
   }
 }
@@ -1318,11 +1456,9 @@ function closeTrip() {
     history.replaceState(null, "", listURL());         // 分享直开 → 只抹行程参数
 }
 
-async function openTrip(it, fromUrl) {
-  curKey = it.merged ? it.ids.join(",") : String(it.id);
-  if (!fromUrl && urlTripKey() !== curKey)
-    history.pushState({ k: curKey }, "", listURL(curKey));
-  const seq = ++openSeq;
+/* 弹层头部汇总 (日期/时长/里程/最高速/功耗): 单条来自卡片数据, 合并来自
+   流式首行或整包缓存; 合并数据没到时先用占位, 到了再填 */
+function fillSheetHeader(it) {
   if (it.merged) {    // 合并多段: 跨天给日期区间, 同天照常; 时间列前缀段数
     const d1 = parseLocal(it.start), d2 = parseLocal(it.end);
     $("#sh-date").textContent = d1.toDateString() === d2.toDateString()
@@ -1339,6 +1475,27 @@ async function openTrip(it, fromUrl) {
   $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
   $("#sh-pw-lb").textContent = "平均功耗";
   $("#sh-pw").textContent = "—";
+}
+
+/* 合并数据在路上: 弹层先开 (阻断其他操作), 头部占位 */
+function fillSheetHeaderPending() {
+  $("#sh-date").textContent = "连续轨迹";
+  $("#sh-time").textContent = "正在下载…";
+  $("#sh-km").textContent = "—";
+  $("#sh-dur").textContent = "—";
+  $("#sh-spd").textContent = "—";
+  $("#sh-pw").textContent = "—";
+}
+
+async function openTrip(it, fromUrl) {
+  curKey = it.merged ? (it.mergeKey || it.ids.join(",")) : String(it.id);
+  if (!fromUrl && urlTripKey() !== curKey)
+    history.pushState({ k: curKey }, "", listURL(curKey));
+  const seq = ++openSeq;
+  const cached = it.merged ? mergedCache.get(it.mergeKey) : null;
+  if (cached) Object.assign(it, cached);   // 合并整包缓存命中: 数据齐了直接播
+  if (it.pts || !it.merged) fillSheetHeader(it);   // 单条: 字段随卡片/接口齐, 直接填
+  else fillSheetHeaderPending();                   // 合并流式: 数据在路上, 占位
   $("#sheet").classList.add("show");
   $("#backdrop").classList.add("show");
   tripMsg("正在加载轨迹…", true);
@@ -1353,10 +1510,23 @@ async function openTrip(it, fromUrl) {
       for (const ev of ["gesturestart", "gesturechange"])
         document.getElementById("trip-map").addEventListener(ev, e => e.preventDefault());
       tripMap.on("click", skipAnim);   // 播放中点一下 = 跳过, 直接收尾拉远
+      /* 播放中按车速自动变焦 (慢速拉近/高速拉远)。AMap 的 setZoom 异步排队
+         且吸附取整, 我们引发的 zoomend 可能迟到、值也可能对不上 —— 用时间
+         窗豁免自己的变焦; 窗外的 zoomend 且落点不是当前档 = 用户手动接管,
+         本回合停用 (重播恢复) */
+      tripMap.on("zoomend", () => {
+        if (!followZoomOn || Date.now() < selfZoomUntil) return;
+        if (Math.abs(tripMap.getZoom() - followZoomCur) > 0.01)
+          followZoomOn = false;
+      });
     }
     tripMap.clearMap();
 
-    let c = it.pts ? it : trackCache.get(it.id);   // 合并轨迹: 数据随 it 一起来
+    if (it.merged && !it.pts) {   // 合并轨迹流式: 汇总 → 首段开播 → 逐段追加
+      await loadMergedStream(it, seq);
+      return;
+    }
+    let c = it.pts ? it : trackCache.get(it.id);   // 合并整包: 数据随 it 一起来
     if (!c) {
       c = await getJSON(`/tesla/trips/api/${it.id}/track`);
       trackCache.set(it.id, c);
@@ -1372,8 +1542,70 @@ async function openTrip(it, fromUrl) {
     tripMsg(null, false);
     playTrack(c.pts, c.ts || [], it, zoom);   // 动态播放: 起点跑向终点, 视角跟随, 结束后拉远全局
   } catch (e) {
-    if (seq === openSeq) tripMsg(String(e.message || e), false);
+    if (seq !== openSeq) return;
+    if (fromUrl && it.merged) { hideSheet(); throw e; }   // 坏合并深链: 让 openByKey 抹参回列表
+    tripMsg(String(e.message || e), false);   // 卡片打开等: 弹层里亮出错误
   }
+}
+
+/* 合并轨迹流式加载 (NDJSON): 首行汇总填弹层头, 之后每行一段 —— 第一段
+   到了就开播, 后续段到了追加, 不等整包下完 (38 段的轨迹要好几秒)。首段
+   未到时显示已耗时/已收字节; 全部到齐存 mergedCache, 重开同一条秒开。 */
+async function loadMergedStream(it, seq) {
+  const key = it.mergeKey;
+  const res = await fetch(`/tesla/trips/api/merged_stream?ids=${key}`);
+  if (res.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  const t0 = performance.now();
+  const allPts = [], allTs = [], segStarts = [];
+  let buf = "", got = 0, msgAt = 0, sess = null, segsGot = 0, segsTotal = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    got += value.length;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const d = JSON.parse(line);
+      if (d.summary) {                    // 首行: 汇总 → 弹层头 (segs = 有点数的段数)
+        Object.assign(it, d.summary);
+        segsTotal = d.segs || it.n;
+        fillSheetHeader(it);
+      } else if (d.pts && d.pts.length) {
+        if (seq !== openSeq) { reader.cancel().catch(() => {}); return; }   // 弹层已换
+        segsGot++;
+        if (!sess) {
+          tripMsg(null, false);
+          sess = playTrack(d.pts, d.ts, it, followZoom(it.km || 0), true);
+        } else {
+          sess.append(d.pts, d.ts);
+        }
+        segStarts.push(allPts.length);
+        allPts.push(...d.pts);
+        allTs.push(...d.ts);
+        // 新一段的沿途瓦片后台预载 (不挡播放)
+        tileTemplate().then(tpl => {
+          if (tpl) preloadTiles(d.pts, followZoom(it.km || 0), tpl, () => {});
+        });
+      }
+    }
+    if (!sess && performance.now() - msgAt > 300) {   // 首段未到: 已耗时 + 已收字节
+      msgAt = performance.now();
+      tripMsg(`正在下载轨迹 · ${((performance.now() - t0) / 1000).toFixed(0)}s · ${(got / 1048576).toFixed(1)}MB`, true);
+    }
+  }
+  if (seq !== openSeq) return;
+  if (sess) sess.more = false;            // 流结束: 播到头就收尾
+  if (allPts.length >= 2)
+    mergedCache.set(key, { n: it.n, ids: it.ids, date: it.date, start: it.start,
+      end: it.end, km: it.km, min: it.min, speed_max: it.speed_max,
+      from: it.from, to: it.to, pts: allPts, ts: allTs, seg_starts: segStarts });
+  if (!sess) throw new Error("这些行程没有轨迹数据");
+  if (segsGot < segsTotal) tripMsg(`轨迹下载中断, 已播 ${segsGot}/${segsTotal} 段`, false);
 }
 
 /* ---------- 播放控制条: 只绑定一次, 操作当前 anim 会话 ---------- */
@@ -1393,8 +1625,7 @@ pbToggle.addEventListener("click", () => {
 pbSeek.addEventListener("input", () => {         // 拖动进度: 立即生效 (暂停/播完都生效)
   if (!anim) return;
   if (anim.finished) anim.replay();              // 播完拖进度 = 从该处重播
-  anim.playT = pbSeek.value / 1000 * anim.dur;
-  anim.apply(TrackUtil.animIndex(anim.playT, anim.dur, anim.N));
+  anim.seek(pbSeek.value / 1000);
 });
 pbSeek.addEventListener("pointerdown", () => { if (anim) anim.seeking = true; });
 for (const ev of ["pointerup", "pointercancel"])

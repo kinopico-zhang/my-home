@@ -138,14 +138,67 @@
     return Array.prototype.concat.apply([], parts);
   }
 
-  /* ---- 动画: 已播放毫秒 → 当前点序号 ----
+  /* ---- 播放节拍: 一步 (相邻两点) 占多少"行驶秒" ----
+     正常步取真实时间差 dts; 跨断档步 (隧道/信号丢失, 相邻点却相距数百米)
+     没有真实采样, 按"车以两端速度线性插值驶过这段路"推算: 秒 = 距离 / 均速
+     ((v_a+v_b)/2, 线性增速的平均; 两端都停着按 30km/h 保底, 不然轮渡/拖车
+     这类断档永远走不完), 真实间隔更久则照真实。两端几乎没动的"停车步"
+     (等灯) 只计 2s —— 照真实等车时长计的话, 停停走走会把播放时长吃掉大半
+     (合并轨迹的 ts 本就跳过停车, 这里对齐口径)。 */
+  function animStepSec(a, b, dts) {
+    const km = ptDistKm(a, b);
+    const v = ((a[2] || 0) + (b[2] || 0)) / 2;
+    if (km < 0.002 && v < 1) return Math.min(dts, 2);
+    return Math.max(dts, km / Math.max(v, 30) * 3600);
+  }
+
+  /* ---- 播放节拍: 每点累计"行驶秒" vt[i] (i 之前的动画一共要走多少秒) ----
+     ts 缺失/长度不符时退化为纯推算节拍 (dts 按 1s, 仍是距离/均速口径,
+     断档步照常推算, 不会瞬移)。 */
+  function animTimes(pts, ts) {
+    const vt = [0];
+    const ok = ts && ts.length >= pts.length;
+    for (let i = 1; i < pts.length; i++)
+      vt.push(vt[i - 1] + animStepSec(pts[i - 1], pts[i],
+                                      ok ? Math.max(0, ts[i] - ts[i - 1]) : 1));
+    return vt;
+  }
+
+  /* ---- 动画: 已播放毫秒 + vt → {idx, frac} ----
+     按行驶秒推进 (不是下标均匀): 断档步在 animTimes 里被拉长到推算行驶秒,
+     播放头得以在断档里以两端插值速度走完, 而不是一帧瞬移到对岸。frac 是
+     该步内的小数进度, 调用方据此插值头部位置 (断档里沿道路路径走)。
      Chrome 的 rAF 回调时间戳是"帧开始时刻", 可能早于 scheduling 前一刻取的
      performance.now() (t0)。命中缓存的轨迹在同一帧内开播就会得到负 t →
      负下标 → 读 pts[-3][2] 直接崩溃, 表现为"这条轨迹没有动画" (Safari 时间戳
-     不回退所以不复现)。钳制 elapsed 到 [0, dur], 序号到 [0, n-1]。 */
-  function animIndex(elapsed, dur, n) {
-    const t = Math.min(Math.max(elapsed / dur, 0), 1);
-    return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
+     不回退所以不复现)。钳制 elapsed 到 [0, dur]。 */
+  function animAt(vt, elapsed, dur) {
+    const total = vt[vt.length - 1] || 0;
+    if (!(total > 0)) return { idx: vt.length - 1, frac: 0 };
+    const q = Math.min(Math.max(elapsed / dur, 0), 1) * total;
+    let lo = 0, hi = vt.length - 1;          // 二分: 最大的 i 使 vt[i] ≤ q
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1;
+      if (vt[m] <= q) lo = m; else hi = m - 1;
+    }
+    if (lo >= vt.length - 1) return { idx: lo, frac: 0 };
+    const span = vt[lo + 1] - vt[lo];
+    return { idx: lo, frac: span > 0 ? (q - vt[lo]) / span : 0 };
+  }
+
+  /* ---- 折线按弧长比例取点 (f ∈ [0,1] 全程的比例) ----
+     断档里播放头沿道路路径走: route + 其累计里程 (cumDistKm) + 当前进度
+     → 头部坐标。 */
+  function pathPointAt(path, cum, f) {
+    const q = Math.min(Math.max(f, 0), 1) * cum[cum.length - 1];
+    for (let i = 1; i < path.length; i++) {
+      if (cum[i] >= q) {
+        const t = (q - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+        return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * t,
+                path[i - 1][1] + (path[i][1] - path[i - 1][1]) * t];
+      }
+    }
+    return path[path.length - 1];
   }
 
   /* ---- Web 墨卡托瓦片坐标 (slippy tile): GCJ 经纬度 → z 层的格 x/y。
@@ -159,8 +212,9 @@
     return [x, y];
   }
 
-  return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, meanPowerW: meanPowerW, splicePath: splicePath, animIndex: animIndex,
+  return { splitGaps: splitGaps, gapsBetween: gapsBetween, speedLines: speedLines, cumDistKm: cumDistKm, meanPowerW: meanPowerW, splicePath: splicePath,
+           animStepSec: animStepSec, animTimes: animTimes, animAt: animAt, pathPointAt: pathPointAt,
            speedBucket: speedBucket, ptDistKm: ptDistKm, bearingDeg: bearingDeg,
            lngLatToTile: lngLatToTile,
-           SPEED_COLORS: SPEED_COLORS, _segLen: segLen };
+           SPEED_COLORS: SPEED_COLORS, MIN_GAP_KM: MIN_GAP_KM, _segLen: segLen };
 });

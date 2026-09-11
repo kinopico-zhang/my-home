@@ -1,7 +1,6 @@
 """鉴权 / 路由 / 中间件测试。"""
 import hashlib
 import hmac
-import re
 import struct
 import time
 import zlib

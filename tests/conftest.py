@@ -20,15 +20,17 @@ sys.path.insert(0, str(ROOT))
 # sys.path 注入必须先于 app 导入 (import 位置告警属预期, 按需豁免)
 from app import authentication, config, database, tracks_cache  # pylint: disable=wrong-import-position
 from app.models import (Address, Base, Car, Charge, ChargingProcess,  # pylint: disable=wrong-import-position
-                        Drive, Position)
+                        Drive, OwnBase, Position)
 import app.main as m  # pylint: disable=wrong-import-position
 
 
 @pytest.fixture(autouse=True)
 def isolate(tmp_path, monkeypatch):
-    """每个用例独立: SQLite 库 / 会话密钥 / 登录限速 / 轨迹缓存互不串扰。"""
+    """每个用例独立: SQLite 库 / 自有库 / 会话密钥 / 登录限速 / 轨迹缓存互不串扰。"""
     database.init_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(database.engine())
+    database.init_own_engine(f"sqlite:///{tmp_path / 'mytesla.db'}")
+    OwnBase.metadata.create_all(database.own_engine())
     secret = b"unit-test-secret-0123456789abcdef"
     secret_file = tmp_path / "secret"
     secret_file.write_bytes(secret)
@@ -43,6 +45,7 @@ def isolate(tmp_path, monkeypatch):
     monkeypatch.setenv("MAP_CACHE_FILE", str(tmp_path / "tracks_cache.json"))
     yield
     database.dispose_engine()
+    database.dispose_own_engine()
 
 
 @pytest.fixture()
@@ -64,6 +67,13 @@ def auth(client):  # pylint: disable=redefined-outer-name
 def db():
     """直连测试库的会话 (种子数据 / 回读断言)。"""
     with database.session_factory()() as session:  # pylint: disable=not-callable
+        yield session
+
+
+@pytest.fixture()
+def owndb():
+    """直连自有库的会话 (断档补路种子 / 回读断言)。"""
+    with database.own_session_factory()() as session:  # pylint: disable=not-callable
         yield session
 
 
