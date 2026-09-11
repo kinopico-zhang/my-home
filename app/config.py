@@ -20,3 +20,8 @@ SECRET_FILE = PROJECT_DIR / ".session_secret"
 # 登录限速: 单 IP 连续失败 5 次锁定 60 秒
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_S = 60
+
+# 自有库 (SQLite): 轨迹断档补路等 My Tesla 自己产生、不愿写进
+# TeslaMate 原库的数据 (原库始终只读不动)
+OWN_DB_URL = (os.environ.get("MYTESLA_DB")
+              or f"sqlite:///{PROJECT_DIR / 'data' / 'mytesla.db'}")

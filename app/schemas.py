@@ -243,6 +243,25 @@ class MergedTrack(BaseModel):
     to: str
 
 
+class GapFillRequest(BaseModel):
+    """断档补路回传 (前端高德路径规划成功后 POST, 坐标一律 WGS-84)。
+
+    a/b 为断档两端轨迹点, 服务端据此锚定到最近的原始 positions 行;
+    path 为 GCJ→WGS 转换后的道路折线。"""
+
+    drive_id: int
+    a: list[float]
+    b: list[float]
+    path: list[list[float]]
+
+
+class GapFillResponse(BaseModel):
+    """断档补路回传结果 (km 为服务端按 path 实算的里程)。"""
+
+    ok: bool
+    km: float
+
+
 class OkResponse(BaseModel):
     """通用 ok 应答 (登录/登出/诊断)。"""
 

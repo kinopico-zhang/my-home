@@ -100,23 +100,85 @@ test("速度缺失按 0 处理", () => {
 });
 
 
-/* ---------------- animIndex: 动画帧 → 点序号 (负时间戳钳制) ---------------- */
+/* ------- animStepSec/animTimes/animAt: 按行驶秒推进 (断档不瞬移) -------
+   断档步 (隧道/信号丢失) 的秒数按"两端速度线性插值驶过"推算, 播放头得以
+   在断档里以插值速度走完。纬度 22.5° 处 0.01° 经度 ≈ 1.029km。 */
+const D1 = 1.029;   // 一步 0.01° 经度的公里数
 
-test("正常播放: 中点时刻取到中间点", () => {
-  assert.equal(TrackUtil.animIndex(5000, 10000, 101), 50);
-  assert.equal(TrackUtil.animIndex(0, 10000, 101), 0);
-  assert.equal(TrackUtil.animIndex(10000, 10000, 101), 100);
+test("animStepSec: 正常步用真实时间差 (推算值不大于真实值时不顶替)", () => {
+  // 1.03km @ 90km/h ≈ 41s, 采样 60s → 照真实 60s
+  assert.equal(TrackUtil.animStepSec([114, 22.5, 90], [114.01, 22.5, 90], 60), 60);
 });
 
-test("Chrome rAF 时间戳早于 t0 (缓存命中同帧开播) → 钳制为 0, 不产生负下标", () => {
-  // 实测抓到过 elapsed = -7.5ms → idx = -3 → pts[-3][2] 崩溃 → "没有动画"
-  assert.equal(TrackUtil.animIndex(-7.5, 9600, 3845), 0);
-  assert.equal(TrackUtil.animIndex(-1000, 9600, 3845), 0);
+test("animStepSec: 断档步按两端均速推算 (30→60km/h 线性增速, 均速 45)", () => {
+  // 2.06km / 45km/h = 164.6s, 比真实 70s 久 → 按推算 (车按这个速度在行进)
+  const s = TrackUtil.animStepSec([114, 22.5, 30], [114.02, 22.5, 60], 70);
+  assert.ok(Math.abs(s - 2 * D1 / 45 * 3600) < 0.5, "s=" + s);
 });
 
-test("超出时长 (后台切回/帧延迟) → 钳制到末点", () => {
-  assert.equal(TrackUtil.animIndex(999999, 9600, 3845), 3844);
-  assert.equal(TrackUtil.animIndex(999999, 9600, 2), 1);
+test("animStepSec: 两端停车 (轮渡/拖车) 按 30km/h 保底; 真实更久照真实", () => {
+  const est = 5 * D1 / 30 * 3600;              // 5.15km @ 30km/h ≈ 617s
+  const s1 = TrackUtil.animStepSec([114, 22.5, 0], [114.05, 22.5, 0], 60);
+  assert.ok(Math.abs(s1 - est) < 1, "s1=" + s1);
+  assert.equal(TrackUtil.animStepSec([114, 22.5, 0], [114.05, 22.5, 0], 2700), 2700);
+});
+
+test("animStepSec: 停车步 (等灯, 两端 <1km/h 且没挪窝) 只计 2s", () => {
+  assert.equal(TrackUtil.animStepSec([114, 22.5, 0], [114.000001, 22.5, 0], 30), 2);
+  assert.equal(TrackUtil.animStepSec([114, 22.5, 0], [114.000001, 22.5, 0], 1), 1);
+});
+
+test("animTimes: ts 缺失按距离/均速推算 (与断档同口径, 不瞬移)", () => {
+  const pts = [[114, 22.5, 30], [114.001, 22.5, 30], [114.02, 22.5, 60]];
+  const vt = TrackUtil.animTimes(pts, []);
+  const e1 = 0.1 * D1 / 30 * 3600;             // 103m @ 30km/h
+  const e2 = 1.9 * D1 / 45 * 3600;             // 1.96km @ 45km/h (两端插值)
+  assert.ok(Math.abs(vt[1] - e1) < 0.05 && Math.abs(vt[2] - e1 - e2) < 0.5,
+            JSON.stringify(vt));
+  assert.equal(TrackUtil.animTimes([[114, 22.5]]).length, 1);
+});
+
+test("animTimes: 有 ts 且推算不大于真实值 → 按真实秒累计", () => {
+  // 10m @ 30km/h 推算 1.2s < 采样 4s → 照真实
+  const pts = [[114, 22.5, 30], [114.0001, 22.5, 30], [114.0002, 22.5, 30]];
+  assert.deepEqual(TrackUtil.animTimes(pts, [0, 4, 9]), [0, 4, 9]);
+});
+
+test("animAt: 负 elapsed (Chrome rAF 时间戳早于 t0) 钳制为起点", () => {
+  // 实测抓到过 elapsed = -7.5ms → 旧版负下标 pts[-3][2] 崩溃 → "没有动画"
+  const p = TrackUtil.animAt([0, 4, 9], -7.5, 9600);
+  assert.deepEqual(p, { idx: 0, frac: 0 });
+});
+
+test("animAt: 超出时长 (后台切回/帧延迟) 钳制到末点; 单点/全零节拍不炸", () => {
+  assert.deepEqual(TrackUtil.animAt([0, 4, 9], 999999, 9600), { idx: 2, frac: 0 });
+  assert.deepEqual(TrackUtil.animAt([0], 999, 1000), { idx: 0, frac: 0 });
+  assert.deepEqual(TrackUtil.animAt([0, 0, 0], 500, 1000), { idx: 2, frac: 0 });
+});
+
+test("animAt: 播到断档正中间 → 落在断档步内 (idx=断档起点, frac≈0.5)", () => {
+  // vt = [0, 10, 174] (断档步 164s): 总 174s, 走到一半 87s = 10 + 77/164
+  const vt = [0, 10, 174];
+  const p = TrackUtil.animAt(vt, 0.5 * 9600, 9600);
+  assert.equal(p.idx, 1);
+  assert.ok(Math.abs(p.frac - 77 / 164) < 0.001, JSON.stringify(p));
+});
+
+test("animAt: vt 落在 (或无限逼近) 某点时刻 → 该点 (frac≈0)", () => {
+  // 浮点换算 (elapsed→q) 会有 1ulp 误差, 允许落在前一步的 1e-9 进度内
+  const p = TrackUtil.animAt([0, 10, 174], 10 / 174 * 9600, 9600);
+  assert.ok(p.idx === 1 && p.frac === 0 || p.idx === 0 && p.frac > 1 - 1e-9,
+            JSON.stringify(p));
+});
+
+test("pathPointAt: 按弧长比例在折线上取点 (断档里头部沿道路走)", () => {
+  const path = [[0, 0], [1, 0], [1, 1]], cum = [0, 1, 2];
+  assert.deepEqual(TrackUtil.pathPointAt(path, cum, 0), [0, 0]);
+  assert.deepEqual(TrackUtil.pathPointAt(path, cum, 0.25), [0.5, 0]);
+  assert.deepEqual(TrackUtil.pathPointAt(path, cum, 0.75), [1, 0.5]);
+  assert.deepEqual(TrackUtil.pathPointAt(path, cum, 1), [1, 1]);
+  assert.deepEqual(TrackUtil.pathPointAt(path, cum, -1), [0, 0]);   // 钳制
+  assert.deepEqual(TrackUtil.pathPointAt(path, cum, 2), [1, 1]);
 });
 
 

@@ -1,8 +1,10 @@
-"""行程轨迹页 API 测试 (列表分页 / 单条全精度轨迹 / 参数校验 / 多选合并)。"""
+"""行程轨迹页 API 测试 (列表分页 / 单条全精度轨迹 / 参数校验 / 多选合并 /
+头尾区间 / 流式下载 / 断档补路自有库)。"""
+import json
 from datetime import datetime, timedelta
 
 from app import repository
-from app.models import Address
+from app.models import Address, Position, TrackFill
 from tests.conftest import seed_addresses, seed_drive, seed_position
 
 
@@ -313,7 +315,7 @@ def test_merged_track_stitches_and_skips_parking(auth, db):
 
 
 def test_merged_track_downsamples_each_segment(auth, db):
-    """每段下采样预算 per = max(200, 4000/段数): 段多时每段仍有保底点数。"""
+    """每段预算按原始点数占比分配 (总预算 12000), 短段仍有 200 保底。"""
     seed_addresses(db)
     t = datetime(2026, 9, 10, 0, 32)
     for drive_id in (11, 12):
@@ -379,6 +381,251 @@ def test_merged_track_404_when_no_points(auth, db):
     assert "没有轨迹数据" in r.json()["detail"]
 
 
+# ---------------------------------------------------------------- 头尾区间 (连续行程只记首尾 id)
+def _seed_pair(db):
+    """两段各 2 点的行程 (11 在前 12 在后), 供合并/流式用例复用。"""
+    seed_addresses(db)
+    t = datetime(2026, 9, 10, 0, 32)
+    for drive_id in (11, 12):
+        seed_drive(db, id=drive_id, start_date=t + timedelta(hours=drive_id),
+                   end_date=t + timedelta(hours=drive_id, minutes=10))
+        seed_position(db, drive_id, id=None,
+                      date=t + timedelta(hours=drive_id),
+                      longitude=114.0 + drive_id * 0.01, latitude=22.5,
+                      speed=10.0, power=None)
+        seed_position(db, drive_id, id=None,
+                      date=t + timedelta(hours=drive_id, minutes=10),
+                      longitude=114.1 + drive_id * 0.01, latitude=22.5,
+                      speed=10.0, power=None)
+
+
+def test_merged_range_form_expands_closed_drives(auth, db):
+    """ids=首-尾: 展开成区间内全部已结束行程 (未结束的自动跳过), 与逗号形式等价。"""
+    _seed_pair(db)
+    seed_drive(db, id=13, start_date=datetime(2026, 9, 10, 13, 0),
+               end_date=datetime(2026, 9, 10, 13, 10))
+    seed_position(db, 13, id=None, date=datetime(2026, 9, 10, 13, 0),
+                  longitude=114.3, latitude=22.5, speed=10.0, power=None)
+    seed_position(db, 13, id=None, date=datetime(2026, 9, 10, 13, 10),
+                  longitude=114.4, latitude=22.5, speed=10.0, power=None)
+    seed_drive(db, id=14, start_date=datetime(2026, 9, 10, 13, 0),
+               end_date=None)                      # 未结束: 区间内但不该出现
+    by_range = auth.get("/tesla/trips/api/merged?ids=11-14").json()
+    assert by_range["ids"] == [11, 12, 13]
+    by_list = auth.get("/tesla/trips/api/merged?ids=11,12,13").json()
+    assert by_range["pts"] == by_list["pts"]
+    assert by_range["ts"] == by_list["ts"]
+    # 坏区间 (头大于尾 / 非数字) → 400
+    assert auth.get("/tesla/trips/api/merged?ids=14-11").status_code == 400
+    assert auth.get("/tesla/trips/api/merged?ids=a-b").status_code == 400
+
+
+def test_merged_range_form_requires_enough_drives(auth, db):
+    """区间展开后不足 2 段或超 50 段 → 400 (与逗号形式同口径)。"""
+    _seed_pair(db)
+    assert auth.get("/tesla/trips/api/merged?ids=11-11").status_code == 400
+    assert auth.get("/tesla/trips/api/merged?ids=99-100").status_code == 400
+    # 展开后超过 50 段 (上限与逗号形式一致, 区间跨度本身不设限)
+    t = datetime(2026, 9, 10, 0, 32)
+    for drive_id in range(13, 63):        # 已有 11,12 → 共 52 段
+        seed_drive(db, id=drive_id, start_date=t + timedelta(hours=drive_id),
+                   end_date=t + timedelta(hours=drive_id, minutes=5))
+    assert auth.get("/tesla/trips/api/merged?ids=11-62").status_code == 400
+
+
+# ---------------------------------------------------------------- 流式下载 (边下边播)
+def test_merged_stream_ndjson_summary_then_segments(auth, db):
+    """NDJSON 流: 首行汇总 (含 segs=有数据的段数), 之后每行一段; 拼起来与整包一致。"""
+    _seed_pair(db)
+    r = auth.get("/tesla/trips/api/merged_stream?ids=11-12")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/x-ndjson")
+    lines = [json.loads(x) for x in r.text.splitlines() if x.strip()]
+    assert lines[0]["summary"]["ids"] == [11, 12]
+    assert lines[0]["summary"]["n"] == 2
+    assert lines[0]["segs"] == 2
+    segs = lines[1:]
+    assert len(segs) == 2
+    assert all(len(s["pts"]) == 2 for s in segs)
+    # 流式拼接 == 整包接口 (前端两种消费方式数据同源)
+    full = auth.get("/tesla/trips/api/merged?ids=11-12").json()
+    assert [p for s in segs for p in s["pts"]] == full["pts"]
+    assert [t for s in segs for t in s["ts"]] == full["ts"]
+
+
+def test_merged_stream_404_before_first_line(auth, db):
+    """行程不存在/未结束 → 流开始前就 404 (JSON, 不是断在半路的流)。
+    区间形式会跳过不存在的 id, 这里用逗号形式触发 404。"""
+    _seed_pair(db)
+    r = auth.get("/tesla/trips/api/merged_stream?ids=11,99")
+    assert r.status_code == 404
+    assert "不存在或未完成" in r.json()["detail"]
+
+
+def test_merged_budget_proportional_to_segment_size(auth, db):
+    """预算按各段原始点数占比分配: 长段多分 (真实下采样), 短段 200 保底全留。"""
+    seed_addresses(db)
+    t = datetime(2026, 9, 10, 0, 32)
+    raw = {11: 30000, 12: 3000, 13: 50}
+    for drive_id, cnt in raw.items():
+        seed_drive(db, id=drive_id, start_date=t + timedelta(hours=drive_id * 5),
+                   end_date=t + timedelta(hours=drive_id * 5, minutes=30))
+        db.add_all(Position(drive_id=drive_id,
+                            date=t + timedelta(hours=drive_id * 5, seconds=i),
+                            longitude=114.0 + i * 1e-6, latitude=22.5,
+                            speed=50.0, power=None)
+                   for i in range(cnt))
+    db.commit()
+    r = auth.get("/tesla/trips/api/merged_stream?ids=11-13")
+    assert r.status_code == 200
+    seg_sizes = [len(json.loads(x)["pts"])
+                 for x in r.text.splitlines()[1:] if x.strip()]
+    # 长段 30000 原始点 → 预算 10909 → stride 2 → ~15001 (不再是平均主义的 200)
+    assert 10900 < seg_sizes[0] <= 15002
+    # 中段 3000 → 预算 1091 → stride 2 → ~1501
+    assert 1090 < seg_sizes[1] <= 1502
+    # 短段 50 → 200 保底 → 全留
+    assert seg_sizes[2] == 50
+
+
+# ---------------------------------------------------------------- 断档补路 (自有库)
+def _seed_gap_drive(db, drive_id=7):
+    """一段有 ~2km 断档的行程: 前后各 2 个密集采样点, 中间跳变。"""
+    seed_addresses(db)
+    seed_drive(db, id=drive_id)
+    t0 = datetime(2026, 9, 10, 0, 32)
+    seed_position(db, drive_id, id=None, date=t0,
+                  longitude=114.000, latitude=22.50, speed=30.0, power=45000.0)
+    seed_position(db, drive_id, id=None, date=t0 + timedelta(seconds=10),
+                  longitude=114.001, latitude=22.50, speed=30.0, power=45000.0)
+    # 2km 断档 (隧道): 10s → 80s
+    seed_position(db, drive_id, id=None, date=t0 + timedelta(seconds=80),
+                  longitude=114.021, latitude=22.50, speed=60.0, power=45000.0)
+    seed_position(db, drive_id, id=None, date=t0 + timedelta(seconds=90),
+                  longitude=114.022, latitude=22.50, speed=60.0, power=45000.0)
+    return t0
+
+
+FILL_BODY = {
+    "drive_id": 7,
+    "a": [114.001, 22.50], "b": [114.021, 22.50],
+    "path": [[114.001, 22.50], [114.011, 22.50], [114.021, 22.50]],
+}
+
+
+def test_gap_fill_post_then_track_spliced(auth, db, owndb):
+    """回传补路 → 存自有库 (TeslaMate 库零写入) → 轨迹接口服务端拼好。"""
+    _seed_gap_drive(db)
+    r = auth.post("/tesla/trips/api/gap_fill", json=FILL_BODY)
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ok"] is True and 2.0 < d["km"] < 2.1    # 服务端实算里程 (加密不改长度)
+    # 自有库一行; 原库 positions 还是 4 个 (只读不动)
+    fills = owndb.query(TrackFill).all()
+    assert len(fills) == 1
+    assert fills[0].drive_id == 7 and fills[0].source == "amap"
+    assert db.query(Position).count() == 4
+    # 存库路径已按 80m 加密: 2km 断档 3 顶点 → 每条边 12 个插值点 = 27 点
+    assert len(json.loads(fills[0].path)) == 27
+    # 轨迹接口: 断档被插值点铺满 (时间按弧长, 速度两端插值, power 不造假)
+    track = auth.get("/tesla/trips/api/7/track").json()
+    assert track["pts"][0][:2] == [114.0, 22.5]
+    assert track["pts"][-1][:2] == [114.022, 22.5]
+    assert track["ts"] == sorted(track["ts"])        # 时间单调
+    assert track["ts"][0] == 0 and track["ts"][-1] == 90
+    assert [114.011, 22.5, 45.0, None] in track["pts"]   # 弧长中点: 速度 30→60 插值
+    # 相邻点距恒 < 160m (断档识别最低阈值) —— 不再被前端二次识别成断档
+    gaps = [abs(b[0] - a[0]) * 102.87 for a, b in zip(track["pts"], track["pts"][1:])]
+    assert max(gaps) < 0.16
+
+
+def test_gap_fill_rejects_far_or_misordered_anchors(auth, db):
+    """端点离轨迹超 150m / 顺序颠倒 / 不存在的行程 → 4xx, 不落库。"""
+    _seed_gap_drive(db)
+    far = dict(FILL_BODY, a=[116.0, 24.0])
+    assert auth.post("/tesla/trips/api/gap_fill", json=far).status_code == 400
+    reversed_ = dict(FILL_BODY, a=FILL_BODY["b"], b=FILL_BODY["a"])
+    assert auth.post("/tesla/trips/api/gap_fill", json=reversed_).status_code == 400
+    assert auth.post("/tesla/trips/api/gap_fill",
+                     json=dict(FILL_BODY, drive_id=99)).status_code == 404
+    short = dict(FILL_BODY, path=[[114.001, 22.5]])
+    assert auth.post("/tesla/trips/api/gap_fill", json=short).status_code == 400
+
+
+def test_gap_fill_overwrites_same_gap(auth, db, owndb):
+    """同一断档重复回传 = 覆盖 (按锚点唯一), 轨迹用最新路径。"""
+    _seed_gap_drive(db)
+    auth.post("/tesla/trips/api/gap_fill", json=FILL_BODY)
+    better = dict(FILL_BODY, path=[[114.001, 22.50], [114.006, 22.50],
+                                   [114.016, 22.50], [114.021, 22.50]])
+    r = auth.post("/tesla/trips/api/gap_fill", json=better)
+    assert r.status_code == 200
+    assert len(owndb.query(TrackFill).all()) == 1     # 覆盖不是追加
+    track = auth.get("/tesla/trips/api/7/track").json()
+    # 4 原始 + 新路径的插值点 (4 顶点 / 3 边, 各边 80m 加密共 24 点, 去掉
+    # 与锚点重合的首尾 = 26): 新顶点 114.006 在弧长 1/4 处, 速度 30→60 插值 37.5
+    assert [114.006, 22.5, 37.5, None] in track["pts"]
+    assert len(track["pts"]) == 30
+
+
+def test_gap_fill_points_survive_downsampling(auth, db, owndb):
+    """大行程 (原始点 3 倍于预算, stride=3) 的补路点全保留不被抽掉。
+
+    补路点相距 ~78m, 若被 stride 抽掉 2/3, 间距飙到 ~235m —— 超过断档
+    识别阈值 160m, 会被前端再次当断档无限重规划 (1385 号行程的实发问题)。"""
+    seed_addresses(db)
+    seed_drive(db, id=9)
+    t0 = datetime(2026, 9, 10, 0, 32)
+    rows = [Position(drive_id=9, date=t0 + timedelta(seconds=i),
+                     longitude=round(114.0 + i * 0.000002
+                                     + (0.033 if i >= 5000 else 0), 6),
+                     latitude=22.5, speed=30.0, power=45000.0)
+            for i in range(15001)]
+    db.add_all(rows)
+    db.commit()                                       # i=4999 → 114.009998, i=5000 → 114.043
+    r = auth.post("/tesla/trips/api/gap_fill", json={
+        "drive_id": 9,
+        "a": [114.009998, 22.5], "b": [114.043, 22.5],
+        "path": [[114.009998, 22.5], [114.0265, 22.5], [114.043, 22.5]]})
+    assert r.status_code == 200 and 3.3 < r.json()["km"] < 3.4
+    track = auth.get("/tesla/trips/api/9/track").json()
+    # 断档区 (114.01~114.043 之间没有原始点) 的补路点一个不少:
+    # 2 边各 21 个插值点 + 中间顶点, 去掉与锚点重合的首尾 = 43
+    gap_pts = [p for p in track["pts"] if 114.01 < p[0] < 114.043]
+    assert len(gap_pts) == 43
+    gaps = [abs(b[0] - a[0]) * 102.87 for a, b in zip(track["pts"], track["pts"][1:])]
+    assert max(gaps) < 0.16                           # 全程无一处超断档阈值
+
+
+def test_gap_fill_spliced_into_merged_stream_too(auth, db):
+    """合并/流式接口同样吃到补路点 (所有轨迹消费方一个口径)。"""
+    _seed_gap_drive(db, 7)
+    t = datetime(2026, 9, 10, 3, 0)
+    seed_drive(db, id=8, start_date=t, end_date=t + timedelta(minutes=10))
+    seed_position(db, 8, id=None, date=t, longitude=115.0, latitude=23.0,
+                  speed=20.0, power=None)
+    seed_position(db, 8, id=None, date=t + timedelta(minutes=10),
+                  longitude=115.1, latitude=23.0, speed=20.0, power=None)
+    auth.post("/tesla/trips/api/gap_fill", json=FILL_BODY)
+    r = auth.get("/tesla/trips/api/merged_stream?ids=7-8")
+    lines = [json.loads(x) for x in r.text.splitlines() if x.strip()]
+    segs = lines[1:]
+    assert len(segs[0]["pts"]) == 29                  # 4 原始 + 25 加密插值
+    assert segs[0]["ts"][0] == 0 and segs[0]["ts"][-1] == 90
+    assert [114.011, 22.5, 45.0, None] in segs[0]["pts"]
+    assert len(segs[1]["pts"]) == 2
+
+
+def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
+    """页面片段: 流式边下边播 / 随速变焦 / 断档回传一应俱全。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ["function loadMergedStream(", "sess.append(d.pts, d.ts)",
+                 "sess.more = false", "正在下载轨迹", "等待后续轨迹",
+                 "const speedZoom =", "followZoomOn", 'tripMap.on("zoomend"',
+                 "postGapFill(it, g, route)", "gcj02ToWgs84"]:
+        assert frag in html, f"行程页缺少片段 {frag}"
+
+
 # ---------------------------------------------------------------- 页面
 def test_trips_page_time_menu_and_filter_row(auth):
     """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行 (起终点省市区级联, 里程档),
@@ -435,7 +682,11 @@ def test_trips_page_has_url_deeplink(auth):
                  "/tesla/trips/api/sessions/${",
                  "history.pushState({ k: curKey }, \"\", listURL(curKey))",
                  "history.replaceState(null, \"\", listURL())",
-                 'key.includes(",") ? "ids=" : "id="']:
+                 '/[-,]/.test(key) ? "ids=" : "id="',
+                 # 单条行程头部立即填 (字段随卡片/接口齐), 占位只留给合并流式
+                 "if (it.pts || !it.merged) fillSheetHeader(it)",
+                 # 坏合并深链: 关弹层 + 抹参回列表 (单条卡片打开的错留在弹层里)
+                 "hideSheet(); throw e"]:
         assert frag in html, f"行程页缺少深链片段 {frag}"
 
 
@@ -455,7 +706,8 @@ def test_trips_page_has_multiselect(auth):
     for frag in ['id="merge-btn"', 'id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
                  'id="sel-count"', 'id="sel-all"', 'id="sel-cap"', "MERGE_MAX = 50",
                  "body.selecting", "pickCard", "enterSelect", "exitSelect",
-                 "openMerged", "/tesla/trips/api/merged?ids=", "mergedCache"]:
+                 "openMerged", "/tesla/trips/api/merged_stream?ids=",
+                 "mergedCache", "loadMergedStream(", "sess.append(d.pts, d.ts)"]:
         assert frag in html, f"行程页缺少多选片段 {frag}"
     # 合并弹层复用播放: pts 随 it 一起传入 (不走单条轨迹接口)
     assert "it.pts ? it : trackCache.get(it.id)" in html

@@ -31,6 +31,8 @@ max-args = 10
 max-positional-arguments = 10
 # 数据密集的查询/组装函数局部变量多
 max-locals = 18
+# repository 聚合全部查询 (TeslaMate 只读 + 自有库补路), 1200 行内不拆模块
+max-module-lines = 1200
 max-statements = 60
 max-branches = 14
 

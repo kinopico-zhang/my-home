@@ -1,28 +1,32 @@
 """数据访问层: 全部 SQLAlchemy 查询 + 行 → Pydantic 模型转换。
 
 约定:
-- 只读 TeslaMate 库 (唯一写点是费用回写 update_charging_cost);
+- 只读 TeslaMate 库 (写点仅两处: 费用回写 update_charging_cost 落原库,
+  断档补路 save_fill 落自有库 data/mytesla.db);
 - 查询保持方言中立 (生产 Postgres, 测试 SQLite): 不用 ANY / AT TIME ZONE /
   FILTER / ILIKE / to_char 等 Postgres 专有语法, 时区换算、月份分组、
   排序分页都在 Python 侧;
 - 本地日期 → UTC 边界、停驶剔除等行为与旧版 SQL 逐字段对齐。
 """
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from functools import lru_cache
+import json
+import math
 import re
 
-from typing import Any
+from typing import Any, NamedTuple
 
-from sqlalchemy import ColumnElement, Select, case, func, or_, select
+from sqlalchemy import ColumnElement, Select, case, delete, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session, aliased, sessionmaker
 from sqlalchemy.sql.selectable import Subquery
 
 from . import config
-from .models import Address, Car, Charge, ChargingProcess, Drive, Geofence, Position
+from .models import (Address, Car, Charge, ChargingProcess, Drive, Geofence,
+                     Position, TrackFill)
 from .schemas import (
     CarInfo,
     ChargeCurve,
@@ -31,6 +35,7 @@ from .schemas import (
     ChargingSummary,
     CityCount,
     CostUpdateResult,
+    GapFillRequest,
     LocationStat,
     MapDetailTrack,
     MapSummary,
@@ -691,34 +696,245 @@ def get_trip(session: Session, drive_id: int) -> TripItem | None:
 
 TRIP_TRACK_PER = 5000
 
+# 断档补路 (隧道/信号丢失): 原始采样不动, 补出来的点全部存自有库,
+# 轨迹接口在服务端拼好 —— 所有消费方都不再看到断档, 前端也不用每次
+# 重新调高德规划。own 参数即自有库会话 (与 TeslaMate 会话隔离)。
 
-def trip_track(session: Session, drive_id: int) -> TripTrack:
-    """单条行程轨迹 (含速度/功耗), 下采样到 TRIP_TRACK_PER 点。"""
+EARTH_RADIUS_KM = 6371.0
+GAP_ANCHOR_MAX_KM = 0.15   # 断档端点离真实轨迹点多近才算锚上 (规划结果与采样本就有几十米差)
+
+
+def _wgs_km(a: Sequence[float], b: Sequence[float]) -> float:
+    """两个 WGS [lng, lat] 点的近似球面距离 (等距圆柱投影, 与前端
+    TrackUtil.ptDistKm 同口径)。"""
+    mid_lat = math.radians((a[1] + b[1]) / 2)
+    dx = math.radians(b[0] - a[0]) * math.cos(mid_lat)
+    dy = math.radians(b[1] - a[1])
+    return EARTH_RADIUS_KM * math.hypot(dx, dy)
+
+
+class _TrackPoint(NamedTuple):
+    """轨迹点 (原始采样或补路插入), 合并轨迹按 drive_id 分段。"""
+
+    drive_id: int
+    date: datetime
+    lng: float
+    lat: float
+    speed: float
+    power: float | None
+
+
+def _interpolated_fill(a: Position, b: Position,
+                       path: list[list[float]]) -> list[_TrackPoint]:
+    """补路折线 → 插值后的轨迹点 (date 按弧长比例落在两锚点间, speed
+    在两锚点速度间线性, power 置 None —— 推算值不冒充实测)。
+
+    高德路线的首尾就是断档端点本身, 与锚点重合的去掉, 不然轨迹出现重复点。"""
+    # 弧长参数: 锚点 a → path → 锚点 b
+    chain = [[a.longitude, a.latitude], *path, [b.longitude, b.latitude]]
+    cum = [0.0]
+    for i in range(1, len(chain)):
+        cum.append(cum[-1] + _wgs_km(chain[i - 1], chain[i]))
+    total = cum[-1]
+    frac = [(cum[i + 1] / total if total else 0.0) for i in range(len(path))]
+    span = (b.date - a.date).total_seconds()
+    speed_a, speed_b = a.speed or 0.0, b.speed or 0.0
+    anchors = {(round(a.longitude, 5), round(a.latitude, 5)),
+               (round(b.longitude, 5), round(b.latitude, 5))}
+    return [_TrackPoint(
+        a.drive_id,
+        a.date + timedelta(seconds=span * f),
+        round(float(lng), 5), round(float(lat), 5),
+        round(speed_a + (speed_b - speed_a) * f, 1), None)
+        for (lng, lat), f in zip(path, frac)
+        if (round(float(lng), 5), round(float(lat), 5)) not in anchors]
+
+
+def _fill_points(own: Session,
+                 positions: Sequence[Position]) -> dict[int, list[_TrackPoint]]:
+    """读自有库断档补路, 按 a_pos_id 返回待插入的补路点。
+
+    锚点行不在本次轨迹里 (理论上不会发生) 就整条跳过。"""
+    drive_ids = sorted({p.drive_id for p in positions})
+    fills = own.scalars(
+        select(TrackFill).where(TrackFill.drive_id.in_(drive_ids))).all()
+    by_id = {p.id: p for p in positions}
+    out: dict[int, list[_TrackPoint]] = {}
+    for fill in fills:
+        a, b = by_id.get(fill.a_pos_id), by_id.get(fill.b_pos_id)
+        if a is None or b is None or a.date >= b.date:
+            continue
+        try:
+            path = json.loads(fill.path)
+        except ValueError:
+            continue
+        pts = _interpolated_fill(a, b, path)
+        if pts:
+            out[fill.a_pos_id] = pts
+    return out
+
+
+def _track_points(own: Session, positions: Sequence[Position]
+                  ) -> tuple[list[_TrackPoint], set[int]]:
+    """原始轨迹点 + 自有库补路点 (插到各自锚点之后, 时间序保持)。
+
+    返回 (points, fill_indices): 补路点在 points 里的下标集合 —— 它们
+    本就稀疏珍贵, 下采样时全部保留, 不能被等间隔抽掉 (抽掉等于白补)。
+    """
+    pts = [_TrackPoint(p.drive_id, p.date, round(float(p.longitude), 5),
+                       round(float(p.latitude), 5), p.speed or 0.0, p.power)
+           for p in positions]
+    fills = _fill_points(own, positions)
+    if not fills:
+        return pts, set()
+    index = {p.id: i for i, p in enumerate(positions)}
+    fill_indices: set[int] = set()
+    inserted = 0                    # 已插入的补路点总数 (下标位移量)
+    for a_pos_id in sorted(fills, key=lambda k: index[k]):
+        seg = fills[a_pos_id]
+        at = index[a_pos_id] + 1 + inserted
+        pts[at:at] = seg
+        fill_indices.update(range(at, at + len(seg)))
+        inserted += len(seg)
+    return pts, fill_indices
+
+
+def _nearest_position(positions: Sequence[Position],
+                      pt: Sequence[float]) -> int:
+    """离 pt (WGS [lng, lat]) 最近的 positions 行下标。"""
+    best, best_d = 0, float("inf")
+    for i, p in enumerate(positions):
+        d = _wgs_km([p.longitude, p.latitude], pt)
+        if d < best_d:
+            best, best_d = i, d
+    return best
+
+
+def _anchor_km(positions: Sequence[Position], idx: int,
+               pt: Sequence[float]) -> float:
+    """positions[idx] 到锚定候选点 pt 的距离 (km)。"""
+    p = positions[idx]
+    return _wgs_km([p.longitude, p.latitude], pt)
+
+
+FILL_STEP_KM = 0.08   # 补路折线加密步长 (80m): 高德路径顶点可相距数百米
+                      # (长直道只给两个端点), 原样入库拼进轨迹后相邻点仍超
+                      # 断档识别阈值 (最低 160m), 会被再拆成断档无限重规划
+
+
+def _densify(path: list[list[float]]) -> list[list[float]]:
+    """折线相邻顶点间按 FILL_STEP_KM 线性插值加密。
+
+    顶点之间本就是直线段 (高德路径是多段折线), 插值不引入任何虚构几何;
+    加密后相邻点恒 < 80m, 任何下采样密度下都不再被识别成断档。"""
+    out = [path[0]]
+    for i in range(1, len(path)):
+        lng0, lat0 = path[i - 1]
+        lng1, lat1 = path[i]
+        n = int(_wgs_km(path[i - 1], path[i]) / FILL_STEP_KM)
+        for k in range(1, n + 1):
+            r = k / (n + 1)
+            out.append([round(lng0 + (lng1 - lng0) * r, 5),
+                        round(lat0 + (lat1 - lat0) * r, 5)])
+        out.append(path[i])
+    return out
+
+
+def save_fill(session: Session, own: Session,
+              req: GapFillRequest) -> float:
+    """把前端回传的断档补路锚定到原始 positions 行并存入自有库。
+
+    a/b 各自锚到最近的采样点; 里程按回传 path 在服务端实算 (不信前端)。
+    同一断档重复回传 = 覆盖更新 (按 a_pos_id 唯一)。
+    """
+    positions = session.scalars(
+        select(Position).where(Position.drive_id == req.drive_id)
+        .order_by(Position.date)).all()
+    if len(positions) < 2:
+        raise NotFound("该行程没有轨迹数据")
+    ia = _nearest_position(positions, req.a)
+    ib = _nearest_position(positions, req.b)
+    if (_anchor_km(positions, ia, req.a) > GAP_ANCHOR_MAX_KM
+            or _anchor_km(positions, ib, req.b) > GAP_ANCHOR_MAX_KM):
+        raise ValueError("断档端点偏离轨迹超过 150 米")
+    if ia >= ib or ib - ia > 50:
+        raise ValueError("断档端点锚定失败 (先后顺序或跨度异常)")
+    a, b = positions[ia], positions[ib]
+    if a.date >= b.date:
+        raise ValueError("断档端点锚定失败 (时间顺序异常)")
+    path = _densify([[round(p[0], 5), round(p[1], 5)] for p in req.path])
+    km = sum(_wgs_km(path[i - 1], path[i]) for i in range(1, len(path)))
+    own.execute(delete(TrackFill).where(TrackFill.a_pos_id == a.id))
+    own.add(TrackFill(drive_id=req.drive_id, a_pos_id=a.id, b_pos_id=b.id,
+                      path=json.dumps(path, separators=(",", ":")),
+                      km=round(km, 3), source="amap"))
+    own.commit()
+    return round(km, 3)
+
+
+def trip_track(session: Session, own: Session, drive_id: int) -> TripTrack:
+    """单条行程轨迹 (含速度/功耗), 下采样到 TRIP_TRACK_PER 点。
+
+    自有库里的断档补路先拼进原始轨迹再下采样, 前端拿到的就是
+    沿真实道路的连续轨迹 (无需再客户端补路)。
+    """
     positions = session.scalars(
         select(Position).where(Position.drive_id == drive_id)
         .order_by(Position.date)).all()
     if len(positions) < 2:
         raise NotFound("该行程没有轨迹数据")
-    kept = [positions[i] for i in _keep_indices(len(positions), TRIP_TRACK_PER)]
+    pts_all, fill_idx = _track_points(own, positions)
+    # 补路点全保留: 它们是整段稀疏折线, 被等间隔抽掉一点就重新露出断档
+    keep = set(_keep_indices(len(pts_all), TRIP_TRACK_PER)) | fill_idx
+    kept = [pts_all[i] for i in sorted(keep)]
     t0 = kept[0].date
     return TripTrack(
         id=drive_id,
-        pts=[[round(float(p.longitude), 5), round(float(p.latitude), 5),
-              p.speed or 0, p.power] for p in kept],
+        pts=[[p.lng, p.lat, p.speed, p.power] for p in kept],
         ts=[int(round((p.date - t0).total_seconds())) for p in kept])
 
 
-MERGED_TRACK_BUDGET = 4000
+MERGED_TRACK_BUDGET = 12000   # 多段合并的总点数预算, 按各段原始点数占比分配
 MERGED_TRACK_PER_MIN = 200
 
 
-def merged_track(session: Session, ids: Sequence[int]) -> MergedTrack:
-    """多段行程合并成一条连续轨迹。
+@dataclass
+class MergedPlan:
+    """合并轨迹的头部汇总与各段下采样预算 (流式接口: 头部先行, 逐段跟上)。"""
+
+    header: MergedTrack        # pts/ts/seg_starts 为空, 其余字段齐
+    id_list: list[int]         # 按出发时间升序的行程 id
+    budgets: dict[int, int]    # drive_id → 该段保留点数上限
+
+
+def merged_track(session: Session, own: Session,
+                 ids: Sequence[int]) -> MergedTrack:
+    """多段行程合并成一条连续轨迹 (整包 JSON)。
 
     - ids 必须都是已结束行程, 否则 NotFound("包含不存在或未完成的行程");
     - ts 为累计行驶秒, 行程之间的停驶时段被剔除;
-    - 每段下采样到 max(MERGED_TRACK_PER_MIN, 预算/段数) 点。
+    - 各段按原始点数占比分享总预算下采样 (见 merged_track_plan);
+    - 各段的断档补路同样在服务端拼好 (见 _track_points);
+    - 逐段流式版本见 merged_track_segments (前端边下边播用)。
     """
+    plan = merged_track_plan(session, ids)
+    pts: list[list[float | None]] = []
+    ts: list[int] = []
+    seg_starts: list[int] = []
+    for seg_pts, seg_ts in merged_track_segments(session, own, plan):
+        seg_starts.append(len(pts))
+        pts += seg_pts
+        ts += seg_ts
+    if len(pts) < 2:
+        raise NotFound("这些行程没有轨迹数据")
+    plan.header.pts = pts
+    plan.header.ts = ts
+    plan.header.seg_starts = seg_starts
+    return plan.header
+
+
+def merged_track_plan(session: Session, ids: Sequence[int]) -> MergedPlan:
+    """校验 ids (须全为已结束行程) 并算好汇总头 + 各段下采样预算。"""
     drive_rows = session.execute(
         _trip_rows_stmt(aliased(Address), aliased(Address))
         .where(Drive.id.in_(ids))
@@ -726,14 +942,18 @@ def merged_track(session: Session, ids: Sequence[int]) -> MergedTrack:
     if len(drive_rows) != len(set(ids)):
         raise NotFound("包含不存在或未完成的行程")
     id_list = [d.id for d, _, _ in drive_rows]
-    per = max(MERGED_TRACK_PER_MIN, MERGED_TRACK_BUDGET // len(id_list))
-    pts, ts, seg_starts = _merged_positions(session, id_list, per)
-    if len(pts) < 2:
-        raise NotFound("这些行程没有轨迹数据")
-    first = drive_rows[0][0]
-    last = drive_rows[-1][0]
-    return MergedTrack(
-        ids=id_list, n=len(id_list), pts=pts, ts=ts, seg_starts=seg_starts,
+    counts: dict[int, int] = {
+        int(did): int(cnt) for did, cnt in session.execute(
+            select(Position.drive_id, func.count())
+            .where(Position.drive_id.in_(id_list))
+            .group_by(Position.drive_id)).all()}
+    total = sum(counts.values())
+    budgets = ({did: max(MERGED_TRACK_PER_MIN,
+                         round(MERGED_TRACK_BUDGET * cnt / total))
+                for did, cnt in counts.items()} if total else {})
+    first, last = drive_rows[0][0], drive_rows[-1][0]
+    header = MergedTrack(
+        ids=id_list, n=len(id_list), pts=[], ts=[], seg_starts=[],
         date=fdate(first.start_date), start=ftime(first.start_date),
         end=ftime(last.end_date) if last.end_date else None,
         km=round(sum(float(d.distance or 0) for d, _, _ in drive_rows), 2),
@@ -741,44 +961,55 @@ def merged_track(session: Session, ids: Sequence[int]) -> MergedTrack:
         speed_max=max((d.speed_max or 0) for d, _, _ in drive_rows) or None,
         from_=_clean_addr(drive_rows[0][1]),
         to=_clean_addr(drive_rows[-1][2]))
+    return MergedPlan(header, id_list, budgets)
 
 
-def _merged_positions(session: Session, id_list: Sequence[int],
-                      per: int) -> tuple[list[list[float | None]], list[int], list[int]]:
-    """按时间序拼接各段下采样后的轨迹点, 返回 (pts, ts, seg_starts)。
-    seg_starts[k] = 第 k 段首个保留点在 pts 里的下标 (前端按段做断档识别)。"""
-    positions = session.scalars(
-        select(Position).where(Position.drive_id.in_(id_list))
-        .order_by(Position.date)).all()
-    counts: dict[int, int] = {}
-    for pos in positions:
-        counts[pos.drive_id] = counts.get(pos.drive_id, 0) + 1
-    keep_sets = {did: set(_keep_indices(cnt, per)) for did, cnt in counts.items()}
-    seen: dict[int, int] = {}
-    pts: list[list[float | None]] = []
-    ts: list[int] = []
-    seg_starts: list[int] = []
-    base = 0.0            # 已完成段落的行驶秒累计
-    cur_drive: int | None = None
-    t0 = 0.0              # 当前段落首点 epoch 秒 (UTC 裸算, 不涉及时区)
-    prev_stamp = 0.0      # 上一个保留点 (段切换时收尾上一段的行驶时长)
-    for pos in positions:
-        index = seen.get(pos.drive_id, 0)
-        seen[pos.drive_id] = index + 1
-        if index not in keep_sets[pos.drive_id]:
+def merged_track_segments(session: Session, own: Session, plan: MergedPlan
+                          ) -> Iterator[tuple[list[list[float | None]], list[int]]]:
+    """逐段产出 (pts, ts): ts 为跨段累计行驶秒 (行程间停驶剔除)。
+
+    每段独立查询/下采样: 流式接口一段一段往外发, 前端拿到第一段就能
+    开播, 不必等几十 MB 全下完; 断档补路已在段内拼好。
+    """
+    base = 0.0
+    for did in plan.id_list:
+        positions = session.scalars(
+            select(Position).where(Position.drive_id == did)
+            .order_by(Position.date)).all()
+        points, fill_idx = _track_points(own, positions)
+        if not points:
             continue
-        stamp = _utc_seconds(pos.date)
-        if pos.drive_id != cur_drive:
-            if cur_drive is not None:
-                base += prev_stamp - t0
-            cur_drive = pos.drive_id
-            t0 = stamp
-            seg_starts.append(len(pts))
-        prev_stamp = stamp
-        pts.append([round(float(pos.longitude), 5),
-                    round(float(pos.latitude), 5), pos.speed or 0, pos.power])
-        ts.append(int(round(base + stamp - t0)))
-    return pts, ts, seg_starts
+        # 补路点全保留 (理由同 trip_track), 只对原始点做等间隔下采样
+        keep = set(_keep_indices(len(points),
+                                 plan.budgets.get(did, MERGED_TRACK_PER_MIN))) \
+            | fill_idx
+        seg_pts: list[list[float | None]] = []
+        seg_ts: list[int] = []
+        t0 = _utc_seconds(points[0].date)   # 段首 (keep_indices 首点必留)
+        prev_stamp = t0
+        for i, tp in enumerate(points):
+            if i not in keep:
+                continue
+            stamp = _utc_seconds(tp.date)
+            prev_stamp = stamp
+            seg_pts.append([tp.lng, tp.lat, tp.speed, tp.power])
+            seg_ts.append(int(round(base + stamp - t0)))
+        base += prev_stamp - t0    # 段行驶时长并入累计 (最后保留点 - 段首)
+        if seg_pts:
+            yield seg_pts, seg_ts
+
+
+def closed_drive_ids_between(session: Session, first: int, last: int) -> list[int]:
+    """头尾 id 区间内全部已结束行程的 id (升序; 与行程列表同口径)。
+
+    连续行程的分享链接只记头尾 id, 服务端按区间展开成完整列表 ——
+    区间里被过滤掉的未结束行程 (TeslaMate 记录中断残留) 自动跳过。"""
+    rows = session.execute(
+        select(Drive.id)
+        .where(Drive.id >= first, Drive.id <= last,
+               Drive.end_date.is_not(None))
+        .order_by(Drive.id)).all()
+    return [int(r[0]) for r in rows]
 
 
 _EPOCH = datetime(1970, 1, 1)

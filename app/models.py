@@ -3,15 +3,22 @@
 生产表由 TeslaMate 迁移维护, 这里绝不建表/改表; 建表只发生在测试的
 SQLite 里 (Base.metadata.create_all)。数值列统一映射 Float: 库内
 numeric 读出是 Decimal, 统一转 float 与旧接口输出一致。
+
+OwnBase 是 My Tesla 自有表的基类 (SQLite 自有库, 与 TeslaMate 库
+完全隔离), 由应用自己 create_all 建表。
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean
+from sqlalchemy import Boolean, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     """TeslaMate 表映射基类。"""
+
+
+class OwnBase(DeclarativeBase):
+    """My Tesla 自有表基类 (data/mytesla.db, 应用自己建表)。"""
 
 
 class Car(Base):
@@ -107,3 +114,27 @@ class Position(Base):
     latitude: Mapped[float]
     speed: Mapped[float | None]
     power: Mapped[float | None]
+
+
+# ---------------------------------------------------------------- 自有表
+# TeslaMate 原库始终只读; 断档补路这类"补出来"的数据全部落自有库。
+
+class TrackFill(OwnBase):
+    """轨迹断档补路: 一条记录 = 一个 GPS 断档 (隧道/信号丢失)。
+
+    a_pos_id/b_pos_id 锚定断档两端原始 positions 行的主键 (稳定, 不受
+    下采样影响); path 为前端用高德规划成功后回传的 WGS-84 折线。
+    同一断档重复回传时按 a_pos_id 覆盖更新。
+    """
+
+    __tablename__ = "track_fills"
+    __table_args__ = (UniqueConstraint("a_pos_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drive_id: Mapped[int] = mapped_column(Integer, index=True)
+    a_pos_id: Mapped[int] = mapped_column(Integer)
+    b_pos_id: Mapped[int] = mapped_column(Integer)
+    path: Mapped[str] = mapped_column(String)   # JSON: [[lng, lat], ...] WGS-84
+    km: Mapped[float]
+    source: Mapped[str] = mapped_column(String, default="amap")
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
