@@ -388,8 +388,8 @@ def get_merged_track(ids: str,
     实时时长全被停车时间淹没; pts/ts 结构与单条轨迹接口一致。
     边下边播走 /merged_stream, 这里是缓存命中等一次性消费的整包版本。"""
     id_list = _merged_id_list(ids, db)
-    if not 2 <= len(id_list) <= 50:
-        raise HTTPException(400, "ids 需为 2~50 个行程")
+    if not 2 <= len(id_list) <= 100:
+        raise HTTPException(400, "ids 需为 2~100 个行程")
     try:
         return repository.merged_track(db, own, id_list)
     except repository.NotFound as exc:
@@ -421,8 +421,8 @@ def get_merged_track_stream(ids: str,
     38 段的轨迹整包要好几秒, 前端弹层先开、第一段到了就开播, 后续
     段到了追加 —— 不让用户对着死屏等全部数据下载完。"""
     id_list = _merged_id_list(ids, db)
-    if not 2 <= len(id_list) <= 50:
-        raise HTTPException(400, "ids 需为 2~50 个行程")
+    if not 2 <= len(id_list) <= 100:
+        raise HTTPException(400, "ids 需为 2~100 个行程")
     try:
         plan = repository.merged_track_plan(db, id_list)   # 校验 + 头部 (404 在流开始前)
     except repository.NotFound as exc:
@@ -473,7 +473,7 @@ def save_group(body: TripGroupIn,
                own: Session = Depends(database.get_own_db)) -> TripGroupInfo:
     """多选行程存成命名分组; 段数/里程/日期跨度展示时现算, 不落库。"""
     if len(set(body.ids)) < 2:
-        raise HTTPException(400, "ids 去重后需为 2~50 个行程")
+        raise HTTPException(400, "ids 去重后需为 2~100 个行程")
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "名字不能为空")

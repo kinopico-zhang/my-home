@@ -533,7 +533,7 @@ body.selecting #refresh-btn { display: none; }
 
 <div class="selbar" id="selbar" hidden>
   <div class="sel-row">
-    <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km<span id="sel-cap" hidden> · 一次最多 50 段</span></div>
+    <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km<span id="sel-cap" hidden> · 一次最多 100 段</span></div>
     <button class="sel-all" id="gp-btn" disabled>存为分组</button>
     <button class="sel-all" id="sel-all">全选</button>
     <button class="sel-cancel" id="sel-cancel">取消</button>
@@ -1011,7 +1011,7 @@ $("#logout").addEventListener("click", async () => {
 });
 
 /* ============================ 多选: 连续行程拼成一条轨迹 ============================ */
-const MERGE_MAX = 50;              // 合并接口上限 (后端 /api/merged 校验 2~50 段)
+const MERGE_MAX = 100;             // 合并接口上限 (后端 /api/merged 校验 2~100 段)
 let selAnchor = -1;                 // 范围锚点 (点选的第一张卡)
 let selRange = [-1, -1];            // 当前选中范围 [from, to] (闭区间, 必连续)
 
@@ -1022,7 +1022,8 @@ function applyPick() {
   const km = on ? items.slice(a, b + 1).reduce((s, it) => s + (it.km || 0), 0) : 0;
   $("#sel-count").textContent = n;
   $("#sel-km").textContent = num(km);
-  $("#sel-cap").hidden = n <= MERGE_MAX;   // 划选超上限 (全选已封顶, 只会手动划出)
+  /* 上限提示: 划选超上限, 或全选封顶 (列表还有更多段装不进) 都亮 */
+  $("#sel-cap").hidden = n < MERGE_MAX || items.length <= MERGE_MAX;
   $("#sel-go").disabled = n < 2 || n > MERGE_MAX;
   $("#gp-btn").disabled = n < 2 || n > MERGE_MAX;   // 存分组与合并播放同一上限
   $("#sel-all").textContent =             // 已选全部 → 再点一次变清空
@@ -1101,7 +1102,7 @@ function exitSelect() {
 })();
 $("#sel-cancel").addEventListener("click", exitSelect);
 /* 全选: 选中当前筛选下的全部行程, 没装够的页先补载; 合并接口一次最多
-   MERGE_MAX 段, 超出只选最新的 (列表按时间倒序) 前 50 段。已选全部时
+   MERGE_MAX 段, 超出只选最新的 (列表按时间倒序) 前 100 段。已选全部时
    按钮变"清空", 再点一次取消选择。 */
 $("#sel-all").addEventListener("click", async () => {
   const isAll = selRange[0] === 0 && selRange[1] === items.length - 1;
@@ -1110,7 +1111,7 @@ $("#sel-all").addEventListener("click", async () => {
     btn.disabled = true;
     try {
       const target = Math.min(state.total || items.length, MERGE_MAX);
-      while (!state.done && items.length < target) await loadMore();
+      while (!state.done && !state.err && items.length < target) await loadMore();
     } finally { btn.disabled = false; }
     if (state.err) return;        // 补载失败: 列表区已有重试入口, 不动现有选择
   }
