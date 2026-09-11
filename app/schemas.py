@@ -193,9 +193,9 @@ class TollRoad(BaseModel):
 class TripTollIn(BaseModel):
     """前端高德规划回传: 该行程的估价高速费。"""
 
-    tolls: float = Field(ge=0, le=10000)
-    toll_km: float = Field(ge=0, le=5000)
-    distance: int = Field(ge=0, le=100000)          # 规划里程 (米)
+    tolls: float = Field(ge=0, le=10000)           # 元
+    toll_km: float = Field(ge=0, le=20000)          # 收费路段里程 (km)
+    distance: int = Field(ge=0, le=1000000)         # 规划里程 (米), 跨省长途 300km+
     roads: list[TollRoad] = Field(max_length=50)    # 收费路段明细
 
 

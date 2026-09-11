@@ -145,6 +145,12 @@ def test_trip_toll_store_and_readback(auth, db, owndb):
     lst = auth.get(f"{base}/sessions").json()["items"]
     assert lst[0]["toll"] == 29.0            # 列表同样带估价
 
+    # 跨省长途: 规划里程 178km 也要收 (上限 1000km)
+    r = auth.post(f"{base}/1838/toll", json={
+        "tolls": 69.0, "toll_km": 114.4, "distance": 178478,
+        "roads": [{"road": "G4京港澳高速", "tolls": 69.0}]})
+    assert r.status_code == 200
+
     auth.post(f"{base}/1838/toll", json={
         "tolls": 0, "toll_km": 0, "distance": 12000, "roads": []})   # 重算覆盖
     it = auth.get(f"{base}/sessions/1838").json()

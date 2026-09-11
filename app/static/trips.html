@@ -1990,11 +1990,14 @@ $("#toll-go").addEventListener("click", async () => {
     let done = 0, fails = 0, streak = 0;
     for (const id of pending) {
       if (tollBatch.stop) break;
-      let est = null;
-      try {
-        const t = await getJSON(`/tesla/trips/api/${id}/track`);
-        est = await calcTripToll(t.pts);
-      } catch { /* 轨迹拉取失败按失败计 */ }
+      let pts = null;
+      try { pts = (await getJSON(`/tesla/trips/api/${id}/track`)).pts; }
+      catch { /* 轨迹拉取失败按失败计 */ }
+      let est = pts ? await calcTripToll(pts) : null;
+      if (!est) {   // 长途行程规划偶发超时 (批跑时尤甚), 缓口气原轨迹再试一次
+        await sleep(1500);
+        est = pts ? await calcTripToll(pts) : null;
+      }
       if (est) {
         try {
           await postJSON(`/tesla/trips/api/${id}/toll`, est);
@@ -2007,11 +2010,12 @@ $("#toll-go").addEventListener("click", async () => {
       tollStat(`共 ${total} 条 · 待算 ${pending.length} 中已处理 ${done + fails} · 失败 ${fails}`);
       if (streak >= 8) {   // 连败 = 配额用尽/网络断了, 自动停免得空烧
         toast("连续失败, 已自动暂停");
+        tollStat(`连续失败已自动暂停 · 成功 ${done} · 失败 ${fails}, 稍后再点开始`);
         break;
       }
       await sleep(420);    // 温柔限速 (~2.4 次/秒, 个人配额日限内慢慢跑)
     }
-    tollStat(tollBatch.stop
+    if (streak < 8) tollStat(tollBatch.stop
       ? `已暂停 · 成功 ${done} · 失败 ${fails}, 再点开始继续`
       : `完成 · 成功 ${done} · 失败 ${fails}`);
   } finally {
