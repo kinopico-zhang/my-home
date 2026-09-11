@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timedelta
 
 from app import repository
-from app.models import Address, Drive, Driver, Position, TrackFill
+from app.models import (Address, Drive, Driver, Position, TrackFill,
+                        TripToll)
 from tests.conftest import seed_addresses, seed_drive, seed_position
 
 
@@ -90,6 +91,7 @@ def test_trip_session_one(auth, db):
         "km": 42.5, "min": 72, "speed_max": 118,
         "from": "广东省深圳市龙岗区坂田街道", "to": "广东省东莞市长安镇",
         "driver": None, "driver_id": None,     # 没配司机 → 不显示
+        "toll": None, "toll_km": None,         # 高速费还没算过
     }
 
 
@@ -125,6 +127,41 @@ def test_trip_driver_mark(auth, db, owndb):
     auth.delete("/tesla/api/drivers/2")       # 删司机 → 标注联动清掉
     it = auth.get(base).json()
     assert it["driver"] == "大导子" and it["driver_id"] is None
+
+
+def test_trip_toll_store_and_readback(auth, db, owndb):
+    """高速费估价回传: 存自有库, 列表/单条回读; 重传覆盖; ¥0 也算有效结果。"""
+    seed_addresses(db)
+    seed_drive(db, id=1838)
+    base = "/tesla/trips/api"
+
+    r = auth.post(f"{base}/1838/toll", json={
+        "tolls": 29.0, "toll_km": 40.2, "distance": 77863,
+        "roads": [{"road": "G4京港澳高速", "tolls": 14.0},
+                  {"road": "S15沈海高速广州支线", "tolls": 7.0}]})
+    assert r.status_code == 200 and r.json()["ok"] is True
+    it = auth.get(f"{base}/sessions/1838").json()
+    assert it["toll"] == 29.0 and it["toll_km"] == 40.2
+    lst = auth.get(f"{base}/sessions").json()["items"]
+    assert lst[0]["toll"] == 29.0            # 列表同样带估价
+
+    auth.post(f"{base}/1838/toll", json={
+        "tolls": 0, "toll_km": 0, "distance": 12000, "roads": []})   # 重算覆盖
+    it = auth.get(f"{base}/sessions/1838").json()
+    assert it["toll"] == 0                   # ¥0 = 算过没走收费路, 不是没算
+
+    row = owndb.query(TripToll).filter_by(drive_id=1838).one()   # 只存自有库一行
+    assert row.distance == 12000 and "G4" in row.roads or row.roads == "[]"
+
+
+def test_trip_toll_errors(auth, db):
+    """行程不存在 → 404; 负数/越界估价 → 422 (pydantic 校验)。"""
+    seed_addresses(db)
+    seed_drive(db, id=1838)
+    assert auth.post("/tesla/trips/api/9999/toll", json={
+        "tolls": 1, "toll_km": 1, "distance": 1, "roads": []}).status_code == 404
+    assert auth.post("/tesla/trips/api/1838/toll", json={
+        "tolls": -5, "toll_km": 1, "distance": 1, "roads": []}).status_code == 422
 
 
 def test_trip_driver_mark_errors(auth, db):
@@ -858,6 +895,19 @@ def test_trip_group_validation(auth, db):
                       json={"name": "y"}).status_code == 404
 
 
+def test_trips_page_has_toll_tools(auth):
+    """高速费: 头部批量入口 + 面板 + 弹层 chip + 估价函数都挂在页面上。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ['id="toll-btn"', 'id="tollpanel"', 'id="toll-go"', 'id="toll-stop"',
+                 'id="toll-fill"', 'id="toll-stat"', 'id="sh-toll"',
+                 "function calcTripToll(", "function autoCalcToll(",
+                 "TOLL_WAYPOINTS", "/toll`", "无高速费"]:
+        assert frag in html, f"行程页缺少高速费片段 {frag}"
+    # 限速 + 连败自动停 (个人配额保护)
+    assert "await sleep(420)" in html
+    assert "streak >= 8" in html
+
+
 def test_trips_page_has_driver_picker(auth):
     """行程页司机标注: 弹层选择行 + 卡片 pill + 标注接口都挂在页面上。"""
     html = auth.get("/tesla/trips").text
@@ -865,8 +915,9 @@ def test_trips_page_has_driver_picker(auth):
                  'class="ct-drv"', "/tesla/api/drivers",
                  "function postJSON(", "已标注为", "已清除标注"]:
         assert frag in html, f"行程页缺少司机标注片段 {frag}"
-    # 没配司机时整行隐藏 (兜底, 不会闪一个空下拉)
-    assert 'driversCache.length === 0) { row.hidden = true' in html
+    # 没配司机时选择器藏 (兜底, 不会闪一个空下拉); 选择器和高速费 chip 都藏才整行藏
+    assert "driversCache.length > 0) {" in html
+    assert "function metaRowSync()" in html
 
 
 def test_trips_page_has_group_panel(auth):

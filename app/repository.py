@@ -26,7 +26,7 @@ from sqlalchemy.sql.selectable import Subquery
 
 from . import config
 from .models import (Address, Car, Charge, ChargingProcess, Drive, Driver,
-                     Geofence, Position, TrackFill, TripDriver, TripGroup)
+                     Geofence, Position, TrackFill, TripDriver, TripGroup, TripToll)
 from .schemas import (
     CarInfo,
     ChargeCurve,
@@ -44,7 +44,7 @@ from .schemas import (
     MonthlyStat,
     RegionNode,
     TripItem,
-    TripGroupInfo,
+    TripGroupInfo, TripTollIn,
     TripRegions,
     TripTrack,
 )
@@ -626,6 +626,7 @@ def list_trips(session: Session, own: Session, offset: int, limit: int,
         .offset(offset).limit(limit)).all()
     items = [_trip_item(d, s, e) for d, s, e in rows]
     annotate_drivers(own, items)
+    annotate_tolls(own, items)
     return int(total), items
 
 
@@ -647,6 +648,34 @@ def annotate_drivers(own: Session, items: list[TripItem]) -> None:
         it.driver_id = driver.id if driver is not None else None
         shown = driver or default
         it.driver = shown.name if shown is not None else None
+
+
+def annotate_tolls(own: Session, items: list[TripItem]) -> None:
+    """行程条目补高速费估价 (算过的才有, 没算过保持 None)。"""
+    if not items:
+        return
+    rows = own.scalars(select(TripToll).where(
+        TripToll.drive_id.in_([i.id for i in items]))).all()
+    by_id = {r.drive_id: r for r in rows}
+    for it in items:
+        row = by_id.get(it.id)
+        if row is not None:
+            it.toll = row.tolls
+            it.toll_km = row.toll_km
+
+
+def save_trip_toll(own: Session, drive_id: int, body: TripTollIn) -> None:
+    """存/更新一条行程的高速费估价 (算过重算 = 覆盖)。"""
+    row = own.scalars(select(TripToll).where(TripToll.drive_id == drive_id)).first()
+    if row is None:
+        row = TripToll(drive_id=drive_id)
+        own.add(row)
+    row.tolls = body.tolls
+    row.toll_km = body.toll_km
+    row.distance = body.distance
+    row.roads = json.dumps([r.model_dump() for r in body.roads],
+                           ensure_ascii=False, separators=(",", ":"))
+    own.commit()
 
 
 def set_trip_driver(own: Session, drive_id: int, driver_id: int | None) -> None:
@@ -728,6 +757,7 @@ def get_trip(session: Session, own: Session, drive_id: int) -> TripItem | None:
         return None
     item = _trip_item(rows[0][0], rows[0][1], rows[0][2])
     annotate_drivers(own, [item])
+    annotate_tolls(own, [item])
     return item
 
 

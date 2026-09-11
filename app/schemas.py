@@ -179,6 +179,24 @@ class TripItem(BaseModel):
     to: str
     driver: str | None = None      # 展示名: 显式标注, 未标注回落默认司机
     driver_id: int | None = None   # 显式标注的司机 id (未标 = None)
+    toll: float | None = None      # 估价高速费 (元); None=还没算过
+    toll_km: float | None = None   # 收费路段里程 (km)
+
+
+class TollRoad(BaseModel):
+    """一段收费路 (规划 step 里的 toll_road + tolls)。"""
+
+    road: str
+    tolls: float
+
+
+class TripTollIn(BaseModel):
+    """前端高德规划回传: 该行程的估价高速费。"""
+
+    tolls: float = Field(ge=0, le=10000)
+    toll_km: float = Field(ge=0, le=5000)
+    distance: int = Field(ge=0, le=100000)          # 规划里程 (米)
+    roads: list[TollRoad] = Field(max_length=50)    # 收费路段明细
 
 
 class DriverMark(BaseModel):
