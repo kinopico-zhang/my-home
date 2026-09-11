@@ -327,9 +327,9 @@ class DriverUpdate(BaseModel):
 
 
 class TripGroupIn(BaseModel):
-    """存分组: 名字 + 行程 id 列表 (2~50 段, 与合并播放同上限)。"""
+    """存分组: 名字 + 行程 id 列表 (2~100 段, 与合并播放同上限)。"""
     name: str = Field(min_length=1, max_length=30)
-    ids: list[int] = Field(min_length=2, max_length=50)
+    ids: list[int] = Field(min_length=2, max_length=100)
 
 
 class TripGroupRename(BaseModel):

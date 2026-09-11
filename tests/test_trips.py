@@ -443,7 +443,7 @@ def test_merged_track_validation_and_404(auth, monkeypatch):
     assert auth.get("/tesla/trips/api/merged?ids=abc").status_code == 400
     assert auth.get("/tesla/trips/api/merged?ids=1").status_code == 400
     assert auth.get("/tesla/trips/api/merged?ids=" +
-                    ",".join(str(i) for i in range(51))).status_code == 400
+                    ",".join(str(i) for i in range(101))).status_code == 400
     # 任一行程不存在/未完成 → 404
     def raise_not_found(*_args):
         raise repository.NotFound("包含不存在或未完成的行程")
@@ -506,16 +506,20 @@ def test_merged_range_form_expands_closed_drives(auth, db):
 
 
 def test_merged_range_form_requires_enough_drives(auth, db):
-    """区间展开后不足 2 段或超 50 段 → 400 (与逗号形式同口径)。"""
+    """区间展开后不足 2 段或超 100 段 → 400 (与逗号形式同口径)。"""
     _seed_pair(db)
     assert auth.get("/tesla/trips/api/merged?ids=11-11").status_code == 400
     assert auth.get("/tesla/trips/api/merged?ids=99-100").status_code == 400
-    # 展开后超过 50 段 (上限与逗号形式一致, 区间跨度本身不设限)
+    # 展开后 101 段 → 400 (上限与逗号形式一致, 区间跨度本身不设限)
     t = datetime(2026, 9, 10, 0, 32)
-    for drive_id in range(13, 63):        # 已有 11,12 → 共 52 段
+    for drive_id in range(13, 112):       # 已有 11,12 → 共 101 段
         seed_drive(db, id=drive_id, start_date=t + timedelta(hours=drive_id),
                    end_date=t + timedelta(hours=drive_id, minutes=5))
-    assert auth.get("/tesla/trips/api/merged?ids=11-62").status_code == 400
+    assert auth.get("/tesla/trips/api/merged?ids=11-111").status_code == 400
+    # 恰 100 段 (空轨迹段只进 ids 不进 pts) → 放行, 边界不差一
+    r = auth.get("/tesla/trips/api/merged?ids=11-110")
+    assert r.status_code == 200
+    assert r.json()["n"] == 100
 
 
 # ---------------------------------------------------------------- 流式下载 (边下边播)
@@ -841,7 +845,7 @@ def test_trips_page_has_multiselect(auth):
     """多选连续行程: 长按卡片进选择模式 + 底栏 (全选/上限提示) + 合并接口直开。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
-                 'id="sel-count"', 'id="sel-all"', 'id="sel-cap"', "MERGE_MAX = 50",
+                 'id="sel-count"', 'id="sel-all"', 'id="sel-cap"', "MERGE_MAX = 100",
                  "body.selecting", "pickCard", "enterSelect", "exitSelect",
                  "openMerged", "/tesla/trips/api/merged_stream?ids=",
                  "mergedCache", "loadMergedStream(", "sess.append(d.pts, d.ts)",
