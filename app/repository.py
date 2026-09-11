@@ -727,13 +727,13 @@ def merged_track(session: Session, ids: Sequence[int]) -> MergedTrack:
         raise NotFound("包含不存在或未完成的行程")
     id_list = [d.id for d, _, _ in drive_rows]
     per = max(MERGED_TRACK_PER_MIN, MERGED_TRACK_BUDGET // len(id_list))
-    pts, ts = _merged_positions(session, id_list, per)
+    pts, ts, seg_starts = _merged_positions(session, id_list, per)
     if len(pts) < 2:
         raise NotFound("这些行程没有轨迹数据")
     first = drive_rows[0][0]
     last = drive_rows[-1][0]
     return MergedTrack(
-        ids=id_list, n=len(id_list), pts=pts, ts=ts,
+        ids=id_list, n=len(id_list), pts=pts, ts=ts, seg_starts=seg_starts,
         date=fdate(first.start_date), start=ftime(first.start_date),
         end=ftime(last.end_date) if last.end_date else None,
         km=round(sum(float(d.distance or 0) for d, _, _ in drive_rows), 2),
@@ -744,8 +744,9 @@ def merged_track(session: Session, ids: Sequence[int]) -> MergedTrack:
 
 
 def _merged_positions(session: Session, id_list: Sequence[int],
-                      per: int) -> tuple[list[list[float | None]], list[int]]:
-    """按时间序拼接各段下采样后的轨迹点, 返回 (pts, ts)。"""
+                      per: int) -> tuple[list[list[float | None]], list[int], list[int]]:
+    """按时间序拼接各段下采样后的轨迹点, 返回 (pts, ts, seg_starts)。
+    seg_starts[k] = 第 k 段首个保留点在 pts 里的下标 (前端按段做断档识别)。"""
     positions = session.scalars(
         select(Position).where(Position.drive_id.in_(id_list))
         .order_by(Position.date)).all()
@@ -756,6 +757,7 @@ def _merged_positions(session: Session, id_list: Sequence[int],
     seen: dict[int, int] = {}
     pts: list[list[float | None]] = []
     ts: list[int] = []
+    seg_starts: list[int] = []
     base = 0.0            # 已完成段落的行驶秒累计
     cur_drive: int | None = None
     t0 = 0.0              # 当前段落首点 epoch 秒 (UTC 裸算, 不涉及时区)
@@ -771,11 +773,12 @@ def _merged_positions(session: Session, id_list: Sequence[int],
                 base += prev_stamp - t0
             cur_drive = pos.drive_id
             t0 = stamp
+            seg_starts.append(len(pts))
         prev_stamp = stamp
         pts.append([round(float(pos.longitude), 5),
                     round(float(pos.latitude), 5), pos.speed or 0, pos.power])
         ts.append(int(round(base + stamp - t0)))
-    return pts, ts
+    return pts, ts, seg_starts
 
 
 _EPOCH = datetime(1970, 1, 1)

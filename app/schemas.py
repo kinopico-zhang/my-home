@@ -221,6 +221,9 @@ class TripTrack(BaseModel):
 class MergedTrack(BaseModel):
     """多选连续行程 → 一条连续轨迹 (ts 为累计行驶秒, 行程间停驶剔除)。
 
+    seg_starts 为每段在 pts 里的起始下标: 前端逐段跑单段行程的断档识别
+    (各段下采样后采样密度差着量级, 混一个数组用全局阈值会误拆)。
+
     与旧版响应一致: 没有 id 字段 (前端自行用 "m:{ids}" 当弹层键)。"""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -229,6 +232,7 @@ class MergedTrack(BaseModel):
     n: int
     pts: list[list[float | None]]
     ts: list[int]
+    seg_starts: list[int]
     date: str
     start: str
     end: str | None

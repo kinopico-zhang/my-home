@@ -56,18 +56,11 @@ header {
    车名 pill 兜底吸收挤压 (省略号), 更窄 (≤359px) 干脆让位隐藏 */
 .nav-row { display: flex; align-items: baseline; gap: 8px; }
 .nav-row > * { flex-shrink: 0; }
-h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
 .car-pill {
   font-size: 11px; color: var(--ink-2); font-weight: 500; flex-shrink: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 @media (max-width: 359px) { .car-pill { display: none; } }
-.logout-btn {
-  align-self: center; font-size: 11.5px; color: var(--ink-3); white-space: nowrap;
-  padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
-  transition: color .15s;
-}
-.logout-btn:active { color: var(--ink-1); }
 /* 页面切换: 充电记录 / 足迹地图 */
 /* ---------- 页签菜单 (收起式) ---------- */
 .nav-menu { position: relative; align-self: center; margin-left: auto; }
@@ -98,6 +91,21 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
 .nav-menu .menu a:active { background: var(--surface-3); }
 .nav-menu .menu a.on { color: #7db3f0; }
 .nav-menu + .nav-menu { margin-left: 0; }   /* 顶栏两个菜单靠右并排, 只有第一个吃 auto 边距 */
+/* 品牌即入口: My Tesla 本身是下拉按钮, 展开是全部页面 + 退出登录。
+   块要放在 .nav-menu 系列之后 —— 同特异性靠源序取胜, 放前面会被盖掉
+   (实测放 h1 原位时 margin-left:auto 没被压掉, 品牌被顶到行中间)。 */
+.brand-menu { margin-left: 0; }
+.brand-menu summary {
+  font-size: 20px; font-weight: 700; letter-spacing: -.3px;
+  background: none; padding: 0; border-radius: 0;
+}
+.brand-menu[open] summary { background: none; }
+.brand-menu .chev { color: var(--ink-3); }
+.brand-menu .menu { left: 0; right: auto; }   /* 面板锚品牌左缘向右展开, 不出屏 */
+.nav-menu .menu .logout-row {
+  color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
+}
+.brand-menu + .nav-menu { margin-left: auto; }   /* 品牌居左, 顶栏其余菜单仍靠右 */
 .nav-menu .menu button {
   font-size: 14px; color: var(--ink-1); text-align: left;
   padding: 9px 12px; border-radius: 10px; white-space: nowrap;
@@ -367,7 +375,15 @@ main { max-width: 760px; margin: 0 auto; }
 
 <header>
   <div class="nav-row">
-    <h1>My Tesla</h1>
+    <details class="nav-menu brand-menu" id="brand-menu">
+      <summary>My Tesla<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu">
+        <a class="on" href="/tesla/charging">充电</a>
+        <a href="/tesla/map">足迹</a>
+        <a href="/tesla/trips">行程</a>
+        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
+      </div>
+    </details>
     <span class="car-pill" id="car-pill">Tesla</span>
     <details class="nav-menu time-menu" id="time-menu">
       <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
@@ -393,15 +409,6 @@ main { max-width: 760px; margin: 0 auto; }
         </div>
       </div>
     </details>
-    <details class="nav-menu" id="nav-menu">
-      <summary>充电<svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-      <div class="menu">
-        <a class="on" href="/tesla/charging">充电</a>
-        <a href="/tesla/map">足迹</a>
-        <a href="/tesla/trips">行程</a>
-      </div>
-    </details>
-    <button id="logout" class="logout-btn" title="退出登录">退出</button>
   </div>
   <div class="filters">
     <div class="seg" id="seg-type">

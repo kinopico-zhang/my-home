@@ -220,14 +220,19 @@ def test_all_pages_declare_png_and_touch_icons(client):
         assert 'apple-touch-icon.png' in body, f"{page} 缺 apple-touch-icon"
 
 
-def test_all_pages_have_collapsible_nav_menu(auth):
-    """页签收进 details 菜单: summary 显示当前页名, 菜单含全部三个链接。"""
-    for path, cur in (("/tesla/charging", "充电"), ("/tesla/map", "足迹"),
-                      ("/tesla/trips", "行程")):
+def test_all_pages_have_brand_menu(auth):
+    """品牌即入口: My Tesla 是下拉按钮, 展开是三个页面 + 退出登录, 当前页高亮。"""
+    for path, cur, slug in (("/tesla/charging", "充电", "charging"),
+                            ("/tesla/map", "足迹", "map"),
+                            ("/tesla/trips", "行程", "trips")):
         html = auth.get(path).text
-        assert 'class="nav-menu"' in html, path
+        assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
         assert '<nav class="tabs">' not in html, path       # 平铺页签已删
+        assert "<h1>My Tesla</h1>" not in html, path        # 旧标题位换成品牌下拉
+        assert 'id="nav-menu"' not in html, path            # 旧页签菜单已删
         for href in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
             assert f'href="{href}"' in html, (path, href)
-        mt = re.search(r'id="nav-menu">\s*<summary>(.*?)<svg', html)   # 页签菜单 summary (时间菜单在前)
-        assert mt and mt.group(1) == cur, (path, mt and mt.group(1))
+        assert f'<a class="on" href="/tesla/{slug}">{cur}</a>' in html, (path, cur)
+        # 退出收进品牌菜单 (不再是顶栏独立按钮)
+        assert 'class="logout-row" id="logout"' in html and "logout-btn" not in html, path
+        assert "退出登录" in html, path

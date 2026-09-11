@@ -46,7 +46,6 @@ header {
 /* 顶栏一行: 全部 nowrap + 不许压缩换行 (窄屏字号收一档) */
 .nav-row { display: flex; align-items: baseline; gap: 8px; }
 .nav-row > * { flex-shrink: 0; }
-h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
 /* ---------- 页签菜单 (收起式) ---------- */
 .nav-menu { position: relative; align-self: center; margin-left: auto; }
 .nav-menu summary {
@@ -76,6 +75,21 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
 .nav-menu .menu a:active { background: var(--surface-3); }
 .nav-menu .menu a.on { color: #7db3f0; }
 .nav-menu + .nav-menu { margin-left: 0; }   /* 顶栏两个菜单靠右并排, 只有第一个吃 auto 边距 */
+/* 品牌即入口: My Tesla 本身是下拉按钮, 展开是全部页面 + 退出登录。
+   块要放在 .nav-menu 系列之后 —— 同特异性靠源序取胜, 放前面会被盖掉
+   (实测放 h1 原位时 margin-left:auto 没被压掉, 品牌被顶到行中间)。 */
+.brand-menu { margin-left: 0; }
+.brand-menu summary {
+  font-size: 20px; font-weight: 700; letter-spacing: -.3px;
+  background: none; padding: 0; border-radius: 0;
+}
+.brand-menu[open] summary { background: none; }
+.brand-menu .chev { color: var(--ink-3); }
+.brand-menu .menu { left: 0; right: auto; }   /* 面板锚品牌左缘向右展开, 不出屏 */
+.nav-menu .menu .logout-row {
+  color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
+}
+.brand-menu + .nav-menu { margin-left: auto; }   /* 品牌居左, 顶栏其余菜单仍靠右 */
 .nav-menu .menu button {
   font-size: 14px; color: var(--ink-1); text-align: left;
   padding: 9px 12px; border-radius: 10px; white-space: nowrap;
@@ -129,11 +143,6 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
   flex: none; background: #3987e5; color: #fff;
   border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 14px;
 }
-.logout-btn {
-  align-self: center; font-size: 11.5px; color: var(--ink-3); white-space: nowrap;
-  padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
-}
-.logout-btn:active { color: var(--ink-1); }
 
 main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
@@ -225,12 +234,15 @@ body.selecting .card-t.picked .pick::after {
 .selbar[hidden] { display: none; }
 .sel-info { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-2); }
 .sel-info b { color: var(--ink-1); font-weight: 650; }
+.sel-info #sel-cap { color: #e08a2e; }   // 划选超上限: 提示为什么按钮置灰
 .sel-go {
   flex: none; background: var(--blue); color: #fff; font-size: 13.5px; font-weight: 600;
   padding: 9px 16px; border-radius: 999px;
 }
 .sel-go:disabled { opacity: .4; }
 .sel-go:active { transform: scale(.96); }
+.sel-all { flex: none; font-size: 13px; color: var(--blue); font-weight: 600; padding: 9px 4px; }
+.sel-all:disabled { opacity: .4; }
 .sel-cancel { flex: none; font-size: 13px; color: var(--ink-2); padding: 9px 4px; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
@@ -314,7 +326,15 @@ body.selecting .card-t.picked .pick::after {
 
 <header>
   <div class="nav-row">
-    <h1>My Tesla</h1>
+    <details class="nav-menu brand-menu" id="brand-menu">
+      <summary>My Tesla<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu">
+        <a href="/tesla/charging">充电</a>
+        <a href="/tesla/map">足迹</a>
+        <a class="on" href="/tesla/trips">行程</a>
+        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
+      </div>
+    </details>
     <details class="nav-menu time-menu" id="time-menu">
       <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu" id="time-opts">
@@ -339,15 +359,6 @@ body.selecting .card-t.picked .pick::after {
         </div>
       </div>
     </details>
-    <details class="nav-menu" id="nav-menu">
-      <summary>行程<svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-      <div class="menu">
-        <a href="/tesla/charging">充电</a>
-        <a href="/tesla/map">足迹</a>
-        <a class="on" href="/tesla/trips">行程</a>
-      </div>
-    </details>
-    <button id="logout" class="logout-btn" title="退出登录">退出</button>
   </div>
   <!-- 行程页独有筛选 (顶栏时间筛选之下): 起点城市 / 终点城市 / 里程范围 -->
   <div class="filters">
@@ -392,7 +403,8 @@ body.selecting .card-t.picked .pick::after {
 </main>
 
 <div class="selbar" id="selbar" hidden>
-  <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km</div>
+  <div class="sel-info">已选 <b id="sel-count">0</b> 段 · <span id="sel-km">0</span> km<span id="sel-cap" hidden> · 一次最多 50 段</span></div>
+  <button class="sel-all" id="sel-all">全选</button>
   <button class="sel-cancel" id="sel-cancel">取消</button>
   <button class="sel-go" id="sel-go" disabled>查看连续轨迹</button>
 </div>
@@ -801,6 +813,7 @@ $("#logout").addEventListener("click", async () => {
 });
 
 /* ============================ 多选: 连续行程拼成一条轨迹 ============================ */
+const MERGE_MAX = 50;              // 合并接口上限 (后端 /api/merged 校验 2~50 段)
 let selAnchor = -1;                 // 范围锚点 (点选的第一张卡)
 let selRange = [-1, -1];            // 当前选中范围 [from, to] (闭区间, 必连续)
 
@@ -811,7 +824,10 @@ function applyPick() {
   const km = on ? items.slice(a, b + 1).reduce((s, it) => s + (it.km || 0), 0) : 0;
   $("#sel-count").textContent = n;
   $("#sel-km").textContent = num(km);
-  $("#sel-go").disabled = n < 2;
+  $("#sel-cap").hidden = n <= MERGE_MAX;   // 划选超上限 (全选已封顶, 只会手动划出)
+  $("#sel-go").disabled = n < 2 || n > MERGE_MAX;
+  $("#sel-all").textContent =             // 已选全部 → 再点一次变清空
+    on && a === 0 && b === items.length - 1 ? "清空" : "全选";
 }
 
 /* 两段式点选: 点第一张卡定锚, 点另一张 → 锚点到该处的连续范围; 再点锚点清空重来 */
@@ -838,6 +854,25 @@ function exitSelect() {
 }
 $("#merge-btn").addEventListener("click", enterSelect);
 $("#sel-cancel").addEventListener("click", exitSelect);
+/* 全选: 选中当前筛选下的全部行程, 没装够的页先补载; 合并接口一次最多
+   MERGE_MAX 段, 超出只选最新的 (列表按时间倒序) 前 50 段。已选全部时
+   按钮变"清空", 再点一次取消选择。 */
+$("#sel-all").addEventListener("click", async () => {
+  const isAll = selRange[0] === 0 && selRange[1] === items.length - 1;
+  if (!isAll) {
+    const btn = $("#sel-all");
+    btn.disabled = true;
+    try {
+      const target = Math.min(state.total || items.length, MERGE_MAX);
+      while (!state.done && items.length < target) await loadMore();
+    } finally { btn.disabled = false; }
+    if (state.err) return;        // 补载失败: 列表区已有重试入口, 不动现有选择
+  }
+  selAnchor = -1;
+  selRange = isAll || items.length < 2 ? [-1, -1]
+    : [0, Math.min(MERGE_MAX, items.length) - 1];
+  applyPick();
+});
 $("#sel-go").addEventListener("click", () => {
   const ids = items.slice(selRange[0], selRange[1] + 1).map(it => it.id);
   exitSelect();
@@ -985,6 +1020,20 @@ function routeGapCtx(pts, g, aIdx, bIdx) {
   });
 }
 
+/* 合并轨迹的分段断档识别: 每段单独跑单段行程同一套 splitGaps —— 各段
+   下采样后采样密度差着量级 (短市区段步长几十米, 长途段公里级), 拼成
+   一个数组用全局阈值会把整条长途段拆成孤立单点丢掉, 只剩几十条飞线。
+   段与段之间的真实跳变交给 gapsBetween 按距离阈值正常补路。 */
+function splitSegments(pts, starts) {
+  if (!starts || !starts.length) return TrackUtil.splitGaps(pts);
+  const segs = [];
+  for (let k = 0; k < starts.length; k++) {
+    const end = k + 1 < starts.length ? starts[k + 1] : pts.length;
+    if (end > starts[k]) segs.push(...TrackUtil.splitGaps(pts.slice(starts[k], end)));
+  }
+  return segs.length ? segs : TrackUtil.splitGaps(pts);
+}
+
 function playTrack(pts, ts, it, zoom = 15) {
   stopAnim();
   if (curSess) curSess.alive = false;
@@ -998,7 +1047,8 @@ function playTrack(pts, ts, it, zoom = 15) {
   const growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
   // 背景全程速度线 (淡) —— 拉远后就是完整的速度色全局图
-  const segs = TrackUtil.splitGaps(pts);
+  // 合并轨迹按段识别断档 (见 splitSegments), 单段照旧全局一套
+  const segs = splitSegments(pts, it.seg_starts);
   const bgLines = [];
   for (const seg of segs)
     for (const b of TrackUtil.speedLines(seg))
@@ -1129,8 +1179,10 @@ function playTrack(pts, ts, it, zoom = 15) {
         /* 失败重试一次: ctx 请求紧跟 3 个常规请求, 高德规划接口偶发限流 */
         setTimeout(() => {
           routeGapCtx(pts, g, aIdx, bIdx).then(r2 => {
-            if (r2) routeCache.set(ctxKey, r2);
-            applyRoute(r2 || plain);
+            if (!r2) return;   // 两次都失败: 保持直线弦。绝不能放行已知病态的
+                               // plain —— 1385 曾把 0.5km 隧道断档画成 37km 掉头环线
+            routeCache.set(ctxKey, r2);
+            applyRoute(r2);
           });
         }, 900);
       });
