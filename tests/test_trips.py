@@ -778,10 +778,11 @@ def test_trips_page_has_playbar_and_single_column(auth):
                  'id="list"', "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
     assert "spd-legend" not in html   # 速度图例已按需求移除
-    # 刷新: 头部按钮 + 下拉手势共用一套重载
-    for frag in ['id="refresh-btn"', 'id="ptr"', "function refreshList(",
+    # 刷新: 下拉手势 (头部按钮已按需求撤掉, 只留下拉)
+    for frag in ['id="ptr"', "function refreshList(",
                  "setupPullRefresh", "ptr-spin"]:
         assert frag in html, f"行程页缺少刷新片段 {frag}"
+    assert 'id="refresh-btn"' not in html
     # 瀑布流的列容器已删
     assert "m-col" not in html
 
@@ -831,7 +832,8 @@ def test_trips_page_has_multiselect(auth):
                  "body.selecting", "pickCard", "enterSelect", "exitSelect",
                  "openMerged", "/tesla/trips/api/merged_stream?ids=",
                  "mergedCache", "loadMergedStream(", "sess.append(d.pts, d.ts)",
-                 "setupLongPress", "HOLD_MS = 480"]:
+                 "setupLongPress", "HOLD_MS = 480", "holdArmed",
+                 'addEventListener("contextmenu"']:
         assert frag in html, f"行程页缺少多选片段 {frag}"
     # 多选按钮已撤: 长按卡片是唯一入口 (触屏长按/桌面按住)
     assert 'id="merge-btn"' not in html
