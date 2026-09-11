@@ -776,6 +776,9 @@ def test_trips_page_has_playbar_and_single_column(auth):
     html = auth.get("/tesla/trips").text
     for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
                  'id="sh-cell-pw"', 'id="sh-pw-lb"', "ICON_REPLAY",
+                 # 视角基线: 播放条上加减按钮, 随速变焦整条平移
+                 'id="pb-zout"', 'id="pb-zin"', 'id="pb-zval"',
+                 "bumpZoomBias", "trip-zoom-bias",
                  'id="list"', "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
     assert "spd-legend" not in html   # 速度图例已按需求移除
