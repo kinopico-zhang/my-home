@@ -389,22 +389,6 @@ body.selecting .card-t.picked .pick::after {
   z-index: 10; text-align: center; padding: 0 30px;
 }
 .trip-msg .spin { margin: 0 auto; }
-.spd-legend {
-  /* 底部居中: 左下被高德 logo 占、右下被版权行占, 贴左会压 logo */
-  position: absolute; left: 50%; bottom: 10px; z-index: 20;
-  transform: translateX(-50%);
-  display: flex; align-items: center; gap: 6px;
-  font-size: 10.5px; color: var(--ink-2);
-  background: rgba(10,10,12,.72); -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border-radius: 999px; padding: 5px 10px; pointer-events: none;
-}
-.spd-legend .bar {
-  width: 74px; height: 5px; border-radius: 3px;
-  background: linear-gradient(to right, #e5484d, #e08a2e, #d9b42a, #9dbb32, #1fa349);
-}
-.spd-legend .gap { width: 16px; border-top: 2.5px dashed #3987e5; }
-
 /* ---------- 播放控制条 ---------- */
 .playbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 4px 4px 10px; }
 .pb-btn {
@@ -554,7 +538,6 @@ body.selecting .card-t.picked .pick::after {
   </div>
   <div class="trip-map-wrap">
     <div id="trip-map"></div>
-    <div class="spd-legend"><span>慢</span><i class="bar"></i><span>快</span><i class="gap"></i><span>缺失</span></div>
     <div class="trip-msg" id="trip-msg">
       <div class="spin" id="trip-spin" hidden></div>
       <div id="trip-msg-text">正在加载轨迹…</div>

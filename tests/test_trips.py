@@ -771,12 +771,13 @@ def test_trips_page_time_menu_and_filter_row(auth):
 
 
 def test_trips_page_has_playbar_and_single_column(auth):
-    """播放控制条 (暂停/进度/倍速) + 单列列表 + 断档图例 都在页面上。"""
+    """播放控制条 (暂停/进度/倍速) + 单列列表 都在页面上。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
                  'id="sh-cell-pw"', 'id="sh-pw-lb"', "ICON_REPLAY",
-                 'id="list"', "缺失", "最高车速"]:
+                 'id="list"', "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
+    assert "spd-legend" not in html   # 速度图例已按需求移除
     # 瀑布流的列容器已删
     assert "m-col" not in html
 
