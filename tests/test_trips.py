@@ -778,6 +778,10 @@ def test_trips_page_has_playbar_and_single_column(auth):
                  'id="list"', "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
     assert "spd-legend" not in html   # 速度图例已按需求移除
+    # 刷新: 头部按钮 + 下拉手势共用一套重载
+    for frag in ['id="refresh-btn"', 'id="ptr"', "function refreshList(",
+                 "setupPullRefresh", "ptr-spin"]:
+        assert frag in html, f"行程页缺少刷新片段 {frag}"
     # 瀑布流的列容器已删
     assert "m-col" not in html
 
@@ -820,14 +824,17 @@ def test_trips_page_preloads_tiles(auth):
 
 
 def test_trips_page_has_multiselect(auth):
-    """多选连续行程: 选择模式 + 底栏 (全选/上限提示) + 合并接口直开都挂在页面上。"""
+    """多选连续行程: 长按卡片进选择模式 + 底栏 (全选/上限提示) + 合并接口直开。"""
     html = auth.get("/tesla/trips").text
-    for frag in ['id="merge-btn"', 'id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
+    for frag in ['id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
                  'id="sel-count"', 'id="sel-all"', 'id="sel-cap"', "MERGE_MAX = 50",
                  "body.selecting", "pickCard", "enterSelect", "exitSelect",
                  "openMerged", "/tesla/trips/api/merged_stream?ids=",
-                 "mergedCache", "loadMergedStream(", "sess.append(d.pts, d.ts)"]:
+                 "mergedCache", "loadMergedStream(", "sess.append(d.pts, d.ts)",
+                 "setupLongPress", "HOLD_MS = 480"]:
         assert frag in html, f"行程页缺少多选片段 {frag}"
+    # 多选按钮已撤: 长按卡片是唯一入口 (触屏长按/桌面按住)
+    assert 'id="merge-btn"' not in html
     # 合并弹层复用播放: pts 随 it 一起传入 (不走单条轨迹接口)
     assert "it.pts ? it : trackCache.get(it.id)" in html
     # 合并轨迹按段做断档识别 (各段采样密度不同), 单段照旧全局一套
@@ -919,9 +926,11 @@ def test_trips_page_has_driver_picker(auth):
     """行程页司机标注: 弹层选择行 + 卡片 pill + 标注接口都挂在页面上。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="sh-drv"', 'id="sh-drv-sel"', "setupDriverPicker",
-                 'class="ct-drv"', "/tesla/api/drivers",
+                 'class="ct-drv${it.driver_id != null ? "" : " def"}"',
+                 ".ct-drv.def", "/tesla/api/drivers",
                  "function postJSON(", "已标注为", "已清除标注"]:
         assert frag in html, f"行程页缺少司机标注片段 {frag}"
+    # 卡片 pill 默认司机兜底也显示 (弱化 .def 与显式标注区分)
     # 没配司机时选择器藏 (兜底, 不会闪一个空下拉); 选择器和高速费 chip 都藏才整行藏
     assert "driversCache.length > 0) {" in html
     assert "function metaRowSync()" in html

@@ -25,6 +25,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
+html, body { overscroll-behavior-y: none; }   /* 橡皮筋/浏览器自带下拉让位给自写下拉刷新 */
 body {
   background: var(--bg); color: var(--ink-1);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
@@ -148,13 +149,21 @@ main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
-#merge-btn, #groups-btn, #toll-btn {
+#groups-btn, #toll-btn {
   margin-left: auto; align-self: center; font-size: 12.5px; color: #7db3f0;
   padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(57,135,229,.35);
 }
-#groups-btn, #toll-btn { margin-left: 0; }   // auto 只给第一个 (多选), 其余接着排
-#merge-btn:active, #groups-btn:active, #toll-btn:active { background: rgba(57,135,229,.15); }
-body.selecting #merge-btn, body.selecting #groups-btn, body.selecting #toll-btn { display: none; }
+#toll-btn { margin-left: 0; }   // auto 只给第一个 (分组), 其余接着排
+#groups-btn:active, #toll-btn:active { background: rgba(57,135,229,.15); }
+#refresh-btn {
+  margin-left: 0; align-self: center; display: flex; align-items: center;
+  color: #7db3f0; padding: 5px 8px; border-radius: 999px;
+  border: 1px solid rgba(57,135,229,.35);
+}
+#refresh-btn:active { background: rgba(57,135,229,.15); }
+#refresh-btn.busy svg { animation: ptr-spin .8s linear infinite; }
+body.selecting #groups-btn, body.selecting #toll-btn,
+body.selecting #refresh-btn { display: none; }
 
 /* ---------- 行程列表 (单列) ---------- */
 #list { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; }
@@ -165,6 +174,7 @@ body.selecting #merge-btn, body.selecting #groups-btn, body.selecting #toll-btn 
   background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
   padding: 12px 13px; cursor: pointer; overflow: hidden;
   transition: transform .15s, background .15s;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .card-t:active { transform: scale(.975); background: #232326; }
 @media (hover: hover) { .card-t:hover { border-color: rgba(255,255,255,.2); } }
@@ -173,10 +183,14 @@ body.selecting #merge-btn, body.selecting #groups-btn, body.selecting #toll-btn 
 .ct-arrow {
   flex: none; font-size: 10.5px; font-weight: 600; color: #7db3f0;
   background: rgba(57,135,229,.14); padding: 2px 8px; border-radius: 999px;
-}.ct-drv {
+.ct-drv {
   flex: none; font-size: 10.5px; color: var(--ink-2);
   background: rgba(255,255,255,.08); padding: 2.5px 9px; border-radius: 999px;
   max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ct-drv.def {   /* 默认司机兜底 (没人标过): 弱一档, 和显式标注区分 */
+  color: var(--ink-3); background: none; border: 1px solid var(--hairline);
+  padding: 1.5px 8px;   /* 补偿 1px 边框, 高度对齐无框 pill */
 }
 /* 多选模式: 卡片右上角 → 查看轨迹 换成选圈 */
 .card-t .pick { display: none; }
@@ -302,6 +316,22 @@ body.selecting .card-t.picked .pick::after {
 }
 .gp-empty { padding: 60px 24px; text-align: center; font-size: 15px; color: var(--ink-2); }
 .gp-empty span { display: block; margin-top: 8px; font-size: 12.5px; color: var(--ink-3); }
+
+/* ---------- 下拉刷新指示器 (顶上拽出的小转盘) ---------- */
+.ptr {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 56px); z-index: 45;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; color: var(--ink-2);
+  background: rgba(28,28,30,.88);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border: 1px solid var(--hairline);
+  transform: translate(-50%, -40px); opacity: 0;
+  transition: opacity .16s, transform .16s; pointer-events: none;
+}
+.ptr.on { opacity: 1; }
+.ptr svg { display: block; }
+.ptr.spin svg { animation: ptr-spin .7s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
 
 /* ---------- 高速费批量面板 ---------- */
 .tollpanel {
@@ -483,10 +513,11 @@ body.selecting .card-t.picked .pick::after {
   <div class="sec-head">
     <h2>行程轨迹</h2>
     <span class="count-badge" id="count-badge"></span>
-    <button id="merge-btn" hidden>多选</button>
     <button id="groups-btn">分组</button>
     <button id="toll-btn">高速费</button>
+    <button id="refresh-btn" aria-label="刷新列表"><svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
+  <div class="ptr" id="ptr"><svg viewBox="0 0 14 14" width="15" height="15" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
   <div id="list"></div>
 
   <div class="tail" id="tail" hidden>
@@ -551,7 +582,7 @@ body.selecting .card-t.picked .pick::after {
     <button class="gp-close" id="gp-close">关闭</button>
   </div>
   <div class="gp-list" id="gp-list"></div>
-  <div class="gp-empty" id="gp-empty" hidden>还没有分组<span>多选行程后点「存为分组」</span></div>
+  <div class="gp-empty" id="gp-empty" hidden>还没有分组<span>长按行程多选后点「存为分组」</span></div>
 </div>
 <div class="tollpanel" id="tollpanel" hidden>
   <h2>批量算高速费</h2>
@@ -688,8 +719,8 @@ function renderCard(it) {
   el.innerHTML = `
     <div class="ct-top">
       <span class="ct-date">${esc(fmtCardDate(it.start))}</span>
-      ${it.driver_id != null && it.driver ?   /* 只标显式标注: 未标全显默认名就成了噪音 */
-        `<span class="ct-drv">${esc(it.driver)}</span>` : ""}
+      ${it.driver ?   /* 有司机就上卡: 显式标注正常亮, 默认兜底弱化 .def */
+        `<span class="ct-drv${it.driver_id != null ? "" : " def"}">${esc(it.driver)}</span>` : ""}
       <span class="ct-arrow">→ 查看轨迹</span>
       <span class="pick" aria-hidden="true"></span>
     </div>
@@ -714,8 +745,67 @@ function setTail() {
   $("#empty").hidden = !(state.done && state.total === 0 && !state.err);
   $("#errbox").hidden = !state.err;
   $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
-  $("#merge-btn").hidden = listEl.children.length < 2;   // 至少两张卡才能多选
 }
+
+/* ---------- 刷新: 头部按钮 + 列表顶下拉, 共用一套重载 ---------- */
+async function refreshList() {
+  if (state.loading) return;
+  items.length = 0;
+  listEl.innerHTML = "";
+  state.offset = 0; state.total = 0; state.done = false; state.err = null;
+  await loadMore();
+  window.scrollTo({ top: 0 });
+}
+
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  await refreshList();
+  btn.classList.remove("busy");
+});
+
+/* 下拉刷新 (移动端): 列表已在顶再往下拽, 指示器转满一圈松手即重载。
+   手势挂在 main 上 —— 弹层/分组面板是 main 的兄弟节点, 那边的触摸进不来;
+   多选模式下划选卡片的手势也别误触。 */
+(function setupPullRefresh() {
+  const ptr = $("#ptr"), icon = ptr.querySelector("svg");
+  const GO = 64;                     // 触发阈值 (阻尼后的拉动距离)
+  let y0 = null, dist = 0;
+
+  const reset = () => {
+    y0 = null; dist = 0;
+    ptr.classList.remove("on", "spin");
+    ptr.style.transform = ""; icon.style.transform = "";
+  };
+
+  const mainEl = document.querySelector("main");
+  mainEl.addEventListener("touchstart", e => {
+    if (state.loading || e.touches.length !== 1 || window.scrollY > 2
+        || document.body.classList.contains("selecting")) return;
+    y0 = e.touches[0].clientY; dist = 0;
+  }, { passive: true });
+
+  mainEl.addEventListener("touchmove", e => {
+    if (y0 == null) return;
+    dist = (e.touches[0].clientY - y0) * 0.45;   // 阻尼: 越拉越沉
+    if (dist <= 0 || window.scrollY > 2) { reset(); return; }
+    e.preventDefault();                          // 顶住系统橡皮筋
+    const p = Math.min(dist / GO, 1);
+    ptr.classList.add("on");
+    ptr.style.transform = `translate(-50%, ${-40 + p * 34}px)`;
+    icon.style.transform = `rotate(${p * 360}deg)`;
+  }, { passive: false });
+
+  mainEl.addEventListener("touchend", () => {
+    if (y0 == null) return;
+    const go = dist >= GO;
+    y0 = null;
+    if (!go) { reset(); return; }
+    ptr.classList.add("spin");
+    ptr.style.transform = "translate(-50%, -6px)";
+    refreshList().then(reset);
+  });
+})();
 
 const PRELOAD_PX = 800;   // 触底前多远开始预加载 (IO rootMargin 与链式续载共用)
 
@@ -999,7 +1089,47 @@ function exitSelect() {
   selAnchor = -1; selRange = [-1, -1];
   applyPick();
 }
-$("#merge-btn").addEventListener("click", enterSelect);
+/* 长按卡片进多选 (多选按钮已撤, 这是唯一入口); 触屏长按 / 桌面按住 480ms
+   → 进多选并选中这张卡。移动超 10px (滚动/下拉) 即取消; 长按后紧跟的
+   click 吞掉, 别又把弹层打开。 */
+(function setupLongPress() {
+  const HOLD_MS = 480;
+  let timer = null, card = null, x0 = 0, y0 = 0, fired = false, suppress = false;
+  const clear = () => { if (timer) clearTimeout(timer); timer = null; card = null; fired = false; };
+  const start = (x, y, target) => {
+    suppress = false;
+    if (document.body.classList.contains("selecting")) return;
+    card = target.closest(".card-t");
+    if (!card) return;
+    x0 = x; y0 = y;
+    timer = setTimeout(() => {
+      timer = null; fired = true; suppress = true;
+      enterSelect(); pickCard(card);
+    }, HOLD_MS);
+  };
+  const move = (x, y) => {
+    if (timer != null && Math.hypot(x - x0, y - y0) > 10) clear();
+  };
+  listEl.addEventListener("touchstart", e => {
+    if (e.touches.length !== 1) { clear(); return; }
+    start(e.touches[0].clientX, e.touches[0].clientY, e.target);
+  }, { passive: true });
+  listEl.addEventListener("touchmove",
+    e => move(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+  listEl.addEventListener("touchend", e => {
+    if (fired) { e.preventDefault(); suppress = false; }   // click 不会再产生
+    clear();
+  }, { passive: false });
+  listEl.addEventListener("touchcancel", clear, { passive: true });
+  listEl.addEventListener("mousedown", e => {   // 桌面: 按住不放同样进多选
+    if (e.button === 0) start(e.clientX, e.clientY, e.target);
+  });
+  window.addEventListener("mousemove", e => move(e.clientX, e.clientY));
+  window.addEventListener("mouseup", clear);
+  listEl.addEventListener("click", e => {       // 长按紧随的 click 不开弹层
+    if (suppress) { suppress = false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+})();
 $("#sel-cancel").addEventListener("click", exitSelect);
 /* 全选: 选中当前筛选下的全部行程, 没装够的页先补载; 合并接口一次最多
    MERGE_MAX 段, 超出只选最新的 (列表按时间倒序) 前 50 段。已选全部时
