@@ -1990,14 +1990,11 @@ $("#toll-go").addEventListener("click", async () => {
     let done = 0, fails = 0, streak = 0;
     for (const id of pending) {
       if (tollBatch.stop) break;
-      let pts = null;
-      try { pts = (await getJSON(`/tesla/trips/api/${id}/track`)).pts; }
-      catch { /* 轨迹拉取失败按失败计 */ }
-      let est = pts ? await calcTripToll(pts) : null;
-      if (!est) {   // 长途行程规划偶发超时 (批跑时尤甚), 缓口气原轨迹再试一次
-        await sleep(1500);
-        est = pts ? await calcTripToll(pts) : null;
-      }
+      let est = null;
+      try {
+        const t = await getJSON(`/tesla/trips/api/${id}/track`);
+        est = await calcTripToll(t.pts);
+      } catch { /* 轨迹拉取/规划失败按失败计 */ }
       if (est) {
         try {
           await postJSON(`/tesla/trips/api/${id}/toll`, est);
