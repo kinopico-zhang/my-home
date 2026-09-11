@@ -38,6 +38,7 @@ from .schemas import (
     CostUpdateResult,
     DriverIn,
     DriverInfo,
+    DriverMark,
     DriverUpdate,
     GapFillRequest,
     GapFillResponse,
@@ -338,7 +339,8 @@ def get_trip_sessions(offset: int = 0, limit: int = 24,
                       to: str | None = Query(None, alias="to"),
                       from_loc: str | None = None, to_loc: str | None = None,
                       km_min: float | None = None, km_max: float | None = None,
-                      db: Session = Depends(database.get_db)) -> TripsPage:
+                      db: Session = Depends(database.get_db),
+                      own: Session = Depends(database.get_own_db)) -> TripsPage:
     """行程列表 (最新在前, 只含已结束行程); from/to 按出发时间过滤 (本地日期),
     from_loc/to_loc 按起终省市区 ("/" 路径, 1~3 段 = 精确到省/市/区县),
     km_min/km_max 按里程 (km) 过滤。"""
@@ -352,7 +354,7 @@ def get_trip_sessions(offset: int = 0, limit: int = 24,
     for loc in (from_loc, to_loc):
         if loc and not 1 <= len([s for s in loc.split("/") if s.strip()]) <= 3:
             raise HTTPException(400, "地区参数非法")
-    total, items = repository.list_trips(db, offset, limit, repository.TripFilter(
+    total, items = repository.list_trips(db, own, offset, limit, repository.TripFilter(
         date_range=_date_range_or_400(frm, to),
         from_loc=from_loc or None, to_loc=to_loc or None,
         km_min=km_min, km_max=km_max))
@@ -367,9 +369,10 @@ def get_trip_regions(db: Session = Depends(database.get_db)) -> TripRegions:
 
 @trips.get("/sessions/{drive_id}")
 def get_trip_session(drive_id: int,
-                     db: Session = Depends(database.get_db)) -> TripItem:
+                     db: Session = Depends(database.get_db),
+                     own: Session = Depends(database.get_own_db)) -> TripItem:
     """单条行程信息: 分享链接 /tesla/trips?id=X 直开弹层时前端拉取。"""
-    item = repository.get_trip(db, drive_id)
+    item = repository.get_trip(db, own, drive_id)
     if item is None:
         raise HTTPException(404, "行程不存在或未完成")
     return item
@@ -502,6 +505,23 @@ def delete_group(group_id: int,
     except repository.NotFound as exc:
         raise HTTPException(404, str(exc)) from exc
     return OkResponse(ok=True)
+
+
+@trips.post("/{drive_id}/driver")
+def mark_trip_driver(drive_id: int, body: DriverMark,
+                     db: Session = Depends(database.get_db),
+                     own: Session = Depends(database.get_own_db)) -> TripItem:
+    """标/清行程驾驶员 (driver_id 空 = 清除, 展示回默认司机兜底)。
+    返回更新后的行程条目 (前端直接刷新卡片与弹层)。"""
+    if repository.get_trip(db, own, drive_id) is None:
+        raise HTTPException(404, "行程不存在或未完成")
+    try:
+        repository.set_trip_driver(own, drive_id, body.driver_id)
+    except repository.NotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    updated = repository.get_trip(db, own, drive_id)
+    assert updated is not None   # 上面刚验证过存在
+    return updated
 
 
 @trips.get("/{drive_id}/track")

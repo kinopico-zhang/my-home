@@ -185,3 +185,17 @@ class Driver(OwnBase):
     name: Mapped[str] = mapped_column(String)
     is_default: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
+class TripDriver(OwnBase):
+    """行程 → 司机标注 (逻辑标注, TeslaMate 原数据不动)。
+
+    一行程至多一条 (drive_id 唯一); 标注的司机被删时标注一起清掉,
+    行程展示回落默认司机兜底。"""
+
+    __tablename__ = "trip_drivers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drive_id: Mapped[int] = mapped_column(unique=True)
+    driver_id: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)

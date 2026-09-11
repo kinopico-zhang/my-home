@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 
 from app import repository
-from app.models import Address, Drive, Position, TrackFill
+from app.models import Address, Drive, Driver, Position, TrackFill
 from tests.conftest import seed_addresses, seed_drive, seed_position
 
 
@@ -89,12 +89,53 @@ def test_trip_session_one(auth, db):
         "start": "2026-09-10 08:32", "end": "2026-09-10 09:44",
         "km": 42.5, "min": 72, "speed_max": 118,
         "from": "广东省深圳市龙岗区坂田街道", "to": "广东省东莞市长安镇",
+        "driver": None, "driver_id": None,     # 没配司机 → 不显示
     }
 
 
 def test_trip_session_one_404(auth):
     """不存在 / 未完成的行程 → 404 (前端抹掉地址栏参数)。"""
     assert auth.get("/tesla/trips/api/sessions/9999").status_code == 404
+
+
+def test_trip_driver_mark(auth, db, owndb):
+    """标/清行程驾驶员: 展示名显式标注 > 默认司机兜底; 删司机联动清标注。"""
+    seed_addresses(db)
+    seed_drive(db, id=1838)
+    owndb.add(Driver(id=1, name="大导子", is_default=True))
+    owndb.add(Driver(id=2, name="小导子"))
+    owndb.commit()
+    base = "/tesla/trips/api/sessions/1838"
+
+    it = auth.get(base).json()
+    assert it["driver"] == "大导子"            # 未标注 → 默认司机
+    assert it["driver_id"] is None             # 但显式标注为空
+
+    it = auth.post("/tesla/trips/api/1838/driver",
+                   json={"driver_id": 2}).json()
+    assert it["driver"] == "小导子" and it["driver_id"] == 2
+    lst = auth.get("/tesla/trips/api/sessions").json()["items"]
+    assert lst[0]["driver"] == "小导子"        # 列表同样带标注
+
+    it = auth.post("/tesla/trips/api/1838/driver",
+                   json={"driver_id": None}).json()
+    assert it["driver"] == "大导子" and it["driver_id"] is None   # 清除回默认
+
+    auth.post("/tesla/trips/api/1838/driver", json={"driver_id": 2})
+    auth.delete("/tesla/api/drivers/2")       # 删司机 → 标注联动清掉
+    it = auth.get(base).json()
+    assert it["driver"] == "大导子" and it["driver_id"] is None
+
+
+def test_trip_driver_mark_errors(auth, db):
+    """行程不存在 / 司机不存在 → 404。"""
+    assert auth.post("/tesla/trips/api/9999/driver",
+                     json={"driver_id": 1}).status_code == 404
+    seed_addresses(db)
+    seed_drive(db, id=1838)
+    r = auth.post("/tesla/trips/api/1838/driver", json={"driver_id": 77})
+    assert r.status_code == 404
+    assert "司机不存在" in r.json()["detail"]
 
 
 def test_trips_sessions_filters_by_date(auth, db):
@@ -815,6 +856,17 @@ def test_trip_group_validation(auth, db):
     # 改名: 未知分组 404
     assert auth.patch("/tesla/trips/api/groups/999",
                       json={"name": "y"}).status_code == 404
+
+
+def test_trips_page_has_driver_picker(auth):
+    """行程页司机标注: 弹层选择行 + 卡片 pill + 标注接口都挂在页面上。"""
+    html = auth.get("/tesla/trips").text
+    for frag in ['id="sh-drv"', 'id="sh-drv-sel"', "setupDriverPicker",
+                 'class="ct-drv"', "/tesla/api/drivers",
+                 "function postJSON(", "已标注为", "已清除标注"]:
+        assert frag in html, f"行程页缺少司机标注片段 {frag}"
+    # 没配司机时整行隐藏 (兜底, 不会闪一个空下拉)
+    assert 'driversCache.length === 0) { row.hidden = true' in html
 
 
 def test_trips_page_has_group_panel(auth):
