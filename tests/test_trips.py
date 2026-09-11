@@ -621,7 +621,10 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
     html = auth.get("/tesla/trips").text
     for frag in ["function loadMergedStream(", "sess.append(d.pts, d.ts)",
                  "sess.more = false", "正在下载轨迹", "等待后续轨迹",
-                 "const speedZoom =", "followZoomOn", 'tripMap.on("zoomend"',
+                 "const speedZoom =", "followZoomOn", "zoomEaseStart(zoom)",
+                 "tripMap.setZoom(zoomShown, true)",
+                 'addEventListener("wheel", zoomTakeover,',
+
                  "postGapFill(it, g, route)", "gcj02ToWgs84"]:
         assert frag in html, f"行程页缺少片段 {frag}"
 

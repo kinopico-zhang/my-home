@@ -1048,11 +1048,25 @@ function splitSegments(pts, starts) {
   return segs.length ? segs : TrackUtil.splitGaps(pts);
 }
 
-/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。档位取整 (AMap
-   会把小数 zoom 吸附成整数, 回读值对不上), 只在档位变化时 setZoom;
-   用户手动捏合/滚轮缩放后本回合停用 (重播恢复)。 */
-let followZoomOn = false, followZoomCur = 0, selfZoomUntil = 0;
-const speedZoom = v => Math.round(Math.max(13.5, Math.min(16.3, 16.3 - v / 46)));
+/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。目标档取整,
+   速度连续值 (46km/h 一档, 13.5~16.3 夹紧) 带 ±0.6 迟滞带 —— 档位边界
+   的速度抖动 (等灯起步) 不至于来回打摆; 实际档位每帧指数缓动逼近目标
+   (帧率无关)。缓动必须自己做: AMap 的动画 setZoom 会被逐帧 setCenter
+   打成爬行 (实测 3s 只挪 0.1 档), 而立即档设小数是保真的 (逐帧 setCenter
+   下 set 14.12 → 读回 14.12)。用户接管见建图处的输入事件监听 (重播恢复)。 */
+let followZoomOn = false, followZoomCur = 0;    // 开关 / 目标档 (迟滞簿记)
+let zoomShown = 0, zoomApplied = 0, zoomLastT = 0;   // 缓动值 / 已下发值 / 上帧时刻
+const speedZoom = v => Math.max(13.5, Math.min(16.3, 16.3 - v / 46));
+
+/* 开播/重播: 视角中心先到位, 档位从地图当前值开始缓动到初始档 ——
+   不硬切也不依赖 AMap 动画 (会被逐帧 setCenter 打断), 换轨迹/收尾拉远
+   后重播都是平滑飞入 */
+function zoomEaseStart(zoom) {
+  followZoomOn = true;
+  followZoomCur = zoom;
+  zoomShown = zoomApplied = tripMap.getZoom();
+  zoomLastT = performance.now();
+}
 
 /* 播放轨迹动画。more=true 表示轨迹还会通过 append 追加 (合并轨迹流式
    下载边下边播): 播到当前末尾时停在原地等数据, 全部到齐后调用方关掉 more。 */
@@ -1146,7 +1160,30 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
     pts, N, dur, vt, playT: 0, speed: 1, paused: false, seeking: false,
     finished: false, alive: true, lastIdx: -1, lastFrac: -1, drawn: 0,
     lineBase: null, gapDrawAt: 0,   // 白线末次重建快照 / 断档步内延伸节流
-    more, waiting: false,   // more: 还有段在路上; waiting: 播到末尾等数据
+    more, waiting: false, lastV: 0,   // more/waiting: 流式状态; lastV: 当前车速
+    /* 随速变焦缓动: 每帧推进 (暂停也要把当前滑变走完, 不然卡在半路);
+       车速用 apply 缓存的 lastV —— (idx,frac) 没变时车速也不会变 */
+    zoomTick() {
+      if (!followZoomOn) return;              // 手动缩放即停 (重播恢复)
+      // dt 用 performance.now() 差 (不回退), 上限 500ms: 低帧率下钳 100ms
+      // 会把缓动拖成爬行 (测试容器 ~2.5fps 实测), 真机 60fps 则恒为步进
+      const now = performance.now();
+      const dt = Math.min(Math.max(now - zoomLastT, 0), 500);
+      zoomLastT = now;
+      const zt = speedZoom(s.lastV);          // 慢速拉近 / 高速拉远
+      if (Math.abs(zt - followZoomCur) > 0.6)   // 出迟滞带才换目标档
+        followZoomCur = Math.round(zt);
+      // 指数趋近 + 速率上限 (1.5 档/s): 低帧率下单帧也不会跳档 (纯指数在
+      // 2.5fps 下一帧能挪半档), 高帧率下恒为平滑缓动
+      const step = (followZoomCur - zoomShown) * (1 - Math.exp(-dt / 600));
+      const cap = 1.5 * dt / 1000;
+      zoomShown += Math.max(-cap, Math.min(cap, step));
+      if (Math.abs(followZoomCur - zoomShown) < 0.01) zoomShown = followZoomCur;
+      if (Math.abs(zoomShown - zoomApplied) > 0.005) {   // 值变了才下发
+        zoomApplied = zoomShown;
+        tripMap.setZoom(zoomShown, true);
+      }
+    },
     apply(idx, frac = 0) {       // 播放头落到 idx 步内 frac 进度 (拖进度条也走这里)
       if (idx === s.lastIdx && frac === s.lastFrac) return;
       const idxNew = idx !== s.lastIdx;
@@ -1157,12 +1194,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
       head.setCenter(pos);
       head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(v)] });
       tripMap.setCenter(pos, true);            // 视角紧贴头部 (immediately=不排队动画)
-      const z = speedZoom(v);                  // 慢速拉近 / 高速拉远 (手动缩放即停)
-      if (followZoomOn && z !== followZoomCur) {
-        followZoomCur = z;
-        selfZoomUntil = Date.now() + 700;   // 我们这次 setZoom 引发的 zoomend
-        tripMap.setZoom(z, true);   // (可能迟到/排队) 豁免, 不算用户接管
-      }
+      s.lastV = v;                             // 随速变焦的目标速度 (zoomTick 用)
       if (idxNew) {
         if (idx < s.drawn) s.drawn = 0;         // 拖进度条回退: 白线从头重建
         if (idx - s.drawn >= growStep || idx === N - 1) {
@@ -1235,7 +1267,6 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
       animRaf = 0;
       tripMsg(null, false);
       followZoomOn = false;              // 播放结束, 随速变焦停用 (重播恢复)
-      selfZoomUntil = Date.now() + 700;  // 拉远动画的 zoomend 不算用户接管
       tripMap.remove([progress, head]);
       allLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));  // 淡线变亮
       tripMap.setFitView(allLines, false, [46, 46, 46, 46]);      // 拉远 → 全局视角
@@ -1255,10 +1286,8 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
       head.setCenter(path[0]);
       head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[0][2] || 0)] });
       tripMap.add([progress, head]);
-      tripMap.setZoomAndCenter(zoom, path[0], true);
-      followZoomOn = true;
-      followZoomCur = zoom;
-      selfZoomUntil = Date.now() + 700;  // 上一会话收尾拉远的迟到 zoomend 别误伤
+      tripMap.setCenter(path[0], true);        // 中心先到位, 档位从收尾拉远处缓动回来
+      zoomEaseStart(zoom);
       $("#sh-spd-lb").textContent = "车速";
       $("#sh-pw-lb").textContent = "功耗";
       resetPlaybar();
@@ -1334,6 +1363,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
         s.playT = Math.min(s.playT + dt * s.speed, dur);
       const p = TrackUtil.animAt(vt, s.playT, dur);   // 按行驶秒 → 步 + 步内进度
       s.apply(p.idx, p.frac);
+      s.zoomTick();                           // 随速变焦缓动 (暂停也推进)
       pbSeek.value = Math.round(s.playT / dur * 1000);
       pbSeek.style.setProperty("--pb", (s.playT / dur * 100).toFixed(1) + "%");
       if (s.playT >= dur) {
@@ -1349,10 +1379,8 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
 
   resetPlaybar();
   pbSpeed.textContent = "1×";
-  followZoomOn = true;
-  followZoomCur = zoom;
-  selfZoomUntil = Date.now() + 700;   // 初始定位的 zoomend 别误判用户接管
-  tripMap.setZoomAndCenter(zoom, path[0], true);
+  tripMap.setCenter(path[0], true);            // 中心先到位, 档位从上一视角缓动飞入
+  zoomEaseStart(zoom);
   frameLoop();
   return s;
 }
@@ -1510,15 +1538,17 @@ async function openTrip(it, fromUrl) {
       for (const ev of ["gesturestart", "gesturechange"])
         document.getElementById("trip-map").addEventListener(ev, e => e.preventDefault());
       tripMap.on("click", skipAnim);   // 播放中点一下 = 跳过, 直接收尾拉远
-      /* 播放中按车速自动变焦 (慢速拉近/高速拉远)。AMap 的 setZoom 异步排队
-         且吸附取整, 我们引发的 zoomend 可能迟到、值也可能对不上 —— 用时间
-         窗豁免自己的变焦; 窗外的 zoomend 且落点不是当前档 = 用户手动接管,
-         本回合停用 (重播恢复) */
-      tripMap.on("zoomend", () => {
-        if (!followZoomOn || Date.now() < selfZoomUntil) return;
-        if (Math.abs(tripMap.getZoom() - followZoomCur) > 0.01)
-          followZoomOn = false;
-      });
+      /* 播放中按车速自动变焦 (慢速拉近/高速拉远) 的用户接管: 听地图容器上的
+         缩放类输入 (滚轮/双击/双指)。不用 zoomend 数值比对 —— 变焦改成动画
+         过渡后, 动画期间 getZoom 一直是中间值, 自己的 zoomend 和用户的
+         分不开; 而程序化 setZoom 不会触发这些输入事件, 听输入是确定性的 */
+      const zoomTakeover = () => { followZoomOn = false; };
+      const mapEl = document.getElementById("trip-map");
+      mapEl.addEventListener("wheel", zoomTakeover, { passive: true });
+      mapEl.addEventListener("dblclick", zoomTakeover);
+      mapEl.addEventListener("touchstart", e => {
+        if (e.touches.length >= 2) zoomTakeover();   // 双指 = 捏合缩放
+      }, { passive: true });
     }
     tripMap.clearMap();
 
