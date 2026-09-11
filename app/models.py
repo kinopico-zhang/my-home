@@ -187,6 +187,24 @@ class Driver(OwnBase):
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
 
+class TripToll(OwnBase):
+    """行程高速费估价 (高德驾车规划 tolls, 存自有库, TeslaMate 原数据不动)。
+
+    一行程至多一条 (drive_id 唯一); tolls=0 也是有效结果 (没走收费路),
+    与"还没算过"(无行, TripItem.toll=None) 区分开。distance 是规划里程
+    (米), 与实际里程差得远说明估得不准; roads 是收费路段明细 (JSON)。"""
+
+    __tablename__ = "trip_tolls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drive_id: Mapped[int] = mapped_column(unique=True)
+    tolls: Mapped[float] = mapped_column(default=0.0)          # 元
+    toll_km: Mapped[float] = mapped_column(default=0.0)        # 收费路段里程 km
+    distance: Mapped[int] = mapped_column(default=0)           # 规划总里程 米
+    roads: Mapped[str] = mapped_column(default="[]")           # [{"road","tolls"}]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
 class TripDriver(OwnBase):
     """行程 → 司机标注 (逻辑标注, TeslaMate 原数据不动)。
 

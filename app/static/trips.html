@@ -148,13 +148,13 @@ main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
-#merge-btn, #groups-btn {
+#merge-btn, #groups-btn, #toll-btn {
   margin-left: auto; align-self: center; font-size: 12.5px; color: #7db3f0;
   padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(57,135,229,.35);
 }
-#groups-btn { margin-left: 0; }   // auto 只给第一个 (多选), 分组接着排
-#merge-btn:active, #groups-btn:active { background: rgba(57,135,229,.15); }
-body.selecting #merge-btn, body.selecting #groups-btn { display: none; }
+#groups-btn, #toll-btn { margin-left: 0; }   // auto 只给第一个 (多选), 其余接着排
+#merge-btn:active, #groups-btn:active, #toll-btn:active { background: rgba(57,135,229,.15); }
+body.selecting #merge-btn, body.selecting #groups-btn, body.selecting #toll-btn { display: none; }
 
 /* ---------- 行程列表 (单列) ---------- */
 #list { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; }
@@ -303,6 +303,31 @@ body.selecting .card-t.picked .pick::after {
 .gp-empty { padding: 60px 24px; text-align: center; font-size: 15px; color: var(--ink-2); }
 .gp-empty span { display: block; margin-top: 8px; font-size: 12.5px; color: var(--ink-3); }
 
+/* ---------- 高速费批量面板 ---------- */
+.tollpanel {
+  position: fixed; z-index: 93; left: 50%; top: 40%;
+  transform: translate(-50%, -50%);
+  width: min(88vw, 380px);
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 18px; padding: 18px 18px 14px;
+}
+.tollpanel[hidden] { display: none; }
+.tollpanel h2 { font-size: 16px; font-weight: 650; letter-spacing: -.2px; }
+.tollpanel .hint { font-size: 12px; color: var(--ink-3); margin: 6px 0 14px; line-height: 1.5; }
+.toll-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+.toll-bar i { display: block; height: 100%; width: 0; background: var(--blue);
+  border-radius: 3px; transition: width .3s; }
+.toll-stat { font-size: 12.5px; color: var(--ink-2); margin: 8px 0 14px;
+  font-variant-numeric: tabular-nums; }
+.toll-act { display: flex; gap: 10px; }
+.toll-act button {
+  flex: 1; font-size: 13.5px; font-weight: 600; padding: 9px 0;
+  border-radius: 999px; border: 1px solid var(--hairline); color: var(--ink-1);
+}
+.toll-act .go { background: var(--blue); border-color: var(--blue); color: #fff; }
+.toll-act button:disabled { opacity: .4; }
+.toll-act button:active { transform: scale(.97); }
+
 /* ---------- 轻提示 ---------- */
 #toast {
   position: fixed; top: calc(env(safe-area-inset-top) + 60px); left: 50%;
@@ -329,11 +354,17 @@ body.selecting .card-t.picked .pick::after {
 .sh-title { font-size: 17px; font-weight: 700; }
 .sh-sub { font-size: 12px; color: var(--ink-3); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sh-drv { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 4px 10px; }
+#sh-drv-pick { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sh-drv .lb { font-size: 11px; color: var(--ink-2); flex: none; }
 .sh-drv select {
   font: inherit; font-size: 12.5px; color: var(--ink-1);
   background: var(--surface); border: 1px solid var(--hairline);
   border-radius: 999px; padding: 5px 10px; outline: none; max-width: 62%;
+}
+.sh-toll {
+  margin-left: auto; flex: none; font-size: 12.5px; color: #7db3f0;
+  background: rgba(57,135,229,.14); padding: 4px 10px; border-radius: 999px;
+  white-space: nowrap; max-width: 52%; overflow: hidden; text-overflow: ellipsis;
 }
 .sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
 /* 有功耗数据时共 4 格, 窄屏改 2×2 (没数据时第 4 格隐藏, 保持一行) */
@@ -470,6 +501,7 @@ body.selecting .card-t.picked .pick::after {
     <span class="count-badge" id="count-badge"></span>
     <button id="merge-btn" hidden>多选</button>
     <button id="groups-btn">分组</button>
+    <button id="toll-btn">高速费</button>
   </div>
   <div id="list"></div>
 
@@ -506,8 +538,8 @@ body.selecting .card-t.picked .pick::after {
     <div class="sh-sub" id="sh-time"></div>
   </div>
   <div class="sh-drv" id="sh-drv" hidden>
-    <span class="lb">驾驶员</span>
-    <select id="sh-drv-sel"></select>
+    <span id="sh-drv-pick" hidden><span class="lb">驾驶员</span><select id="sh-drv-sel"></select></span>
+    <span class="sh-toll" id="sh-toll" hidden></span>
   </div>
   <div class="sh-cells">
     <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
@@ -537,6 +569,18 @@ body.selecting .card-t.picked .pick::after {
   </div>
   <div class="gp-list" id="gp-list"></div>
   <div class="gp-empty" id="gp-empty" hidden>还没有分组<span>多选行程后点「存为分组」</span></div>
+</div>
+<div class="tollpanel" id="tollpanel" hidden>
+  <h2>批量算高速费</h2>
+  <p class="hint">沿每条轨迹的途经点用高德驾车规划估价 (¥与高速里程), 存进 app 自有库。
+  已算过的自动跳过, 中断后再点继续即可; 期间请保持本页面打开。</p>
+  <div class="toll-bar"><i id="toll-fill"></i></div>
+  <div class="toll-stat" id="toll-stat">还没有开始</div>
+  <div class="toll-act">
+    <button class="go" id="toll-go">开始</button>
+    <button id="toll-stop" disabled>暂停</button>
+    <button id="toll-close">关闭</button>
+  </div>
 </div>
 <div id="toast" hidden></div>
 
@@ -605,6 +649,8 @@ async function postJSON(url, body) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status}`);
   return r.json();
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* ============================ 行程列表 (单列) ============================ */
 const PAGE = 24;
@@ -1805,20 +1851,95 @@ function fillSheetHeaderPending() {
 let driversCache;   // undefined=还没拉过, null=拉取失败, 数组=结果 (含空数组)
 
 async function setupDriverPicker(it, seq) {
-  if (it.merged) { $("#sh-drv").hidden = true; return; }   // 合并多段: 不适用
-  if (driversCache === undefined) {
-    try { driversCache = await getJSON("/tesla/api/drivers"); }
-    catch { driversCache = null; }
+  const pick = $("#sh-drv-pick");
+  pick.hidden = true;                             // 先藏, 数据到位再亮
+  if (!it.merged) {                               // 合并多段: 司机标注不适用
+    if (driversCache === undefined) {
+      try { driversCache = await getJSON("/tesla/api/drivers"); }
+      catch { driversCache = null; }
+    }
+    if (seq !== openSeq) return;                  // 弹层已切走, 结果作废
+    if (driversCache && driversCache.length > 0) {
+      const def = driversCache.find(d => d.is_default);
+      $("#sh-drv-sel").innerHTML =
+        `<option value="">${def ? `未指定 · 默认${esc(def.name)}` : "未指定"}</option>` +
+        driversCache.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+      $("#sh-drv-sel").value = it.driver_id != null ? String(it.driver_id) : "";
+      pick.hidden = false;
+    }
   }
-  if (seq !== openSeq) return;                    // 弹层已切走, 结果作废
-  const row = $("#sh-drv");
-  if (!driversCache || driversCache.length === 0) { row.hidden = true; return; }
-  const def = driversCache.find(d => d.is_default);
-  $("#sh-drv-sel").innerHTML =
-    `<option value="">${def ? `未指定 · 默认${esc(def.name)}` : "未指定"}</option>` +
-    driversCache.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
-  $("#sh-drv-sel").value = it.driver_id != null ? String(it.driver_id) : "";
-  row.hidden = false;
+  fillTollChip(it);
+  metaRowSync();
+}
+
+/* 高速费 chip: 算过的才显示 (¥0 也是"算过" = 没走收费路) */
+function fillTollChip(it) {
+  const chip = $("#sh-toll");
+  if (it.merged || it.toll == null) { chip.hidden = true; return; }
+  chip.hidden = false;
+  chip.textContent = it.toll > 0
+    ? `高速 ¥${Number.isInteger(it.toll) ? it.toll : it.toll.toFixed(1)}` +
+      (it.toll_km ? ` · ${Math.round(it.toll_km)}km` : "")
+    : "无高速费";
+}
+
+function metaRowSync() {   // 司机选择和高速费 chip 都藏了才整行藏
+  $("#sh-drv").hidden = $("#sh-drv-pick").hidden && $("#sh-toll").hidden;
+}
+
+/* ---------- 高速费估价: 沿轨迹途经点驾车规划, 高德返回 tolls ---------- */
+const TOLL_WAYPOINTS = 14;   // 途经点数 (高德单次驾车规划限 16, 留裕量)
+
+/* 起终点 + 等距途经点把规划钉在实际走过的路上, 否则估的是"高德以为你
+   会走的路"。tolls=0 也是有效结果 (没走收费路); 规划失败返回 null。 */
+function calcTripToll(pts) {
+  return new Promise(resolve => {
+    if (!pts || pts.length < 2) return resolve(null);
+    const n = pts.length;
+    const gcj = i => toGcj([pts[i][0], pts[i][1]]);
+    const wps = [];
+    for (let k = 1; k <= TOLL_WAYPOINTS; k++)
+      wps.push(gcj(Math.round(k * (n - 1) / (TOLL_WAYPOINTS + 1))));
+    AMap.plugin("AMap.Driving", () => {
+      try {
+        const policy = AMap.DrivingPolicy && AMap.DrivingPolicy.LEAST_DISTANCE != null
+          ? AMap.DrivingPolicy.LEAST_DISTANCE : 2;
+        new AMap.Driving({ policy }).search(gcj(0), gcj(n - 1), wps, (status, result) => {
+          if (status !== "complete" || !result.routes || !result.routes.length)
+            return resolve(null);
+          const r = result.routes[0];
+          const roads = {};   // 同名收费路段合并 (按路名)
+          for (const st of r.steps)
+            if (st.tolls > 0 && st.toll_road)
+              roads[st.toll_road] = (roads[st.toll_road] || 0) + st.tolls;
+          resolve({
+            tolls: r.tolls || 0,
+            toll_km: Math.round((r.tolls_distance || 0) / 100) / 10,
+            distance: r.distance || 0,
+            roads: Object.keys(roads).map(rd => ({ road: rd, tolls: roads[rd] })),
+          });
+        });
+      } catch { resolve(null); }
+    });
+  });
+}
+
+/* 打开还没算过的行程时顺手估一次, 成功即回传存库 (以后打开不再算)。 */
+async function autoCalcToll(it, pts, seq) {
+  const est = await calcTripToll(pts);
+  if (!est || seq !== openSeq) return;
+  it.toll = est.tolls;
+  it.toll_km = est.toll_km;
+  fillTollChip(it);
+  metaRowSync();
+  try {
+    await postJSON(`/tesla/trips/api/${it.id}/toll`, {
+      tolls: est.tolls, toll_km: est.toll_km,
+      distance: est.distance, roads: est.roads,
+    });
+    const card = items.find(x => x.id === it.id);
+    if (card && card !== it) { card.toll = est.tolls; card.toll_km = est.toll_km; }
+  } catch { /* 存失败无所谓: 下次打开再估 */ }
 }
 
 $("#sh-drv-sel").addEventListener("change", async () => {
@@ -1838,6 +1959,64 @@ $("#sh-drv-sel").addEventListener("change", async () => {
   } catch (err) {
     toast(`标注失败: ${err.message}`);
     sel.value = it.driver_id != null ? String(it.driver_id) : "";
+  }
+});
+
+/* ---------- 批量算高速费面板: 逐条估 + 回传, 已算过的跳过 ---------- */
+const tollBatch = { running: false, stop: false };
+
+function tollStat(txt) { $("#toll-stat").textContent = txt; }
+
+$("#toll-btn").addEventListener("click", () => { $("#tollpanel").hidden = false; });
+$("#toll-close").addEventListener("click", () => { $("#tollpanel").hidden = true; });
+$("#toll-stop").addEventListener("click", () => { tollBatch.stop = true; });
+
+$("#toll-go").addEventListener("click", async () => {
+  if (tollBatch.running) return;
+  tollBatch.running = true; tollBatch.stop = false;
+  $("#toll-go").disabled = true; $("#toll-stop").disabled = false;
+  try {
+    await ensureAMap();
+    tollStat("正在清点行程…");
+    const pending = [];                     // 还没估过的行程 id
+    let total = 0;
+    for (let off = 0; ; off += 100) {       // 分页拉全量列表 (只看 id 和 toll)
+      const d = await getJSON(`/tesla/trips/api/sessions?offset=${off}&limit=100`);
+      total = d.total;
+      for (const i of d.items) if (i.toll == null) pending.push(i.id);
+      if (off + d.items.length >= total) break;
+    }
+    if (!pending.length) { tollStat(`共 ${total} 条, 都算过啦`); return; }
+    let done = 0, fails = 0, streak = 0;
+    for (const id of pending) {
+      if (tollBatch.stop) break;
+      let est = null;
+      try {
+        const t = await getJSON(`/tesla/trips/api/${id}/track`);
+        est = await calcTripToll(t.pts);
+      } catch { /* 轨迹拉取失败按失败计 */ }
+      if (est) {
+        try {
+          await postJSON(`/tesla/trips/api/${id}/toll`, est);
+          done++; streak = 0;
+          const card = items.find(x => x.id === id);
+          if (card) { card.toll = est.tolls; card.toll_km = est.toll_km; }
+        } catch { fails++; streak++; }
+      } else { fails++; streak++; }
+      $("#toll-fill").style.width = `${(done + fails) / pending.length * 100}%`;
+      tollStat(`共 ${total} 条 · 待算 ${pending.length} 中已处理 ${done + fails} · 失败 ${fails}`);
+      if (streak >= 8) {   // 连败 = 配额用尽/网络断了, 自动停免得空烧
+        toast("连续失败, 已自动暂停");
+        break;
+      }
+      await sleep(420);    // 温柔限速 (~2.4 次/秒, 个人配额日限内慢慢跑)
+    }
+    tollStat(tollBatch.stop
+      ? `已暂停 · 成功 ${done} · 失败 ${fails}, 再点开始继续`
+      : `完成 · 成功 ${done} · 失败 ${fails}`);
+  } finally {
+    tollBatch.running = false;
+    $("#toll-go").disabled = false; $("#toll-stop").disabled = true;
   }
 });
 
@@ -1890,6 +2069,8 @@ async function openTrip(it, fromUrl) {
       trackCache.set(it.id, c);
     }
     if (seq !== openSeq) return;
+    if (!it.merged && it.toll == null)
+      autoCalcToll(it, c.pts, seq);   // 不 await: 估价不挡播放
 
     /* 播放前把沿途瓦片刷进缓存 (跟随倍率按里程), 播放不再一路补图白屏 */
     const zoom = followZoom(TrackUtil.cumDistKm(c.pts).pop() || 0);

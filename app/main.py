@@ -56,6 +56,7 @@ from .schemas import (
     TripGroupInfo,
     TripGroupIn,
     TripGroupRename,
+    TripTollIn,
     TripRegions,
     TripTrack,
     TripsPage,
@@ -504,6 +505,18 @@ def delete_group(group_id: int,
         repository.delete_trip_group(own, group_id)
     except repository.NotFound as exc:
         raise HTTPException(404, str(exc)) from exc
+    return OkResponse(ok=True)
+
+
+@trips.post("/{drive_id}/toll")
+def post_trip_toll(drive_id: int, body: TripTollIn,
+                   db: Session = Depends(database.get_db),
+                   own: Session = Depends(database.get_own_db)) -> OkResponse:
+    """高速费估价回传: 前端用高德驾车规划 (沿轨迹途经点) 估出 tolls 后
+    存进自有库。tolls=0 也是有效结果 (没走收费路); 重算 = 覆盖更新。"""
+    if repository.get_trip(db, own, drive_id) is None:
+        raise HTTPException(404, "行程不存在或未完成")
+    repository.save_trip_toll(own, drive_id, body)
     return OkResponse(ok=True)
 
 
