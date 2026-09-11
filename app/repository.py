@@ -776,7 +776,7 @@ def _fill_points(own: Session,
 
 def _track_points(own: Session, positions: Sequence[Position]
                   ) -> tuple[list[_TrackPoint], set[int]]:
-    """原始轨迹点 + 自有库补路点 (插到各自锚点之后, 时间序保持)。
+    """原始轨迹点 + 自有库补路点 (按日期归并, 时间序保持)。
 
     返回 (points, fill_indices): 补路点在 points 里的下标集合 —— 它们
     本就稀疏珍贵, 下采样时全部保留, 不能被等间隔抽掉 (抽掉等于白补)。
@@ -787,16 +787,14 @@ def _track_points(own: Session, positions: Sequence[Position]
     fills = _fill_points(own, positions)
     if not fills:
         return pts, set()
-    index = {p.id: i for i, p in enumerate(positions)}
-    fill_indices: set[int] = set()
-    inserted = 0                    # 已插入的补路点总数 (下标位移量)
-    for a_pos_id in sorted(fills, key=lambda k: index[k]):
-        seg = fills[a_pos_id]
-        at = index[a_pos_id] + 1 + inserted
-        pts[at:at] = seg
-        fill_indices.update(range(at, at + len(seg)))
-        inserted += len(seg)
-    return pts, fill_indices
+    # 补路点不能直接插到锚点后面: 锚点是客户端按它收到的 (下采样) 视图挑的,
+    # a/b 两点在原始流里未必相邻 —— 锚点区间内夹着的原始点会整块落到补路点
+    # 之后, 日期回退把 ts 打乱 (合并视图与单条视图的采样口径不同必踩)。
+    # 按日期稳定归并 (原始点本就有序, 同刻时原始点在前), 任意视图都单调。
+    extras: list[_TrackPoint] = [tp for seg in fills.values() for tp in seg]
+    extra_ids = {id(tp) for tp in extras}
+    pts = sorted([*pts, *extras], key=lambda tp: tp.date)
+    return pts, {i for i, tp in enumerate(pts) if id(tp) in extra_ids}
 
 
 def _nearest_position(positions: Sequence[Position],
