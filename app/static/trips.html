@@ -1078,9 +1078,11 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
   let N = path.length;                          // 流式追加会变长
   const cum = TrackUtil.cumDistKm(pts);         // 播放中的实时里程
   const vt = TrackUtil.animTimes(pts, ts);      // 播放节拍: 每点累计行驶秒
-  // 跟随时长按点数与里程取大: 5~90s (1× 基准)。只看点数会亏待被下采样的
-  // 超长轨迹 (260km 也被压到 12 秒放完, 根本看不清路), 里程分量让长途慢下来
-  let dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90) * 1000;
+  // 跟随时长按点数与里程取大: 3~300s (1× 基准)。只看点数会亏待被下采样的
+  // 超长轨迹 (260km 也被压到 12 秒放完, 根本看不清路), 里程分量让长途慢下来;
+  // 系数 1.4s/km ≈ 镜头以 0.7km/s 扫过 —— 再快肉眼跟不上 (超长封顶 300s,
+  // 嫌慢有倍速按钮)
+  let dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300) * 1000;
   let growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
   // 背景全程速度线 (淡) —— 拉远后就是完整的速度色全局图
@@ -1232,7 +1234,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
         vt.push(vt[i - 1] + TrackUtil.animStepSec(pts[i - 1], pts[i],
                  ts.length >= pts.length ? Math.max(0, ts[i] - ts[i - 1]) : 1));
       N = pts.length;
-      dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90) * 1000;
+      dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300) * 1000;
       growStep = Math.max(1, Math.floor(N / 200));
       s.dur = dur; s.N = N;             // 进度条 seek 用的是对象上的快照
       // 新段速度线 + 段内断档 (段内补路服务端已拼好, 这里只剩稀疏采样断档)
