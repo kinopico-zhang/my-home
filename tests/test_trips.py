@@ -384,8 +384,9 @@ def test_trips_page_time_menu_and_filter_row(auth):
     html = auth.get("/tesla/trips").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
-                 'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
-                 'id="fc-menu"', 'id="tc-menu"', 'id="km-menu"',
+                 'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
+                 'id="tm-ym"', 'id="tm-sel"', 'id="tm-apply"', 'function calRender()',
+                 '再点结束日期', 'id="fc-menu"', 'id="tc-menu"', 'id="km-menu"',
                  'data-k="0-20"', 'data-k="20-100"', 'data-k="100-300"',
                  'data-k="300+"', "/tesla/trips/api/regions",
                  "function filterQS()", "function listURL(", "function syncURL()",
@@ -395,7 +396,9 @@ def test_trips_page_time_menu_and_filter_row(auth):
                  '@media (max-width: 479px)', '.nav-menu { position: static; }']:
         assert frag in html, f"行程页缺少 {frag}"
     assert "chips-range" not in html and "/tesla/trips/api/cities" not in html
-    for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu',
+    assert 'id="tm-from"' not in html
+    for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
+              'tm-next', 'tm-ym', 'tm-sel', 'nav-menu',
               'fc-opts', 'tc-opts', 'km-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
 

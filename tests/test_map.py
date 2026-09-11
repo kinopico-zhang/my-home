@@ -232,8 +232,9 @@ def test_map_page_time_menu_in_filters_row(auth):
     html = auth.get("/tesla/map").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
-                 'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
-                 'class="filters"',
+                 'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
+                 'id="tm-ym"', 'id="tm-sel"', 'id="tm-apply"', 'function calRender()',
+                 '再点结束日期', 'class="filters"',
                  # 手机: 下拉面板锚全宽 header (本页 header 不滚动无定位, 要补 relative)
                  '@media (max-width: 479px)', 'header { position: relative; }',
                  '.nav-menu { position: static; }']:
@@ -241,8 +242,10 @@ def test_map_page_time_menu_in_filters_row(auth):
     # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留页签菜单; 旧的 chips 行已删
     assert '<div class="filters">\n    <details class="nav-menu time-menu" id="time-menu">' in html
     assert "chips-range" not in html and ".chip {" not in html
+    assert 'id="tm-from"' not in html
     # 关键 id 全页唯一 (孤儿节点会重复 id, JS 绑错元素且不报错)
-    for i in ("time-menu", "time-lb", "time-opts", "tm-dates", "nav-menu"):
+    for i in ("time-menu", "time-lb", "time-opts", "tm-dates", "tm-cal", "tm-prev",
+              "tm-next", "tm-ym", "tm-sel", "nav-menu"):
         assert html.count(f'id="{i}"') == 1, f"足迹页 {i} 重复"
 
 
