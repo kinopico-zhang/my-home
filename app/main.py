@@ -47,6 +47,9 @@ from .schemas import (
     TracksDetailResponse,
     TracksResponse,
     TripItem,
+    TripGroupInfo,
+    TripGroupIn,
+    TripGroupRename,
     TripRegions,
     TripTrack,
     TripsPage,
@@ -441,6 +444,54 @@ def post_gap_fill(body: GapFillRequest,
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return GapFillResponse(ok=True, km=km)
+
+
+@trips.get("/groups")
+def list_groups(db: Session = Depends(database.get_db),
+                own: Session = Depends(database.get_own_db)) -> list[TripGroupInfo]:
+    """全部轨迹分组 (逻辑分组, 存自有库, 行程原数据不动)。"""
+    return repository.list_trip_groups(db, own)
+
+
+@trips.post("/groups")
+def save_group(body: TripGroupIn,
+               db: Session = Depends(database.get_db),
+               own: Session = Depends(database.get_own_db)) -> TripGroupInfo:
+    """多选行程存成命名分组; 段数/里程/日期跨度展示时现算, 不落库。"""
+    if len(set(body.ids)) < 2:
+        raise HTTPException(400, "ids 去重后需为 2~50 个行程")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "名字不能为空")
+    try:
+        return repository.save_trip_group(db, own, name, body.ids)
+    except repository.NotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@trips.patch("/groups/{group_id}")
+def rename_group(group_id: int, body: TripGroupRename,
+                 db: Session = Depends(database.get_db),
+                 own: Session = Depends(database.get_own_db)) -> TripGroupInfo:
+    """分组改名 (成员不动)。"""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "名字不能为空")
+    try:
+        return repository.rename_trip_group(db, own, group_id, name)
+    except repository.NotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@trips.delete("/groups/{group_id}")
+def delete_group(group_id: int,
+                 own: Session = Depends(database.get_own_db)) -> OkResponse:
+    """删分组 (只删自有库记录)。"""
+    try:
+        repository.delete_trip_group(own, group_id)
+    except repository.NotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return OkResponse(ok=True)
 
 
 @trips.get("/{drive_id}/track")
