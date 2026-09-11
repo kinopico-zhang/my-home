@@ -1,6 +1,7 @@
 """行程轨迹页 API 测试 (列表分页 / 单条全精度轨迹 / 参数校验 / 多选合并 /
 头尾区间 / 流式下载 / 断档补路自有库)。"""
 import json
+import re
 from datetime import datetime, timedelta
 
 from app import repository
@@ -778,11 +779,11 @@ def test_trips_page_has_playbar_and_single_column(auth):
                  'id="list"', "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
     assert "spd-legend" not in html   # 速度图例已按需求移除
-    # 刷新: 下拉手势 (头部按钮已按需求撤掉, 只留下拉)
-    for frag in ['id="ptr"', "function refreshList(",
-                 "setupPullRefresh", "ptr-spin"]:
+    # 刷新: 顶栏按钮 (下拉手势已按需求撤掉)
+    for frag in ['id="refresh-btn"', "function refreshList(",
+                 "refresh-spin", 'body.selecting #refresh-btn']:
         assert frag in html, f"行程页缺少刷新片段 {frag}"
-    assert 'id="refresh-btn"' not in html
+    assert 'id="ptr"' not in html and "setupPullRefresh" not in html
     # 瀑布流的列容器已删
     assert "m-col" not in html
 
@@ -824,6 +825,15 @@ def test_trips_page_preloads_tiles(auth):
         assert frag in html, f"行程页缺少瓦片预载片段 {frag}"
 
 
+def test_trips_page_style_block_balanced(auth):
+    """样式块花括号必须配平: 少一个 } 会让 CSS 错误恢复把其后全部规则
+    吞进未闭合的规则 (ct-drv 接缝曾丢 }, 弹层/底栏/选中态全体裸奔,
+    且控制台无任何报错, 只有页面悄悄变丑)。"""
+    html = auth.get("/tesla/trips").text
+    style = re.search(r"<style>(.*?)</style>", html, re.S).group(1)
+    assert style.count("{") == style.count("}"), "样式块花括号不配平, 后半规则全被吞"
+
+
 def test_trips_page_has_multiselect(auth):
     """多选连续行程: 长按卡片进选择模式 + 底栏 (全选/上限提示) + 合并接口直开。"""
     html = auth.get("/tesla/trips").text
@@ -832,7 +842,7 @@ def test_trips_page_has_multiselect(auth):
                  "body.selecting", "pickCard", "enterSelect", "exitSelect",
                  "openMerged", "/tesla/trips/api/merged_stream?ids=",
                  "mergedCache", "loadMergedStream(", "sess.append(d.pts, d.ts)",
-                 "setupLongPress", "HOLD_MS = 480", "holdArmed",
+                 "setupLongPress", "HOLD_MS = 480",
                  'addEventListener("contextmenu"']:
         assert frag in html, f"行程页缺少多选片段 {frag}"
     # 多选按钮已撤: 长按卡片是唯一入口 (触屏长按/桌面按住)
