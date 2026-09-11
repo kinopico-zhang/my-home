@@ -281,7 +281,9 @@ body.selecting .card-t.picked .pick::after {
 }
 .trip-msg .spin { margin: 0 auto; }
 .spd-legend {
-  position: absolute; left: 10px; bottom: 10px; z-index: 20;
+  /* 底部居中: 左下被高德 logo 占、右下被版权行占, 贴左会压 logo */
+  position: absolute; left: 50%; bottom: 10px; z-index: 20;
+  transform: translateX(-50%);
   display: flex; align-items: center; gap: 6px;
   font-size: 10.5px; color: var(--ink-2);
   background: rgba(10,10,12,.72); -webkit-backdrop-filter: blur(12px);
