@@ -152,3 +152,36 @@ class TripGroup(OwnBase):
     name: Mapped[str] = mapped_column(String)
     ids: Mapped[str] = mapped_column(String)     # "2195,2197,2200" 升序去重
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
+class AppSetting(OwnBase):
+    """运行时设置 (设置页改, 存自有库; 恒单行 id=1)。
+
+    未设 (空串) 字段回落 env/.env 默认值; 密码/Key 只存不回显
+    (GET 打码, 前端留空 = 保持现值)。"""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tmdb_host: Mapped[str] = mapped_column(String, default="")
+    tmdb_port: Mapped[str] = mapped_column(String, default="")
+    tmdb_user: Mapped[str] = mapped_column(String, default="")
+    tmdb_password: Mapped[str] = mapped_column(String, default="")
+    tmdb_name: Mapped[str] = mapped_column(String, default="")
+    amap_key: Mapped[str] = mapped_column(String, default="")
+    amap_security_code: Mapped[str] = mapped_column(String, default="")
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.now,
+                                                 onupdate=datetime.now)
+
+
+class Driver(OwnBase):
+    """司机 (设置页维护): 行程可标注驾驶员, 未标注 = 默认司机兜底。
+
+    is_default 全库至多一个 (设置新默认时其余清掉)。"""
+
+    __tablename__ = "drivers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    is_default: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)

@@ -243,6 +243,63 @@ class MergedTrack(BaseModel):
     to: str
 
 
+class TeslaMateSettings(BaseModel):
+    """TeslaMate 连接现值 (密码不回显, 只报是否在用)。"""
+
+    host: str
+    port: str
+    user: str
+    name: str
+    password_set: bool
+
+
+class AmapSettings(BaseModel):
+    """高德 Key 现值 (打码回显 + 安全码是否在用)。"""
+
+    key_masked: str
+    security_code_set: bool
+
+
+class SettingsState(BaseModel):
+    """设置页状态: 各字段现值 (回落 env 后的效果)。"""
+
+    tmdb: TeslaMateSettings
+    amap: AmapSettings
+
+
+class SettingsUpdate(BaseModel):
+    """保存设置: 字段留空 = 保持现值 (密码/Key 不回显, 前端重填才算改)。"""
+
+    tmdb_host: str = ""
+    tmdb_port: str = ""
+    tmdb_user: str = ""
+    tmdb_password: str = ""
+    tmdb_name: str = ""
+    amap_key: str = ""
+    amap_security_code: str = ""
+
+
+class DriverInfo(BaseModel):
+    """司机条目。"""
+
+    id: int
+    name: str
+    is_default: bool
+
+
+class DriverIn(BaseModel):
+    """添加司机。"""
+
+    name: str = Field(min_length=1, max_length=30)
+
+
+class DriverUpdate(BaseModel):
+    """改司机: 改名 / 设默认 (设默认会清掉其他人的默认)。"""
+
+    name: str | None = Field(None, min_length=1, max_length=30)
+    is_default: bool | None = None
+
+
 class TripGroupIn(BaseModel):
     """存分组: 名字 + 行程 id 列表 (2~50 段, 与合并播放同上限)。"""
     name: str = Field(min_length=1, max_length=30)
