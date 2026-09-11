@@ -347,12 +347,15 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
     html = auth.get("/tesla/charging").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
-                 'data-v="custom"', 'id="tm-from"', 'id="tm-to"', 'id="tm-apply"',
+                 'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
+                 'id="tm-ym"', 'id="tm-sel"', 'id="tm-apply"', 'function calRender()',
+                 '再点结束日期',
                  'id="city-menu"', 'id="city-opts"', "/tesla/charging/api/cities",
                  "function syncURL()", 'u.searchParams.set("city", state.city)',
                  # 手机: 下拉面板锚全宽 header (日历行 ~300px, 挂胶囊右缘必出屏)
                  '@media (max-width: 479px)', '.nav-menu { position: static; }']:
         assert frag in html, f"充电页缺少 {frag}"
-    assert "chips-range" not in html
-    for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'nav-menu', 'city-opts'):
+    assert "chips-range" not in html and 'id="tm-from"' not in html
+    for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
+              'tm-next', 'tm-ym', 'tm-sel', 'nav-menu', 'city-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"

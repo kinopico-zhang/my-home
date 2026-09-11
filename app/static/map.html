@@ -103,19 +103,29 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
   .nav-menu { position: static; }
   .nav-menu .menu, .filters .nav-menu .menu { left: 12px; right: 12px; }
 }
-/* 时间菜单的自定义日历 (原生 date 输入, 移动端唤起系统日历) */
+/* 时间菜单的自定义日历: 月历网格, 同一个日历连点两次 (第一下起点, 第二下终点) */
 .time-menu .tm-custom { border-top: 1px solid var(--hairline); margin-top: 5px; padding-top: 5px; }
-.tm-dates { display: flex; align-items: center; gap: 5px; padding: 6px 8px 3px; }
-.tm-dates span { color: var(--ink-3); }
-.tm-dates input {
-  flex: 1; min-width: 0; background: var(--surface-2);
-  border: 1px solid var(--hairline); border-radius: 8px;
-  color: var(--ink-1); font-size: 12px; padding: 6px 7px;
-}
-.tm-dates input::-webkit-calendar-picker-indicator { filter: invert(.75); }
+.time-menu .menu { max-height: calc(100vh - 130px); overflow-y: auto; }  /* 矮屏展开日历时兜底滚动 */
+.tm-dates { padding: 6px 8px 3px; }
+.tm-cal-top { display: flex; align-items: center; gap: 4px; padding: 0 2px 5px; }
+.tm-cal-top b { flex: 1; text-align: center; font-size: 13px; font-weight: 600; }
+.tm-cal-top button { min-width: 28px; height: 26px; border-radius: 7px; color: var(--ink-2); }
+.tm-cal-top button:disabled { opacity: .3; }
+.tm-cal-top button:active { background: var(--surface-3); }
+.tm-week, .tm-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.tm-week i { font-style: normal; text-align: center; font-size: 11px; color: var(--ink-3); padding: 2px 0 4px; }
+.tm-cal { padding-bottom: 4px; }
+.tm-cal button { min-width: 34px; height: 34px; border-radius: 9px; font-size: 13px; color: var(--ink-1); }
+.tm-cal button:active { background: var(--surface-3); }
+.tm-cal button.today { color: #7db3f0; font-weight: 600; }
+.tm-cal button.mid { background: rgba(57,135,229,.16); border-radius: 0; }
+.tm-cal button.on { background: #3987e5; color: #fff; font-weight: 600; }
+.tm-foot { display: flex; align-items: center; gap: 8px; padding: 6px 2px 2px; }
+.tm-foot span { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tm-dates #tm-apply {
   flex: none; background: #3987e5; color: #fff;
-  border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 11px;
+  border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 14px;
 }
 
 /* ---------- 统计行 ---------- */
@@ -243,10 +253,14 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
         <div class="tm-custom">
           <button data-v="custom">自定义…</button>
           <div class="tm-dates" id="tm-dates" hidden>
-            <input type="date" id="tm-from" aria-label="开始日期">
-            <span>–</span>
-            <input type="date" id="tm-to" aria-label="结束日期">
-            <button id="tm-apply">确定</button>
+            <div class="tm-cal-top">
+              <button id="tm-prev" aria-label="上个月">‹</button>
+              <b id="tm-ym"></b>
+              <button id="tm-next" aria-label="下个月">›</button>
+            </div>
+            <div class="tm-week"><i>一</i><i>二</i><i>三</i><i>四</i><i>五</i><i>六</i><i>日</i></div>
+            <div class="tm-cal" id="tm-cal"></div>
+            <div class="tm-foot"><span id="tm-sel"></span><button id="tm-apply">确定</button></div>
           </div>
         </div>
       </div>
@@ -312,9 +326,13 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <script src="/tesla/static/trackutil.js?v=8"></script>
 <script>
 "use strict";
-/* 页签菜单: 点空白处收起 */
+/* 页签菜单: 点空白处收起。
+   注意: 日历点选会在点击处理器里 innerHTML 重渲染, 事件目标被脱链
+   (closest() 找不到菜单祖先) —— 脱链的点击一定发生在某个菜单里, 不能当"点外面"关闭。 */
 document.addEventListener("click", e => {
-  const inside = e.target.closest && e.target.closest("details.nav-menu");
+  const t = e.target;
+  if (!(t instanceof Element) || !t.isConnected) return;
+  const inside = t.closest("details.nav-menu");
   document.querySelectorAll("details.nav-menu[open]").forEach(m => {
     if (m !== inside) m.removeAttribute("open");
   });
@@ -804,17 +822,61 @@ function setTimeRange(v, skipRefresh) {
   history.replaceState(null, "", u);
   if (!skipRefresh) refresh(false);
 }
+/* ---------- 自定义日历: 同一个日历连点两次 —— 第一下起点, 第二下终点 ----------
+   终点早于起点自动交换; 已有区间再点 = 重新开始选; 只点一下就确定 = 单日。 */
+let calYm = "", calA = null, calB = null;    // 显示月 / 草稿起止 (ISO 日期)
+const calCn = iso => { const p = iso.split("-"); return `${+p[1]}月${+p[2]}日`; };
+function calRender() {
+  const [y, m] = calYm.split("-").map(Number);
+  $("#tm-ym").textContent = `${y}年${m}月`;
+  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;   // 周一开头
+  const days = new Date(y, m, 0).getDate();
+  const n = new Date();
+  const today = `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
+  $("#tm-next").disabled = calYm >= today.slice(0, 7);     // 未来月没有数据
+  let h = "";
+  for (let i = 0; i < lead; i++) h += "<i></i>";
+  for (let d = 1; d <= days; d++) {
+    const iso = `${calYm}-${pad(d)}`;
+    const cls = iso === calA || iso === calB ? "on"
+      : calA && calB && iso > calA && iso < calB ? "mid" : "";
+    h += `<button class="${cls}${iso === today ? " today" : ""}"
+            data-d="${iso}" aria-label="${iso}">${d}</button>`;
+  }
+  $("#tm-cal").innerHTML = h;   // 重渲染会脱链点击目标, "点空白处收起" 的守卫兜底
+  $("#tm-sel").textContent = !calA ? "点选开始日期"
+    : !calB ? `已选开始 ${calCn(calA)}, 再点结束日期`
+    : `${calCn(calA)} – ${calCn(calB)}`;
+}
+function calShift(k) {
+  const [y, m] = calYm.split("-").map(Number);
+  const t = new Date(y, m - 1 + k, 1);
+  calYm = `${t.getFullYear()}-${pad(t.getMonth() + 1)}`;
+  calRender();
+}
+function calOpen() {   // 打开日历: 带出已应用的自定义区间, 没有则从当月起
+  calA = timeSel.from; calB = timeSel.to;
+  calYm = (calA || `${new Date().getFullYear()}-${pad(new Date().getMonth() + 1)}`).slice(0, 7);
+  calRender();
+}
+$("#tm-cal").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const d = b.dataset.d;
+  if (!calA || calB) { calA = d; calB = null; }   // 新一轮: 重新选起点
+  else if (d < calA) { calB = calA; calA = d; }   // 反着点: 自动交换
+  else calB = d;                                  // 第二下 = 终点 (同一天 = 单日)
+  calRender();
+});
+$("#tm-prev").addEventListener("click", () => calShift(-1));
+$("#tm-next").addEventListener("click", () => calShift(1));
 $("#time-opts").addEventListener("click", e => {
   const b = e.target.closest("button");
-  if (!b || b.id === "tm-apply") return;
-  if (b.dataset.v === "custom") {   // 展开/收起日历, 选好再点确定生效
+  if (!b || !b.dataset.v) return;   // 日历里的按钮 (日期/翻月/确定) 不走快捷档逻辑
+  if (b.dataset.v === "custom") {   // 展开/收起日历, 连点两次选好再确定生效
     const box = $("#tm-dates");
     box.hidden = !box.hidden;
-    if (!box.hidden) {
-      $("#tm-from").value = timeSel.from || timeFrom("30d");
-      const n = new Date();
-      $("#tm-to").value = timeSel.to || fmtDate(n);
-    }
+    if (!box.hidden) calOpen();
     return;
   }
   if (b.dataset.v === timeSel.v) return;
@@ -822,12 +884,14 @@ $("#time-opts").addEventListener("click", e => {
   setTimeRange(b.dataset.v);
 });
 $("#tm-apply").addEventListener("click", () => {
-  const f = $("#tm-from").value, t = $("#tm-to").value;
-  if (!f || !t) return;                       // 没选完整不生效
+  if (!calA) return;                // 一下都没点不生效
   $("#time-menu").removeAttribute("open");
-  timeSel.from = f <= t ? f : t;              // 起止填反自动交换
-  timeSel.to = f <= t ? t : f;
+  timeSel.from = calA;              // 只点了起点 = 单日
+  timeSel.to = calB || calA;
   setTimeRange("custom");
+});
+$("#time-menu").addEventListener("toggle", () => {   // 重开菜单回到已应用区间
+  if ($("#time-menu").open && !$("#tm-dates").hidden) calOpen();
 });
 setTimeRange(timeSel.v, true);
 $("#retry").addEventListener("click", () => refresh(false));
