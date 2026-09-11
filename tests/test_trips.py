@@ -669,7 +669,7 @@ def test_trips_page_has_playbar_and_single_column(auth):
 def test_trips_page_playback_pacing_and_nowrap(auth):
     """超长轨迹不再 12 秒放完: 时长含里程分量 + 0.5× 慢速档; 统计值不折行。"""
     html = auth.get("/tesla/trips").text
-    for frag in ["Math.min(Math.max(N / 300, 3 + cum[N - 1] * 0.35), 90)",
+    for frag in ["Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300)",
                  "PB_SPEEDS = [0.5, 1, 2, 4, 8]",
                  "white-space: nowrap"]:
         assert frag in html, f"行程页缺少 {frag}"
