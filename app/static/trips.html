@@ -25,7 +25,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
-html, body { overscroll-behavior-y: none; }   /* 橡皮筋/浏览器自带下拉让位给自写下拉刷新 */
+html, body { overscroll-behavior-y: none; }   /* 拦掉 Safari 自带的下拉刷新 (刷新只走顶栏按钮) */
 body {
   background: var(--bg); color: var(--ink-1);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
@@ -175,6 +175,7 @@ body.selecting #groups-btn, body.selecting #toll-btn { display: none; }
 .ct-arrow {
   flex: none; font-size: 10.5px; font-weight: 600; color: #7db3f0;
   background: rgba(57,135,229,.14); padding: 2px 8px; border-radius: 999px;
+}
 .ct-drv {
   flex: none; font-size: 10.5px; color: var(--ink-2);
   background: rgba(255,255,255,.08); padding: 2.5px 9px; border-radius: 999px;
@@ -309,21 +310,16 @@ body.selecting .card-t.picked .pick::after {
 .gp-empty { padding: 60px 24px; text-align: center; font-size: 15px; color: var(--ink-2); }
 .gp-empty span { display: block; margin-top: 8px; font-size: 12.5px; color: var(--ink-3); }
 
-/* ---------- 下拉刷新指示器 (顶上拽出的小转盘) ---------- */
-.ptr {
-  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 56px); z-index: 45;
-  width: 30px; height: 30px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; color: var(--ink-2);
-  background: rgba(28,28,30,.88);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-  border: 1px solid var(--hairline);
-  transform: translate(-50%, -40px); opacity: 0;
-  transition: opacity .16s, transform .16s; pointer-events: none;
+/* 顶栏刷新按钮 (列表重载唯一入口, 与页签胶囊同款样式) */
+#refresh-btn {
+  align-self: center; display: flex; align-items: center; margin-left: 0;
+  color: var(--ink-1); background: var(--surface-2);
+  padding: 5px 9px; border-radius: 999px;
 }
-.ptr.on { opacity: 1; }
-.ptr svg { display: block; }
-.ptr.spin svg { animation: ptr-spin .7s linear infinite; }
-@keyframes ptr-spin { to { transform: rotate(360deg); } }
+#refresh-btn:active { background: var(--surface-3); }
+#refresh-btn.busy svg { animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+body.selecting #refresh-btn { display: none; }
 
 /* ---------- 高速费批量面板 ---------- */
 .tollpanel {
@@ -477,6 +473,7 @@ body.selecting .card-t.picked .pick::after {
         </div>
       </div>
     </details>
+    <button id="refresh-btn" aria-label="刷新列表"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
   <!-- 行程页独有筛选 (顶栏时间筛选之下): 起点城市 / 终点城市 / 里程范围 -->
   <div class="filters">
@@ -508,7 +505,6 @@ body.selecting .card-t.picked .pick::after {
     <button id="groups-btn">分组</button>
     <button id="toll-btn">高速费</button>
   </div>
-  <div class="ptr" id="ptr"><svg viewBox="0 0 14 14" width="15" height="15" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
   <div id="list"></div>
 
   <div class="tail" id="tail" hidden>
@@ -738,7 +734,7 @@ function setTail() {
   $("#count-badge").textContent = state.total ? `共 ${state.total} 次` : "";
 }
 
-/* ---------- 刷新: 头部按钮 + 列表顶下拉, 共用一套重载 ---------- */
+/* ---------- 刷新: 顶栏按钮 (下拉手势已按需求撤掉) ---------- */
 async function refreshList() {
   if (state.loading) return;
   items.length = 0;
@@ -749,52 +745,12 @@ async function refreshList() {
 }
 
 
-/* 下拉刷新 (移动端): 列表已在顶再往下拽, 指示器转满一圈松手即重载。
-   手势挂在 main 上 —— 弹层/分组面板是 main 的兄弟节点, 那边的触摸进不来;
-   多选模式下划选卡片的手势也别误触。 */
-let holdArmed = false;   // 长按计时中: 下拉手势让位 (真手指按住 480ms 必有微抖)
-(function setupPullRefresh() {
-  const ptr = $("#ptr"), icon = ptr.querySelector("svg");
-  const GO = 64;                     // 触发阈值 (阻尼后的拉动距离)
-  let y0 = null, dist = 0;
-
-  const reset = () => {
-    y0 = null; dist = 0;
-    ptr.classList.remove("on", "spin");
-    ptr.style.transform = ""; icon.style.transform = "";
-  };
-
-  const mainEl = document.querySelector("main");
-  mainEl.addEventListener("touchstart", e => {
-    if (state.loading || e.touches.length !== 1 || window.scrollY > 2
-        || document.body.classList.contains("selecting")) return;
-    y0 = e.touches[0].clientY; dist = 0;
-  }, { passive: true });
-
-  mainEl.addEventListener("touchmove", e => {
-    if (y0 == null || holdArmed) return;   // 长按计时中: 指示器/阻止滚动都先让位
-    if (document.body.classList.contains("selecting")) {
-      reset(); return;                     // 长按期间进了多选 → 手势作废
-    }
-    dist = (e.touches[0].clientY - y0) * 0.45;   // 阻尼: 越拉越沉
-    if (dist <= 0 || window.scrollY > 2) { reset(); return; }
-    e.preventDefault();                          // 顶住系统橡皮筋
-    const p = Math.min(dist / GO, 1);
-    ptr.classList.add("on");
-    ptr.style.transform = `translate(-50%, ${-40 + p * 34}px)`;
-    icon.style.transform = `rotate(${p * 360}deg)`;
-  }, { passive: false });
-
-  mainEl.addEventListener("touchend", () => {
-    if (y0 == null) return;
-    const go = dist >= GO;
-    y0 = null;
-    if (!go) { reset(); return; }
-    ptr.classList.add("spin");
-    ptr.style.transform = "translate(-50%, -6px)";
-    refreshList().then(reset);
-  });
-})();
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  await refreshList();
+  btn.classList.remove("busy");
+});
 
 const PRELOAD_PX = 800;   // 触底前多远开始预加载 (IO rootMargin 与链式续载共用)
 
@@ -1086,17 +1042,16 @@ function exitSelect() {
   let timer = null, card = null, x0 = 0, y0 = 0, fired = false, suppress = false;
   const clear = () => {
     if (timer) clearTimeout(timer);
-    timer = null; card = null; fired = false; holdArmed = false;
+    timer = null; card = null; fired = false;
   };
   const start = (x, y, target) => {
     suppress = false;
     if (document.body.classList.contains("selecting")) return;
     card = target.closest(".card-t");
     if (!card) return;
-    holdArmed = true;   // 下拉手势让位: 按住期间的手指微抖不触发指示器
     x0 = x; y0 = y;
     timer = setTimeout(() => {
-      timer = null; fired = true; suppress = true; holdArmed = false;
+      timer = null; fired = true; suppress = true;
       enterSelect(); pickCard(card);
     }, HOLD_MS);
   };
