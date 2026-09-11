@@ -302,6 +302,8 @@ def test_merged_track_stitches_and_skips_parking(auth, db):
                         [114.08, 22.58, 0, None]]
     # 第二段从上一段末尾继续累计: 中间 2h50m 停驶不进 ts
     assert d["ts"] == [0, 600, 600, 1200]
+    # 每段起点下标 (前端按段做断档识别, 不混用全局阈值)
+    assert d["seg_starts"] == [0, 2]
     # 汇总: 首段起 / 末段终, 里程/时长求和, 最高速取 max
     assert d["km"] == 52.54 and d["min"] == 82 and d["speed_max"] == 118
     assert d["date"] == "2026-09-10"
@@ -398,7 +400,7 @@ def test_trips_page_time_menu_and_filter_row(auth):
     assert "chips-range" not in html and "/tesla/trips/api/cities" not in html
     assert 'id="tm-from"' not in html
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
-              'tm-next', 'tm-ym', 'tm-sel', 'nav-menu',
+              'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout',
               'fc-opts', 'tc-opts', 'km-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
 
@@ -448,11 +450,16 @@ def test_trips_page_preloads_tiles(auth):
 
 
 def test_trips_page_has_multiselect(auth):
-    """多选连续行程: 选择模式 + 底栏 + 合并接口直开都挂在页面上。"""
+    """多选连续行程: 选择模式 + 底栏 (全选/上限提示) + 合并接口直开都挂在页面上。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="merge-btn"', 'id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
-                 'id="sel-count"', "body.selecting", "pickCard", "enterSelect", "exitSelect",
+                 'id="sel-count"', 'id="sel-all"', 'id="sel-cap"', "MERGE_MAX = 50",
+                 "body.selecting", "pickCard", "enterSelect", "exitSelect",
                  "openMerged", "/tesla/trips/api/merged?ids=", "mergedCache"]:
         assert frag in html, f"行程页缺少多选片段 {frag}"
     # 合并弹层复用播放: pts 随 it 一起传入 (不走单条轨迹接口)
     assert "it.pts ? it : trackCache.get(it.id)" in html
+    # 合并轨迹按段做断档识别 (各段采样密度不同), 单段照旧全局一套
+    assert "function splitSegments(" in html
+    assert "splitSegments(pts, it.seg_starts)" in html
+    assert "TrackUtil.splitGaps(pts)" in html

@@ -239,13 +239,13 @@ def test_map_page_time_menu_in_filters_row(auth):
                  '@media (max-width: 479px)', 'header { position: relative; }',
                  '.nav-menu { position: static; }']:
         assert frag in html, f"足迹页缺少 {frag}"
-    # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留页签菜单; 旧的 chips 行已删
+    # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留品牌下拉; 旧的 chips 行已删
     assert '<div class="filters">\n    <details class="nav-menu time-menu" id="time-menu">' in html
     assert "chips-range" not in html and ".chip {" not in html
     assert 'id="tm-from"' not in html
     # 关键 id 全页唯一 (孤儿节点会重复 id, JS 绑错元素且不报错)
     for i in ("time-menu", "time-lb", "time-opts", "tm-dates", "tm-cal", "tm-prev",
-              "tm-next", "tm-ym", "tm-sel", "nav-menu"):
+              "tm-next", "tm-ym", "tm-sel", "brand-menu", "logout"):
         assert html.count(f'id="{i}"') == 1, f"足迹页 {i} 重复"
 
 

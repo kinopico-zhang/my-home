@@ -357,5 +357,5 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
         assert frag in html, f"充电页缺少 {frag}"
     assert "chips-range" not in html and 'id="tm-from"' not in html
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
-              'tm-next', 'tm-ym', 'tm-sel', 'nav-menu', 'city-opts'):
+              'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout', 'city-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"

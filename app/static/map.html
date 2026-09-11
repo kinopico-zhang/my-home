@@ -49,7 +49,6 @@ header {
 /* 顶栏一行: 全部 nowrap + 不许压缩换行 (窄屏字号收一档) */
 .nav-row { display: flex; align-items: baseline; gap: 8px; }
 .nav-row > * { flex-shrink: 0; }
-h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
 /* ---------- 页签菜单 (收起式) ---------- */
 .nav-menu { position: relative; align-self: center; margin-left: auto; }
 .nav-menu summary {
@@ -79,17 +78,27 @@ h1 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; white-space: nowr
 .nav-menu .menu a:active { background: var(--surface-3); }
 .nav-menu .menu a.on { color: #7db3f0; }
 .nav-menu + .nav-menu { margin-left: 0; }   /* 顶栏两个菜单靠右并排, 只有第一个吃 auto 边距 */
+/* 品牌即入口: My Tesla 本身是下拉按钮, 展开是全部页面 + 退出登录。
+   块要放在 .nav-menu 系列之后 —— 同特异性靠源序取胜, 放前面会被盖掉
+   (实测放 h1 原位时 margin-left:auto 没被压掉, 品牌被顶到行中间)。 */
+.brand-menu { margin-left: 0; }
+.brand-menu summary {
+  font-size: 20px; font-weight: 700; letter-spacing: -.3px;
+  background: none; padding: 0; border-radius: 0;
+}
+.brand-menu[open] summary { background: none; }
+.brand-menu .chev { color: var(--ink-3); }
+.brand-menu .menu { left: 0; right: auto; }   /* 面板锚品牌左缘向右展开, 不出屏 */
+.nav-menu .menu .logout-row {
+  color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
+}
+.brand-menu + .nav-menu { margin-left: auto; }   /* 品牌居左, 顶栏其余菜单仍靠右 */
 .nav-menu .menu button {
   font-size: 14px; color: var(--ink-1); text-align: left;
   padding: 9px 12px; border-radius: 10px; white-space: nowrap;
 }
 .nav-menu .menu button.on { color: #7db3f0; }
 .nav-menu .menu button:active { background: var(--surface-3); }
-.logout-btn {
-  align-self: center; font-size: 11.5px; color: var(--ink-3); white-space: nowrap;
-  padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hairline);
-}
-.logout-btn:active { color: var(--ink-1); }
 /* 筛选栏 (顶栏下方): 足迹页没有独有筛选, 只放统一的时间筛选 */
 .filters { display: flex; gap: 8px; margin-top: 10px; }
 .filters .nav-menu { margin-left: 0; }              /* 不吃顶栏的靠右边距 */
@@ -228,16 +237,15 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 <body>
 <header>
   <div class="nav-row">
-    <h1>My Tesla</h1>
-    <details class="nav-menu" id="nav-menu">
-      <summary>足迹<svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+    <details class="nav-menu brand-menu" id="brand-menu">
+      <summary>My Tesla<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
         <a href="/tesla/charging">充电</a>
         <a class="on" href="/tesla/map">足迹</a>
         <a href="/tesla/trips">行程</a>
+        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-    <button id="logout" class="logout-btn" title="退出登录">退出</button>
   </div>
   <!-- 足迹页没有独有筛选: 筛选栏只放统一的时间筛选 -->
   <div class="filters">
