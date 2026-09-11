@@ -6,12 +6,12 @@ TeslaMate 连接改动会换引擎重连 (database.rebuild_engine) 并实测 SEL
 """
 import os
 
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import database
-from .models import AppSetting, Driver
+from .models import AppSetting, Driver, TripDriver
 from .schemas import (AmapSettings, DriverInfo, SettingsState,
                       SettingsUpdate, TeslaMateSettings)
 from .repository import NotFound
@@ -156,9 +156,10 @@ def update_driver(own: Session, driver_id: int,
 
 
 def delete_driver(own: Session, driver_id: int) -> None:
-    """删司机 (默认被删后全库暂时无默认, 行程标注兜底显示留空)。"""
+    """删司机 (标注联动清掉, 行程展示回默认兜底; 默认被删后暂时无默认)。"""
     driver = own.get(Driver, driver_id)
     if driver is None:
         raise NotFound("司机不存在")
+    own.execute(delete(TripDriver).where(TripDriver.driver_id == driver_id))
     own.delete(driver)
     own.commit()

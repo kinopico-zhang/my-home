@@ -25,8 +25,8 @@ from sqlalchemy.orm import InstrumentedAttribute, Session, aliased, sessionmaker
 from sqlalchemy.sql.selectable import Subquery
 
 from . import config
-from .models import (Address, Car, Charge, ChargingProcess, Drive, Geofence,
-                     Position, TrackFill, TripGroup)
+from .models import (Address, Car, Charge, ChargingProcess, Drive, Driver,
+                     Geofence, Position, TrackFill, TripDriver, TripGroup)
 from .schemas import (
     CarInfo,
     ChargeCurve,
@@ -613,7 +613,7 @@ def _trip_conditions(session: Session,
     return conds
 
 
-def list_trips(session: Session, offset: int, limit: int,
+def list_trips(session: Session, own: Session, offset: int, limit: int,
                flt: TripFilter | None = None) -> tuple[int, list[TripItem]]:
     """行程列表 (最新在前), total 为已结束行程数; 按出发时间/起终地区/里程过滤。"""
     conds = _trip_conditions(session, flt)
@@ -624,7 +624,39 @@ def list_trips(session: Session, offset: int, limit: int,
         _trip_rows_stmt(aliased(Address), aliased(Address)).where(*conds)
         .order_by(Drive.start_date.desc())
         .offset(offset).limit(limit)).all()
-    return int(total), [_trip_item(d, s, e) for d, s, e in rows]
+    items = [_trip_item(d, s, e) for d, s, e in rows]
+    annotate_drivers(own, items)
+    return int(total), items
+
+
+def annotate_drivers(own: Session, items: list[TripItem]) -> None:
+    """行程条目补驾驶员: 显式标注 > 默认司机兜底 (都没配 = None 不显示)。
+
+    标注指向的司机已被删时按未标注处理 (标注行会随删司机联动清掉,
+    这里再兜一层, 库里残留脏行也不致显示错名字)。"""
+    if not items:
+        return
+    drivers = {d.id: d for d in own.scalars(select(Driver)).all()}
+    default = next((d for d in drivers.values() if d.is_default), None)
+    marks = {m.drive_id: m.driver_id for m in own.scalars(
+        select(TripDriver)
+        .where(TripDriver.drive_id.in_([i.id for i in items]))).all()}
+    for it in items:
+        did = marks.get(it.id)
+        driver = drivers.get(did) if did is not None else None
+        it.driver_id = driver.id if driver is not None else None
+        shown = driver or default
+        it.driver = shown.name if shown is not None else None
+
+
+def set_trip_driver(own: Session, drive_id: int, driver_id: int | None) -> None:
+    """标/清行程驾驶员 (清 = 删标注行, 展示回默认兜底)。"""
+    if driver_id is not None and own.get(Driver, driver_id) is None:
+        raise NotFound("司机不存在")
+    own.execute(delete(TripDriver).where(TripDriver.drive_id == drive_id))
+    if driver_id is not None:
+        own.add(TripDriver(drive_id=drive_id, driver_id=driver_id))
+    own.commit()
 
 
 class _RegionAcc:
@@ -687,12 +719,16 @@ def list_trip_regions(session: Session) -> TripRegions:
         end=_region_tree(session, Drive.end_address_id))
 
 
-def get_trip(session: Session, drive_id: int) -> TripItem | None:
+def get_trip(session: Session, own: Session, drive_id: int) -> TripItem | None:
     """单条行程 (未结束 / 不存在返回 None)。"""
     rows = session.execute(
         _trip_rows_stmt(aliased(Address), aliased(Address))
         .where(Drive.id == drive_id)).all()
-    return _trip_item(rows[0][0], rows[0][1], rows[0][2]) if rows else None
+    if not rows:
+        return None
+    item = _trip_item(rows[0][0], rows[0][1], rows[0][2])
+    annotate_drivers(own, [item])
+    return item
 
 
 TRIP_TRACK_PER = 5000

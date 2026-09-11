@@ -173,6 +173,10 @@ body.selecting #merge-btn, body.selecting #groups-btn { display: none; }
 .ct-arrow {
   flex: none; font-size: 10.5px; font-weight: 600; color: #7db3f0;
   background: rgba(57,135,229,.14); padding: 2px 8px; border-radius: 999px;
+}.ct-drv {
+  flex: none; font-size: 10.5px; color: var(--ink-2);
+  background: rgba(255,255,255,.08); padding: 2.5px 9px; border-radius: 999px;
+  max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 多选模式: 卡片右上角 → 查看轨迹 换成选圈 */
 .card-t .pick { display: none; }
@@ -324,6 +328,13 @@ body.selecting .card-t.picked .pick::after {
 .sh-head { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 0 4px 10px; }
 .sh-title { font-size: 17px; font-weight: 700; }
 .sh-sub { font-size: 12px; color: var(--ink-3); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-drv { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 4px 10px; }
+.sh-drv .lb { font-size: 11px; color: var(--ink-2); flex: none; }
+.sh-drv select {
+  font: inherit; font-size: 12.5px; color: var(--ink-1);
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 999px; padding: 5px 10px; outline: none; max-width: 62%;
+}
 .sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
 /* 有功耗数据时共 4 格, 窄屏改 2×2 (没数据时第 4 格隐藏, 保持一行) */
 @media (max-width: 479px) {
@@ -494,6 +505,10 @@ body.selecting .card-t.picked .pick::after {
     <div class="sh-title" id="sh-date">–</div>
     <div class="sh-sub" id="sh-time"></div>
   </div>
+  <div class="sh-drv" id="sh-drv" hidden>
+    <span class="lb">驾驶员</span>
+    <select id="sh-drv-sel"></select>
+  </div>
   <div class="sh-cells">
     <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
     <div class="sh-cell"><div class="lb">时长</div><div class="val" id="sh-dur">–</div></div>
@@ -581,6 +596,16 @@ async function getJSON(url) {
   return r.json();
 }
 
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status}`);
+  return r.json();
+}
+
 /* ============================ 行程列表 (单列) ============================ */
 const PAGE = 24;
 /* ---------- 顶栏时间筛选: 快捷档位下拉, 编码进 ?range= (分享/刷新保留) ---------- */
@@ -634,6 +659,8 @@ function renderCard(it) {
   el.innerHTML = `
     <div class="ct-top">
       <span class="ct-date">${esc(fmtCardDate(it.start))}</span>
+      ${it.driver_id != null && it.driver ?   /* 只标显式标注: 未标全显默认名就成了噪音 */
+        `<span class="ct-drv">${esc(it.driver)}</span>` : ""}
       <span class="ct-arrow">→ 查看轨迹</span>
       <span class="pick" aria-hidden="true"></span>
     </div>
@@ -1138,6 +1165,7 @@ let amapLoading = null;             // Promise<true>: 高德脚本就绪
 let tripMap = null;                 // 弹层内地图实例, 复用不销毁
 let openSeq = 0;                    // 连续点开多条时, 只认最后一次
 let curKey = null;                  // 弹层当前行程 key (单条 "2200" / 合并 "1836-1839"), 地址栏同步用
+let sheetTrip = null;               // 弹层当前单条行程条目 (标驾驶员用; 合并 = null)
 const mergedCache = new Map();      // "首-尾" → 合并轨迹整包 (流式下完后存, 重开秒开)
 
 /* 多选的连续行程 → 一条轨迹。ids 为多选数组 (必连续 → 只记头尾 id) 或
@@ -1727,6 +1755,8 @@ function hideSheet() {
   if (curSess) { curSess.alive = false; curSess = null; }
   $("#sheet").classList.remove("show");
   $("#backdrop").classList.remove("show");
+  $("#sh-drv").hidden = true;
+  sheetTrip = null;
 }
 
 function closeTrip() {
@@ -1771,15 +1801,57 @@ function fillSheetHeaderPending() {
   $("#sh-pw").textContent = "—";
 }
 
+/* ---------- 弹层司机标注: 未标 = 默认司机兜底, 没配司机整行不显示 ---------- */
+let driversCache;   // undefined=还没拉过, null=拉取失败, 数组=结果 (含空数组)
+
+async function setupDriverPicker(it, seq) {
+  if (it.merged) { $("#sh-drv").hidden = true; return; }   // 合并多段: 不适用
+  if (driversCache === undefined) {
+    try { driversCache = await getJSON("/tesla/api/drivers"); }
+    catch { driversCache = null; }
+  }
+  if (seq !== openSeq) return;                    // 弹层已切走, 结果作废
+  const row = $("#sh-drv");
+  if (!driversCache || driversCache.length === 0) { row.hidden = true; return; }
+  const def = driversCache.find(d => d.is_default);
+  $("#sh-drv-sel").innerHTML =
+    `<option value="">${def ? `未指定 · 默认${esc(def.name)}` : "未指定"}</option>` +
+    driversCache.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+  $("#sh-drv-sel").value = it.driver_id != null ? String(it.driver_id) : "";
+  row.hidden = false;
+}
+
+$("#sh-drv-sel").addEventListener("change", async () => {
+  const it = sheetTrip;
+  if (!it) return;
+  const sel = $("#sh-drv-sel");
+  const driverId = sel.value === "" ? null : +sel.value;
+  try {
+    const upd = await postJSON(`/tesla/trips/api/${it.id}/driver`,
+                               { driver_id: driverId });
+    Object.assign(it, upd);                       // 弹层条目就地更新
+    const card = items.find(x => x.id === upd.id);   // 列表条目 (分享直开时可能还没加载)
+    if (card && card !== it) Object.assign(card, upd);
+    const el = listEl.querySelector(`.card-t[data-id="${upd.id}"]`);
+    if (el && card) el.replaceWith(renderCard(card));
+    toast(driverId == null ? "已清除标注" : `已标注为 ${upd.driver}`);
+  } catch (err) {
+    toast(`标注失败: ${err.message}`);
+    sel.value = it.driver_id != null ? String(it.driver_id) : "";
+  }
+});
+
 async function openTrip(it, fromUrl) {
   curKey = it.merged ? (it.mergeKey || it.ids.join(",")) : String(it.id);
   if (!fromUrl && urlTripKey() !== curKey)
     history.pushState({ k: curKey }, "", listURL(curKey));
   const seq = ++openSeq;
+  sheetTrip = it.merged ? null : it;   // 司机标注只对单条行程有意义
   const cached = it.merged ? mergedCache.get(it.mergeKey) : null;
   if (cached) Object.assign(it, cached);   // 合并整包缓存命中: 数据齐了直接播
   if (it.pts || !it.merged) fillSheetHeader(it);   // 单条: 字段随卡片/接口齐, 直接填
   else fillSheetHeaderPending();                   // 合并流式: 数据在路上, 占位
+  setupDriverPicker(it, seq);
   $("#sheet").classList.add("show");
   $("#backdrop").classList.add("show");
   tripMsg("正在加载轨迹…", true);

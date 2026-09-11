@@ -177,6 +177,14 @@ class TripItem(BaseModel):
     speed_max: int | None
     from_: str = Field(alias="from")
     to: str
+    driver: str | None = None      # 展示名: 显式标注, 未标注回落默认司机
+    driver_id: int | None = None   # 显式标注的司机 id (未标 = None)
+
+
+class DriverMark(BaseModel):
+    """标/清行程驾驶员 (driver_id 空 = 清除标注, 展示回默认兜底)。"""
+
+    driver_id: int | None = None
 
 
 class TripsPage(BaseModel):
