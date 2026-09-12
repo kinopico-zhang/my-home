@@ -5,6 +5,7 @@ TeslaMate 连接改动会换引擎重连 (database.rebuild_engine) 并实测 SEL
 端点每次现读)。密码/Key 只存不回显: GET 打码, 前端留空 = 保持现值。
 """
 import os
+import re
 
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,6 +23,17 @@ _FIELDS = ("tmdb_host", "tmdb_port", "tmdb_user", "tmdb_password", "tmdb_name",
 
 class EngineError(RuntimeError):
     """新 TeslaMate 连接验证失败 (调用方转 400; 已整体回滚, 服务未中断)。"""
+
+
+class StyleError(ValueError):
+    """地图样式格式不合法 (调用方转 400, 未写库)。"""
+
+
+# 地图样式: amap://styles/<官方样式名或自定义ID>。幻影黑 (dark) 按设计不带
+# 地名标注 (用户看地图没有路名/地名就是这个原因), 默认给带标注的标准图;
+# 想要深色带地名只能在高德个性化地图编辑器自建样式后贴 ID。
+AMAP_STYLE_DEFAULT = "amap://styles/normal"
+_STYLE_RE = re.compile(r"^amap://styles/[A-Za-z0-9_-]{1,64}$")
 
 
 def _row(own: Session) -> AppSetting:
@@ -73,6 +85,12 @@ def amap_values(own: Session) -> tuple[str | None, str | None]:
             row.amap_security_code or os.environ.get("AMAP_SECURITY_CODE") or None)
 
 
+def amap_style_value(own: Session) -> str:
+    """地图样式现值 (设置行 > env > 标准图): map config 端点每次现读。"""
+    return (_row(own).amap_style or os.environ.get("AMAP_STYLE")
+            or AMAP_STYLE_DEFAULT)
+
+
 def settings_state(own: Session) -> SettingsState:
     """设置页状态: 各字段现值 (回落 env 后的效果), 秘密只报在用/打码。"""
     eff = effective_tmdb(own)
@@ -83,7 +101,8 @@ def settings_state(own: Session) -> SettingsState:
         tmdb=TeslaMateSettings(
             host=eff["host"], port=eff["port"], user=eff["user"],
             name=eff["name"], password_set=bool(eff["password"])),
-        amap=AmapSettings(key_masked=_masked(key), security_code_set=bool(code)))
+        amap=AmapSettings(key_masked=_masked(key), security_code_set=bool(code),
+                          style=amap_style_value(own)))
 
 
 def save_settings(own: Session, body: SettingsUpdate) -> tuple[SettingsState, bool]:
@@ -92,12 +111,18 @@ def save_settings(own: Session, body: SettingsUpdate) -> tuple[SettingsState, bo
     TeslaMate 连接串变了 → 换引擎并实测 SELECT 1; 连不上抛 EngineError,
     设置行与引擎都回滚到旧值 (服务不断)。返回 (新状态, 是否换了引擎)。"""
     row = _row(own)
+    style = body.amap_style.strip()
+    if style and not _STYLE_RE.fullmatch(style):
+        raise StyleError(f"地图样式不合法: {style} (应为 amap://styles/<样式名或ID>)")
     old_url = database.build_db_url(effective_tmdb(own))
     old_values = {f: getattr(row, f) for f in _FIELDS}
+    old_values["amap_style"] = row.amap_style   # 引擎验证失败要一起回滚
     for field in _FIELDS:
         value = getattr(body, field).strip()
         if value:
             setattr(row, field, value)
+    if style:
+        row.amap_style = style
     own.commit()
     new_url = database.build_db_url(effective_tmdb(own))
     if new_url == old_url:

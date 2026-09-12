@@ -784,7 +784,7 @@ async function boot() {
     await loadAMap(cfg.amap_key, cfg.security_code);
     diag("amap_script_loaded", { ver: (window.AMap && AMap.version) || "?" });
     map = new AMap.Map("map", {
-      mapStyle: "amap://styles/dark", zoom: 11, center: [114.05, 22.55],
+      mapStyle: cfg.style || "amap://styles/normal", zoom: 11, center: [114.05, 22.55],
     });
     map.on("complete", () => { mapReady = true; diag("map_complete"); });
     // iOS Safari 会把双指缩放劫持成整页缩放: 拦截私有 gesture 事件, 手势只给高德

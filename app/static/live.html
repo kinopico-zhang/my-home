@@ -449,8 +449,8 @@ async function initMap() {
       sc.onerror = () => reject(new Error("script"));
       document.head.appendChild(sc);
     });
-    map = new AMap.Map("map", { mapStyle: "amap://styles/dark", zoom: 16,
-      center: [114.05, 22.55] });
+    map = new AMap.Map("map", { mapStyle: cfg.style || "amap://styles/normal",
+      zoom: 16, center: [114.05, 22.55] });
     // iOS Safari 双指缩放劫持成整页缩放: 手势只给高德
     for (const ev of ["gesturestart", "gesturechange"])
       document.getElementById("map").addEventListener(ev, e => e.preventDefault());

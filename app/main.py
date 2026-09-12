@@ -75,6 +75,15 @@ live = APIRouter(prefix="/tesla/live/api")
 settingsapi = APIRouter(prefix="/tesla/api")
 
 
+def _migrate_own_db() -> None:
+    """create_all 只建新表不改旧表: 已有生产库要补的列写在这里 (幂等)。"""
+    with database.own_engine().begin() as conn:
+        cols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(app_settings)")}
+        if "amap_style" not in cols:   # v: 高德地图样式 (设置页可换, 三页地图共用)
+            conn.exec_driver_sql(
+                "ALTER TABLE app_settings ADD COLUMN amap_style TEXT NOT NULL DEFAULT ''")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """启动时建引擎 + 后台预热缓存, 关闭时释放连接池。
@@ -84,6 +93,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # 先建自有库再读设置: TeslaMate 连接可被设置页覆盖 (未设回落 env 定位)
     database.init_own_engine()
     OwnBase.metadata.create_all(database.own_engine())
+    _migrate_own_db()
     with database.own_session_factory()() as own:   # pylint: disable=not-callable
         url = settings_store.engine_url(own)
     database.init_engine(url)
@@ -275,9 +285,11 @@ def get_locations(
 
 @mapapi.get("/config")
 def map_config(own: Session = Depends(database.get_own_db)) -> AmapConfig:
-    """高德 Key: 设置页可改 (存自有库), 未设回落 env; 每次现读, 改完即生效。"""
+    """高德 Key 与地图样式: 设置页可改 (存自有库), 未设回落 env;
+    每次现读, 改完刷新页面即生效。"""
     key, code = settings_store.amap_values(own)
-    return AmapConfig(amap_key=key, security_code=code)
+    return AmapConfig(amap_key=key, security_code=code,
+                      style=settings_store.amap_style_value(own))
 
 
 @mapapi.get("/summary")
@@ -621,6 +633,8 @@ def save_settings(body: SettingsUpdate,
     try:
         state, engine_changed = settings_store.save_settings(own, body)
     except settings_store.EngineError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except settings_store.StyleError as exc:
         raise HTTPException(400, str(exc)) from exc
     if engine_changed:
         # 换库了: 旧轨迹缓存全作废, 后台重灌 (不阻塞响应)
