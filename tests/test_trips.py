@@ -841,10 +841,17 @@ def test_trips_page_time_menu_and_filter_row(auth):
 
 
 def test_trips_page_has_playbar_and_single_column(auth):
-    """播放控制条 (暂停/进度/倍速) + 单列列表 都在页面上。"""
+    """播放控制条 + 单列列表 都在页面上; 信息层不占地图高度。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
                  'id="sh-cell-pw"', 'id="sh-pw-lb"', "ICON_REPLAY",
+                 # 让位地图: 播放条是浮在地图上的玻璃胶囊 (不占一整行),
+                 # 统计格单行横滑 (不折 2×3 网格), 弹层整体加高
+                 "position: absolute; left: 14px; right: 14px;",
+                 "backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);",
+                 "overflow-x: auto; scrollbar-width: none;",
+                 "height: 82vh; height: 82dvh;",
+                 "flex: none; background: var(--surface); border-radius: 12px; padding: 8px 12px;",
                  # 视角基线: 播放条上加减按钮, 随速变焦整条平移
                  'id="pb-zout"', 'id="pb-zin"', 'id="pb-zval"',
                  "bumpZoomBias", "trip-zoom-bias",
