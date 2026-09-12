@@ -364,7 +364,7 @@ body.selecting #refresh-btn { display: none; }
 #toast[hidden] { display: none; }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 91;
-  height: 78vh; height: 78dvh;
+  height: 82vh; height: 82dvh;
   display: flex; flex-direction: column;
   background: var(--surface-2); border-radius: 20px 20px 0 0;
   padding: 10px 16px calc(env(safe-area-inset-bottom) + 12px);
@@ -375,7 +375,7 @@ body.selecting #refresh-btn { display: none; }
 .sh-head { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 0 4px 10px; }
 .sh-title { font-size: 17px; font-weight: 700; }
 .sh-sub { font-size: 12px; color: var(--ink-3); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sh-drv { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 4px 10px; }
+.sh-drv { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 4px 8px; }
 #sh-drv-pick { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sh-drv .lb { font-size: 11px; color: var(--ink-2); flex: none; }
 .sh-drv select {
@@ -388,14 +388,12 @@ body.selecting #refresh-btn { display: none; }
   background: rgba(57,135,229,.14); padding: 4px 10px; border-radius: 999px;
   white-space: nowrap; max-width: 52%; overflow: hidden; text-overflow: ellipsis;
 }
-.sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
-/* 可见格 ≥5 (电耗/功耗有数据) 时窄屏改 2 列网格, 不挤成一条 */
-@media (max-width: 479px) {
-  .sh-cells:has(.sh-cell:not([hidden]):nth-child(5)) {
-    display: grid; grid-template-columns: 1fr 1fr;
-  }
+.sh-cells {   /* 单行横滑: 放不下就滑, 不折行挤地图 (里程/时长/车速/功耗 实时格排前) */
+  flex: none; display: flex; gap: 8px; padding-bottom: 10px;
+  overflow-x: auto; scrollbar-width: none;
 }
-.sh-cell { flex: 1; background: var(--surface); border-radius: 12px; padding: 8px 12px; }
+.sh-cells::-webkit-scrollbar { display: none; }
+.sh-cell { flex: none; background: var(--surface); border-radius: 12px; padding: 8px 12px; }
 .sh-cell .lb { font-size: 11px; color: var(--ink-2); }
 .sh-cell .val { font-size: 17px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sh-cell .val small { font-size: 11px; color: var(--ink-2); font-weight: 500; }
@@ -412,7 +410,15 @@ body.selecting #refresh-btn { display: none; }
 }
 .trip-msg .spin { margin: 0 auto; }
 /* ---------- 播放控制条 ---------- */
-.playbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 4px 4px 10px; }
+.playbar {   /* 浮层胶囊: 压在地图底部, 半透明毛玻璃 (AMap logo 透出来) */
+  position: absolute; left: 14px; right: 14px;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  z-index: 6; display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 999px;
+  background: rgba(22,24,29,.82);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.35);
+}
 .pb-btn {
   flex: none; width: 32px; height: 32px; border-radius: 50%;
   background: var(--surface-3); color: var(--ink-1);
@@ -567,10 +573,10 @@ body.selecting #refresh-btn { display: none; }
   <div class="sh-cells">
     <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
     <div class="sh-cell"><div class="lb">时长</div><div class="val" id="sh-dur">–</div></div>
-    <div class="sh-cell" id="sh-cell-kwh" hidden><div class="lb">总电耗</div><div class="val" id="sh-kwh">–</div></div>
-    <div class="sh-cell" id="sh-cell-avg" hidden><div class="lb">平均电耗</div><div class="val" id="sh-avg">–</div></div>
     <div class="sh-cell"><div class="lb" id="sh-spd-lb">最高车速</div><div class="val" id="sh-spd">–</div></div>
     <div class="sh-cell" id="sh-cell-pw" hidden><div class="lb" id="sh-pw-lb">平均功耗</div><div class="val" id="sh-pw">–</div></div>
+    <div class="sh-cell" id="sh-cell-kwh" hidden><div class="lb">总电耗</div><div class="val" id="sh-kwh">–</div></div>
+    <div class="sh-cell" id="sh-cell-avg" hidden><div class="lb">平均电耗</div><div class="val" id="sh-avg">–</div></div>
   </div>
   <div class="playbar" id="playbar" hidden>
     <button id="pb-toggle" class="pb-btn" aria-label="暂停"></button>
