@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,4 +49,27 @@ test("逆变换近似还原 (误差 < 1e-4°, 约 10m)", () => {
     assert.ok(Math.abs(wlng - lng) < 1e-4, `lng ${lng} -> ${wlng}`);
     assert.ok(Math.abs(wlat - lat) < 1e-4, `lat ${lat} -> ${wlat}`);
   }
+});
+
+/* UMD 浏览器分支: 生产里页面以 <script> 加载, 无 module/exports ——
+   挂到 self/window。node 直接 require 只走 module 分支, 这里补主路径。 */
+
+test("浏览器挂载: 无 module 时挂到 self (window.GCJ02)", () => {
+  const src = readFileSync(path.join(
+    path.dirname(fileURLToPath(import.meta.url)), "..", "..",
+    "app", "static", "gcj02.js"), "utf8");
+  const fakeSelf = {};
+  new Function("module", "exports", "self", src)(undefined, undefined, fakeSelf);
+  assert.equal(typeof fakeSelf.GCJ02.wgs84ToGcj02, "function");
+  assert.deepEqual(fakeSelf.GCJ02.wgs84ToGcj02(116.3975, 39.9089),
+                   G.wgs84ToGcj02(116.3975, 39.9089));
+});
+
+test("self 也未定义 (Worker 等): 兜底 this (= globalThis) 挂载", () => {
+  const src = readFileSync(path.join(
+    path.dirname(fileURLToPath(import.meta.url)), "..", "..",
+    "app", "static", "gcj02.js"), "utf8");
+  new Function("module", "exports", "self", src)(undefined, undefined, undefined);
+  assert.equal(typeof globalThis.GCJ02.wgs84ToGcj02, "function");
+  delete globalThis.GCJ02;   // 别污染后续用例
 });

@@ -2,6 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const TrackUtil = require("../../app/static/trackutil.js");
@@ -331,4 +334,60 @@ test("lngLatToTile: 纬度超出墨卡托范围被钳制, 不产生 NaN", () => 
   const south = TrackUtil.lngLatToTile(116, -99, 10);
   assert.ok(north.every(Number.isFinite) && north[1] <= 1);
   assert.ok(south.every(Number.isFinite) && south[1] >= 1022);
+});
+
+/* UMD 浏览器分支 (生产 <script> 加载路径): 挂 self; self 缺失时兜底 this */
+
+test("浏览器挂载: 无 module 时挂到 self (window.TrackUtil)", () => {
+  const src = readFileSync(path.join(
+    path.dirname(fileURLToPath(import.meta.url)), "..", "..",
+    "app", "static", "trackutil.js"), "utf8");
+  const fakeSelf = {};
+  new Function("module", "exports", "self", src)(undefined, undefined, fakeSelf);
+  assert.equal(typeof fakeSelf.TrackUtil.splitGaps, "function");
+  assert.equal(fakeSelf.TrackUtil.splitGaps(track(50)).length, 1);
+});
+
+test("self 也未定义 (Worker 等): 兜底 this (= globalThis) 挂载", () => {
+  const src = readFileSync(path.join(
+    path.dirname(fileURLToPath(import.meta.url)), "..", "..",
+    "app", "static", "trackutil.js"), "utf8");
+  new Function("module", "exports", "self", src)(undefined, undefined, undefined);
+  assert.equal(typeof globalThis.TrackUtil.splitGaps, "function");
+  delete globalThis.TrackUtil;
+});
+
+test("pathPointAt 退化输入: 单点路径原样返回", () => {
+  assert.deepEqual(TrackUtil.pathPointAt([[113.9, 22.6]], [0], 0.5), [113.9, 22.6]);
+});
+
+/* ------- 防御分支: 退化输入 (缺纬度/坏时间戳/零长段) 不出 NaN 不炸 -------
+   splitGaps 里另有两处兜底 (lens 空时 med=0 / 全孤立点原样返回) 在
+   正常输入下不可达 (长度守卫保证 lens 非空; 采样段两端必成对存活),
+   留作安全网, 覆盖率容忍这两支。 */
+test("ptDistKm: 纬度 0 (赤道) 走 || 0 兜底, 结果正常", () => {
+  const km = TrackUtil.ptDistKm([114, 0], [114.01, 0]);
+  assert.ok(Number.isFinite(km) && km > 1 && km < 1.5);   // 0.01° ≈ 1.1km
+});
+
+test("gapsBetween: 端点纬度 0 走 || 0 兜底, 仍量得出跳变", () => {
+  const gaps = TrackUtil.gapsBetween([[[114, 0]], [[114.01, 0]]]);
+  assert.equal(gaps.length, 1);
+  assert.ok(gaps[0].km > 1 && gaps[0].km < 1.5);
+});
+
+test("meanPowerW: 时间戳持平/回退的段跳过 (不贡献平均)", () => {
+  const w = TrackUtil.meanPowerW(
+    [[0, 0, 0, 1000], [0, 0, 0, 1000], [0, 0, 0, 1000]], [0, 0, 5]);
+  assert.equal(w, 1000);   // 只有 dt=5 的第 2 段计入
+});
+
+test("animAt: 节拍含 NaN (坏时间戳) 不炸, frac 兜底 0", () => {
+  assert.deepEqual(TrackUtil.animAt([0, NaN, 5], 2.5, 5), { idx: 0, frac: 0 });
+});
+
+test("pathPointAt: 零长段 (累计里程重复) 分母兜底 1, 不出 NaN", () => {
+  const p = TrackUtil.pathPointAt(
+    [[114, 22], [114.001, 22], [114.002, 22]], [0, 0, 0.003], 0);
+  assert.deepEqual(p, [114, 22]);   // q=0 命中 cum 相邻相等的段
 });

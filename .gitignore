@@ -9,3 +9,4 @@ data/
 uv.lock
 .coverage
 node_modules
+coverage/
