@@ -809,6 +809,15 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "const speedZoom =", "followZoomOn", "zoomEaseStart(zoom)",
                  "tripMap.setZoom(zoomShown, true)",
                  'addEventListener("wheel", zoomTakeover,',
+                 # 手动视角锁定跨行程保持: 接管即锁定 (zoomUserLock), 换行程/
+                 # 重播保持用户档位只跟位置不再自动变焦; 播放条 +/- 基线按钮
+                 # 恢复自动 (锁定解除)
+                 "let zoomUserLock = false, zoomUserZoom = 0;",
+                 "zoomUserLock = true;                 // 手动接管 = 视角锁定, 换行程也保持",
+                 'tripMap.on("zoomend", () => {',
+                 "if (zoomUserLock && anim && !anim.finished) zoomUserZoom = tripMap.getZoom();",
+                 "if (zoomUserLock) {\n    const z = Math.round(zoomUserZoom || tripMap.getZoom());",
+                 "zoomUserLock = false;                    // 手动锁定解除, 恢复随速变焦",
                  # 堵车平滑 + 提前量: 滑窗开在播放时间轴上 (过去 2s + 预看 5s,
                  # 均匀 8 采样插值车速取均值) —— 领先当前车速 ~1.5s, 减速刚起势
                  # 就开始拉近 (不等停稳才动); 窗口随播放位置现算无状态, 开播/
