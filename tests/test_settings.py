@@ -40,7 +40,7 @@ def test_settings_save_amap_and_map_config_reflects(auth, monkeypatch):
     assert r.json()["amap"]["key_masked"] == "abcd****5678"
     assert auth.get("/tesla/map/api/config").json() == {
         "amap_key": "abcd1234efgh5678", "security_code": "9182ac3b",
-        "style": "amap://styles/normal"}
+        "style": "amap://styles/darkblue"}
     # 留空 = 保持现值
     auth.post("/tesla/api/settings", json={"amap_key": "", "amap_security_code": ""})
     assert auth.get("/tesla/map/api/config").json()["amap_key"] == "abcd1234efgh5678"
@@ -49,11 +49,12 @@ def test_settings_save_amap_and_map_config_reflects(auth, monkeypatch):
 def test_settings_save_map_style_and_validation(auth, monkeypatch):
     """地图样式: 预设/自定义 ID 存得下, map config 即时反映; 留空保持; 坏格式 400 不落库。
 
-    幻影黑 (dark) 官方样式按设计不带地名标注, 默认标准图; 想要深色带地名
-    在高德个性化地图编辑器自建样式后贴 ID (amap://styles/<ID>)。"""
+    默认极夜蓝 (darkblue): 深色官方样式中唯一带地名标注的; 幻影黑 (dark)
+    按设计不带地名, 想要深色带地名要么用极夜蓝, 要么在高德个性化地图
+    编辑器自建样式后贴 ID (amap://styles/<ID>)。"""
     monkeypatch.delenv("AMAP_STYLE", raising=False)
     assert auth.get("/tesla/api/settings").json()["amap"]["style"] \
-        == "amap://styles/normal"
+        == "amap://styles/darkblue"
     r = auth.post("/tesla/api/settings", json={"amap_style": "amap://styles/light"})
     assert r.json()["amap"]["style"] == "amap://styles/light"
     assert auth.get("/tesla/map/api/config").json()["style"] == "amap://styles/light"
@@ -88,7 +89,7 @@ def test_settings_tmdb_rollback_also_reverts_style(auth, monkeypatch):
                   json={"tmdb_host": "10.0.0.2", "amap_style": "amap://styles/grey"})
     assert r.status_code == 400
     assert auth.get("/tesla/api/settings").json()["amap"]["style"] \
-        == "amap://styles/normal"   # 样式没被半路写入
+        == "amap://styles/darkblue"   # 样式没被半路写入
 
 
 def test_settings_save_tmdb_rebuilds_only_on_change(  # pylint: disable=redefined-outer-name
@@ -158,9 +159,10 @@ def test_settings_page_and_nav_entries(auth):
     for frag in ['id="tm-host"', 'id="tm-save"', "保存并连接", 'id="amap-key"',
                  'id="drv-list"', "/tesla/api/settings", "/tesla/api/drivers",
                  'id="toast"', "设为默认", "留空 = 保持现值",
-                 # 地图样式选择 (官方预设 + 自定义 ID, 默认标准图)
-                 'id="amap-style"', 'value="amap://styles/normal"',
-                 '幻影黑 (无地名)', 'id="amap-style-custom"', "amap_style:"]:
+                 # 地图样式选择 (深色默认极夜蓝: 官方深色里唯一带地名的)
+                 'id="amap-style"', 'value="amap://styles/darkblue"',
+                 'value="amap://styles/normal"', '极夜蓝', '幻影黑 (纯黑 · 无地名)',
+                 'id="amap-style-custom"', "amap_style:"]:
         assert frag in html, f"设置页缺少片段 {frag}"
     for page in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
         assert '<a href="/tesla/settings">设置</a>' in auth.get(page).text, page

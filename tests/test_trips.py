@@ -815,8 +815,13 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "ZOOM_WIN_MS = 8000", "zoomWin.push", "zoomWin = []",
                  "Math.min(15.3, 15.3 - v / 46)", "Math.max(12.5,",
                  "(km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11)",
-                 # 地图样式走 config (设置页可换)
+                 # 地图样式走 config (设置页可换), 兜底极夜蓝 (深色带地名)
                  "mapStyle: amapStyle",
+                 'let amapStyle = "amap://styles/darkblue"',
+                 # 播放动画期间禁止熄屏 (Wake Lock): 开播/重播/继续播申请,
+                 # 暂停/播完/关弹层释放, 切后台自动释放回前台重申请
+                 'if (!("wakeLock" in navigator)) return;',
+                 "holdScreenAwake()", "releaseScreenAwake()",
 
                  "postGapFill(it, g, route)", "gcj02ToWgs84"]:
         assert frag in html, f"行程页缺少片段 {frag}"

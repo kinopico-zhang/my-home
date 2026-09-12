@@ -164,5 +164,5 @@ def test_live_page_skeleton(auth):
     assert '<span class="n">' in html
     assert "cur && cur.driving" in html   # 地图异步就位后补画车点/轨迹
     # 地图样式走 config (设置页可换), 不再写死幻影黑 (无地名标注)
-    assert 'mapStyle: cfg.style || "amap://styles/normal"' in html
+    assert 'mapStyle: cfg.style || "amap://styles/darkblue"' in html
     assert "s.soc > 50" in html and "#32d74b" in html

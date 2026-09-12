@@ -17,10 +17,11 @@ def test_config_empty_without_env(auth, monkeypatch):
     monkeypatch.delenv("AMAP_KEY", raising=False)
     monkeypatch.delenv("AMAP_SECURITY_CODE", raising=False)
     monkeypatch.delenv("AMAP_STYLE", raising=False)
-    # 样式默认标准图: 幻影黑 (dark) 官方样式按设计不带地名标注
+    # 样式默认极夜蓝: 深色官方样式中唯一带地名标注的 (dark/midnight 运行时
+    # 把标注层藏掉, JSAPI 无反向强开开关)
     assert auth.get("/tesla/map/api/config").json() == \
         {"amap_key": None, "security_code": None,
-         "style": "amap://styles/normal"}
+         "style": "amap://styles/darkblue"}
 
 
 def test_config_returns_env_values(auth, monkeypatch):
@@ -256,7 +257,7 @@ def test_map_page_time_menu_in_filters_row(auth):
     assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
     assert ".filters::-webkit-scrollbar { display: none; }" in html
     # 地图样式走 config (设置页可换), 不再写死幻影黑
-    assert 'mapStyle: cfg.style ||' in html
+    assert 'mapStyle: cfg.style || "amap://styles/darkblue"' in html
 
 
 # ---------------------------------------------------------------- 视野内高精度轨迹

@@ -1376,7 +1376,7 @@ $("#gp-list").addEventListener("keydown", e => {
 
 /* ============================ 轨迹弹层 ============================ */
 let amapLoading = null;             // Promise<true>: 高德脚本就绪
-let amapStyle = "amap://styles/normal";   // 地图样式 (config 下发, 设置页可换)
+let amapStyle = "amap://styles/darkblue";   // 地图样式 (config 下发, 设置页可换)
 let tripMap = null;                 // 弹层内地图实例, 复用不销毁
 let openSeq = 0;                    // 连续点开多条时, 只认最后一次
 let curKey = null;                  // 弹层当前行程 key (单条 "2200" / 合并 "1836-1839"), 地址栏同步用
@@ -1430,10 +1430,32 @@ let animRaf = 0;
 let anim = null;            // 当前播放会话 (playTrack 创建, 控制条/收尾引用)
 let curSess = null;         // 当前轨迹会话: 播放结束后仍存活, 供异步路径回调判定
 
+/* ---------- 播放动画期间保持亮屏 ----------
+   iPhone 全屏 App 看几十秒到几分钟的回放, 中途自动锁屏很烦。Wake Lock API
+   (iOS 16.4+) 开播/继续播时申请, 暂停/播完/换行程/关弹层释放; 页面切后台
+   浏览器会自动释放锁, 回前台若还在播重新申请。不支持时静默跳过。 */
+let wakeLock = null;
+function holdScreenAwake() {
+  if (!("wakeLock" in navigator)) return;
+  if (wakeLock && !wakeLock.released) return;
+  navigator.wakeLock.request("screen").then(l => {
+    wakeLock = l;
+    l.addEventListener("release", () => { if (wakeLock === l) wakeLock = null; });
+  }).catch(() => {});       // 被拒 (低电量等) 静默: 不影响播放本身
+}
+function releaseScreenAwake() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && anim && !anim.paused && !anim.finished)
+    holdScreenAwake();      // 回前台且还在播: 锁已被系统释放, 重新申请
+});
+
 function stopAnim() {
   if (animRaf) cancelAnimationFrame(animRaf);
   animRaf = 0;
   anim = null;
+  releaseScreenAwake();     // 关弹层/换行程都走这, 一并允许熄屏
   $("#playbar").hidden = true;
 }
 
@@ -1826,6 +1848,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       s.finished = true;
       if (animRaf) cancelAnimationFrame(animRaf);
       animRaf = 0;
+      releaseScreenAwake();               // 播完收尾, 允许熄屏
       tripMsg(null, false);
       followZoomOn = false;              // 播放结束, 随速变焦停用 (重播恢复)
       tripMap.remove([progress, head]);
@@ -1852,6 +1875,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       $("#sh-spd-lb").textContent = "车速";
       $("#sh-pw-lb").textContent = "功耗";
       resetPlaybar();
+      holdScreenAwake();                  // 重播继续保活
       frameLoop();
     },
   };
@@ -1942,6 +1966,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
   pbSpeed.textContent = "1×";
   tripMap.setCenter(path[0], true);            // 中心与档位都直接到位 (开场不缓动)
   zoomEaseStart(zoom);
+  holdScreenAwake();                           // 开播保活 (禁止熄屏)
   frameLoop();
   return s;
 }
@@ -2399,6 +2424,8 @@ pbToggle.addEventListener("click", () => {
   anim.paused = !anim.paused;
   pbToggle.innerHTML = anim.paused ? ICON_PLAY : ICON_PAUSE;
   pbToggle.setAttribute("aria-label", anim.paused ? "播放" : "暂停");
+  if (anim.paused) releaseScreenAwake();   // 暂停允许熄屏, 继续播重新保活
+  else holdScreenAwake();
 });
 pbSeek.addEventListener("input", () => {         // 拖动进度: 立即生效 (暂停/播完都生效)
   if (!anim) return;
