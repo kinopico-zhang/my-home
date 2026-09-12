@@ -1595,9 +1595,12 @@ function splitSegments(pts, starts) {
   return segs.length ? segs : TrackUtil.splitGaps(pts);
 }
 
-/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。速度先过 8 秒滑动
-   窗口取均值再喂曲线 —— 堵车走走停停时瞬时速度高频打摆, 直接喂视角跟着
-   频繁拉近拉远, 看得人头晕。窗口均值连续值 (46km/h 一档, 12.5~15.3 夹紧)
+/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。速度先过滑动窗取
+   均值再喂曲线 —— 堵车走走停停时瞬时速度高频打摆, 直接喂视角跟着频繁
+   拉近拉远, 看得人头晕。窗口开在播放时间轴上 (过去 2s + 预看 5s, 倍速下
+   观感不漂移), 均值天然领先当前车速约 1.5s —— 减速刚起势视角就开始拉近,
+   不等车停稳了才反应 (旧版墙钟回看 8s, 慢下来后还要拖好几秒才动)。
+   窗口均值连续值 (46km/h 一档, 12.5~15.3 夹紧)
    目标档取整, 带 ±0.6 迟滞带 —— 档位边界的速度抖动 (等灯起步) 不至于来回
    打摆; 实际档位每帧指数缓动逼近目标 (帧率无关)。缓动必须自己做: AMap 的
    动画 setZoom 会被逐帧 setCenter 打成爬行 (实测 3s 只挪 0.1 档), 而立即档
@@ -1610,8 +1613,10 @@ try {
   zoomBias = Math.max(-2.5, Math.min(2.5,
     Math.round((parseFloat(localStorage.getItem("trip-zoom-bias")) || 0) * 2) / 2));
 } catch { /* 无痕模式等 localStorage 不可用 → 当 0 */ }
-let zoomWin = [];   // 最近 ZOOM_WIN_MS 的车速采样 (墙钟时间): 均值喂随速变焦
-const ZOOM_WIN_MS = 8000;
+/* 滑动窗 (播放时间轴): 过去 ZOOM_PAST_MS + 预看 ZOOM_FUT_MS, 均匀
+   ZOOM_SAMPLES 个采样点的插值车速取均值。窗口随播放位置现算、无状态
+   —— 开播/拖进度天然干净, 不用重攒。 */
+const ZOOM_PAST_MS = 2000, ZOOM_FUT_MS = 5000, ZOOM_SAMPLES = 8;
 const speedZoom = v => Math.max(10.5, Math.min(18.5,
   Math.max(12.5, Math.min(15.3, 15.3 - v / 46)) + zoomBias));
 
@@ -1620,7 +1625,6 @@ const speedZoom = v => Math.max(10.5, Math.min(18.5,
    1~2s 自动吸附到最近整数, 开场静止期最容易踩中。 */
 function zoomEaseStart(zoom) {
   zoom = Math.round(zoom);
-  zoomWin = [];                // 开场直接落档: 平滑窗重攒, 不拖上一轮的速度
   followZoomOn = true;
   followZoomCur = zoom;
   tripMap.setZoom(zoom, true);
@@ -1764,8 +1768,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
     finished: false, alive: true, lastIdx: -1, lastFrac: -1, drawn: 0,
     lineBase: null, gapDrawAt: 0,   // 白线末次重建快照 / 断档步内延伸节流
     more, waiting: false, lastV: 0,   // more/waiting: 流式状态; lastV: 当前车速
-    /* 随速变焦缓动: 每帧推进 (暂停也要把当前滑变走完, 不然卡在半路);
-       车速用 apply 缓存的 lastV —— (idx,frac) 没变时车速也不会变 */
+    /* 随速变焦缓动: 每帧推进 (暂停也要把当前滑变走完, 不然卡在半路) */
     zoomTick() {
       if (!followZoomOn) return;              // 手动缩放即停 (重播恢复)
       // dt 用 performance.now() 差 (不回退), 上限 500ms: 低帧率下钳 100ms
@@ -1773,11 +1776,18 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       const now = performance.now();
       const dt = Math.min(Math.max(now - zoomLastT, 0), 500);
       zoomLastT = now;
-      zoomWin.push({ t: now, v: s.lastV });   // 8 秒滑动窗均值: 堵车不打摆
-      while (zoomWin.length && now - zoomWin[0].t > ZOOM_WIN_MS) zoomWin.shift();
+      // 滑窗均值 (播放时间轴, 过去2s+预看5s): 领先当前车速 ~1.5s, 减速
+      // 刚起势就开始拉近; animAt 自带钳制, 窗口两端出界取首/尾车速
       let vSum = 0;
-      for (const p of zoomWin) vSum += p.v;
-      const zt = speedZoom(vSum / zoomWin.length);   // 慢速拉近 / 高速拉远
+      for (let k = 0; k < ZOOM_SAMPLES; k++) {
+        const t = s.playT - ZOOM_PAST_MS
+          + (ZOOM_PAST_MS + ZOOM_FUT_MS) * k / (ZOOM_SAMPLES - 1);
+        const p = TrackUtil.animAt(vt, t, dur);
+        const va = pts[p.idx][2] || 0,
+              vb = p.idx + 1 < N ? (pts[p.idx + 1][2] || 0) : va;
+        vSum += va + (vb - va) * p.frac;
+      }
+      const zt = speedZoom(vSum / ZOOM_SAMPLES);   // 慢速拉近 / 高速拉远
       if (Math.abs(zt - followZoomCur) > 0.6)   // 出迟滞带才换目标档
         followZoomCur = Math.round(zt);
       // 指数趋近 + 速率上限 (1.5 档/s): 低帧率下单帧也不会跳档 (纯指数在
@@ -1801,7 +1811,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       head.setCenter(pos);
       head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(v)] });
       tripMap.setCenter(pos, true);            // 视角紧贴头部 (immediately=不排队动画)
-      s.lastV = v;                             // 随速变焦的目标速度 (zoomTick 用)
+      s.lastV = v;                             // 当前车速 (视角基线按钮重锚用)
       if (idxNew) {
         if (idx < s.drawn) s.drawn = 0;         // 拖进度条回退: 白线从头重建
         if (idx - s.drawn >= growStep || idx === N - 1) {
@@ -1823,8 +1833,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
     },
     seek(frac) {                // 0..1: 拖进度条/外部跳转统一入口, 立即生效
       s.playT = Math.min(Math.max(frac, 0), 1) * dur;
-      zoomWin = [];                            // 跳到新位置: 平滑窗重攒
-      const p = TrackUtil.animAt(vt, s.playT, dur);
+      const p = TrackUtil.animAt(vt, s.playT, dur);   // 滑窗无状态, 跳完即就位
       s.apply(p.idx, p.frac);
     },
     /* 流式追加一段 (见 loadMergedStream): 索引只增不改, 速度线/断档/里程
