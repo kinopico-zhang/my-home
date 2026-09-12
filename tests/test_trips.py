@@ -900,10 +900,10 @@ def test_trips_page_live_energy_and_standalone(auth):
         "ecum.push(ecum[i - 1] + enerStep(i));",
         # setLive: 两格都随模型走 (流式追加段也延伸权重)
         "const kwhNow = it.kwh * eNow / ecum[N - 1];",
-        'num(kwhNow / kmNow * 1000, 0) + "<small>Wh/km</small>"',
+        'num(kwhNow / kmNow * 1000, 0) + "</span><small>Wh/km</small>"',
         # 收尾 setOfficial 定格回整体值
-        'if (it.kwh != null) $("#sh-kwh").innerHTML = num(it.kwh)',
-        '$("#sh-avg").innerHTML = num(it.wh_per_km, 0)',
+        'if (it.kwh != null) $("#sh-kwh").innerHTML = \'<span class="n">\' + num(it.kwh)',
+        '$("#sh-avg").innerHTML = \'<span class="n">\' + num(it.wh_per_km, 0)',
         # 桌面图标全屏: trips 页曾缺 standalone meta, 从其他页切过来会被
         # iOS 弹回 Safari 露地址栏 (其余页都有, 本页补齐)
         'name="apple-mobile-web-app-capable" content="yes"',
@@ -921,6 +921,27 @@ def test_trips_page_playback_pacing_and_nowrap(auth):
         assert frag in html, f"行程页缺少 {frag}"
     # 时长紧凑格式 (两个页面统一)
     assert "`${h}时${m ? m + \"分\" : \"\"}`" in html
+
+
+def test_trips_page_playback_fixed_width_cells(auth):
+    """播放统计格数字定宽: 位数变化 (0.0→12.3 / 0:00→1:02:45 / 回收 -12.3)
+    不许在横滑条里挤动邻居格 —— 数字进 ch 定宽盒右对齐, setLive 每帧重写、
+    setOfficial/fillSheetHeader 定格共三处写法都要带盒 (漏一处会在开弹层或
+    收尾时跳一次宽度)。"""
+    html = auth.get("/tesla/trips").text
+    for frag in [
+        ".sh-cell .val .n { display: inline-block; text-align: right; }",
+        "#sh-km .n, #sh-kwh .n { min-width: 4.5ch; }",
+        "#sh-dur .n { min-width: 7ch; }",
+        "#sh-pw .n { min-width: 5ch; }",          # 可负 (动能回收)
+        '#sh-km").innerHTML = \'<span class="n">\' + (cum[idx] + stepKm * frac).toFixed(1)',
+        '#sh-dur").innerHTML = \'<span class="n">\' + fmtDurLive(',
+        '#sh-spd").innerHTML = \'<span class="n">\' + Math.round(v)',
+        '#sh-pw").innerHTML = \'<span class="n">\' + (pw == null',
+    ]:
+        assert frag in html, f"行程页缺少定宽盒片段 {frag}"
+    # 每帧重写的六格无一漏网 (含 kWh/Wh-per-km 模型两格)
+    assert html.count("</span><small>") >= 8, "统计格写法有未进定宽盒的"
 
 
 def test_trips_page_has_url_deeplink(auth):
@@ -954,7 +975,9 @@ def test_trips_page_style_block_balanced(auth):
     吞进未闭合的规则 (ct-drv 接缝曾丢 }, 弹层/底栏/选中态全体裸奔,
     且控制台无任何报错, 只有页面悄悄变丑)。"""
     html = auth.get("/tesla/trips").text
-    style = re.search(r"<style>(.*?)</style>", html, re.S).group(1)
+    m = re.search(r"<style>(.*?)</style>", html, re.S)
+    assert m is not None, "页面缺 <style> 块"
+    style = m.group(1)
     assert style.count("{") == style.count("}"), "样式块花括号不配平, 后半规则全被吞"
 
 
