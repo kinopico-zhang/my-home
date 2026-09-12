@@ -809,10 +809,13 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "const speedZoom =", "followZoomOn", "zoomEaseStart(zoom)",
                  "tripMap.setZoom(zoomShown, true)",
                  'addEventListener("wheel", zoomTakeover,',
-                 # 堵车平滑: 8 秒滑动窗取速度均值再喂变焦曲线 (走走停停不打摆),
-                 # 开场/重播/拖进度都重攒窗口; 曲线基线 12.5~15.3 (原 13.5~16.3
-                 # 视角过近, 整体拉远一档)
-                 "ZOOM_WIN_MS = 8000", "zoomWin.push", "zoomWin = []",
+                 # 堵车平滑 + 提前量: 滑窗开在播放时间轴上 (过去 2s + 预看 5s,
+                 # 均匀 8 采样插值车速取均值) —— 领先当前车速 ~1.5s, 减速刚起势
+                 # 就开始拉近 (不等停稳才动); 窗口随播放位置现算无状态, 开播/
+                 # 拖进度天然干净; 曲线基线 12.5~15.3 (原 13.5~16.3 过近, 拉远一档)
+                 "ZOOM_PAST_MS = 2000", "ZOOM_FUT_MS = 5000",
+                 "TrackUtil.animAt(vt, t, dur)",
+                 "speedZoom(vSum / ZOOM_SAMPLES)",
                  "Math.min(15.3, 15.3 - v / 46)", "Math.max(12.5,",
                  "(km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11)",
                  # 地图样式走 config (设置页可换), 兜底幻影黑 (配深色 App)
@@ -833,6 +836,9 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
 
                  "postGapFill(it, g, route)", "gcj02ToWgs84"]:
         assert frag in html, f"行程页缺少片段 {frag}"
+    # 滑窗已无状态化: 旧 zoomWin 残留任何一处引用都会让整页 JS 抛
+    # ReferenceError (严格模式), 播放直接挂
+    assert "zoomWin" not in html and "ZOOM_WIN" not in html
 
 
 # ---------------------------------------------------------------- 页面
