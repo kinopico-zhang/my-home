@@ -159,5 +159,8 @@ def test_live_page_skeleton(auth):
     assert "信号可能中断" in html
     assert "地图暂不可用" in html
     assert "car-dot" in html
+    # 实时数字定宽盒: 位数变化 (9→105 / 59:59→1:00:00) 不推动布局
+    assert "min-width: 3ch" in html and "min-width: 7ch" in html
+    assert '<span class="n">' in html
     assert "cur && cur.driving" in html   # 地图异步就位后补画车点/轨迹
     assert "s.soc > 50" in html and "#32d74b" in html

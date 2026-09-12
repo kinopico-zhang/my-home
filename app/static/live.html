@@ -137,6 +137,15 @@ main {
   font-variant-numeric: tabular-nums; }
 .hero-side .sub { font-size: 12px; color: var(--ink-2);
   font-variant-numeric: tabular-nums; }
+/* 实时数字位数变化 (9→62→105 / 59:59→1:00:00 / 9%→100%) 不许推动布局:
+   tabular 数字 + 定宽盒 (ch = 一个数字宽), 数字在盒内右对齐, 变长只向左长 */
+#lv-speed { display: inline-block; min-width: 3ch; text-align: right; }
+#lv-elapsed { min-width: 7ch; }
+#lv-soc { display: inline-block; min-width: 5ch; text-align: right; }   /* % 不受 tabular 管, 100% ≈ 4.7ch */
+#lv-range { display: inline-block; min-width: 3ch; text-align: right; }
+.tile .val .n, #lv-sub .n { display: inline-block; text-align: right; }
+#lv-km .n, #lv-kwh .n { min-width: 4.5ch; }
+#lv-avg .n, #lv-vmax .n, #lv-sub .n { min-width: 3ch; }
 
 .batt-card {
   background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px;
@@ -328,16 +337,16 @@ function fmtElapsed(sec) {
   const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
   return h ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
 }
-function setVal(sel, val, unit) {   // 数值 + 单位 (null → "–")
-  $(sel).innerHTML = val == null ? "–"
-    : (unit ? val + "<small>" + unit + "</small>" : val);
+function setVal(sel, val, unit) {   // 数字进定宽盒 (位数变化不挤单位), null → "–"
+  $(sel).innerHTML = '<span class="n">' + (val == null ? "–" : val) + "</span>"
+    + (unit ? "<small>" + unit + "</small>" : "");
 }
 
 function render(s) {
   $("#lv-speed").textContent = s.speed == null ? "–" : Math.round(s.speed);
-  $("#lv-sub").textContent =
+  $("#lv-sub").innerHTML =
     "出发 " + (s.start ? s.start.slice(11) : "–") +
-    " · 最高 " + (s.speed_max == null ? "–" : Math.round(s.speed_max)) + " km/h";
+    ' · 最高 <span class="n">' + (s.speed_max == null ? "–" : Math.round(s.speed_max)) + "</span> km/h";
   if (s.soc != null) {
     $("#lv-soc").textContent = s.soc + "%";
     const fill = $("#batt-fill");
