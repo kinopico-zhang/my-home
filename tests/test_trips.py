@@ -917,7 +917,11 @@ def test_trips_page_playback_pacing_and_nowrap(auth):
     html = auth.get("/tesla/trips").text
     for frag in ["Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300)",
                  "PB_SPEEDS = [0.5, 1, 2, 4, 8]",
-                 "white-space: nowrap"]:
+                 "white-space: nowrap",
+                 # 进度条是播放条里唯一可缩项: flex 项 <input> 默认 min-width:auto
+                 # = 控件内在宽 (Chromium 129px / Safari 更宽), 不压 0 的话
+                 # 窄屏会把 +/− 视角钮挤出屏幕右缘 (E2E repro54)
+                 "flex: 1; min-width: 0;"]:
         assert frag in html, f"行程页缺少 {frag}"
     # 时长紧凑格式 (两个页面统一)
     assert "`${h}时${m ? m + \"分\" : \"\"}`" in html
