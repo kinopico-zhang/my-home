@@ -146,6 +146,7 @@ def test_live_page_skeleton(auth):
     """页面骨架: 车速/时长/电量格, 状态轮询 + 轨迹刷新 (复用行程接口),
     空态 / 结束态深链 / 信号中断提示 / 高德失败降级。"""
     html = auth.get("/tesla/live").text
+    html += auth.get("/tesla/static/live.js?v=1").text
     assert "当前驾驶 · My Tesla" in html
     for sel in ("lv-speed", "lv-elapsed", "lv-soc", "lv-range", "lv-km",
                 "lv-kwh", "lv-avg", "lv-vmax"):

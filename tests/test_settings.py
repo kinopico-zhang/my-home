@@ -155,6 +155,7 @@ def test_drivers_crud_and_single_default(auth):
 def test_settings_page_and_nav_entries(auth):
     """设置页挂全 (表单/驾驶员/轻提示); 三个页面品牌菜单都有设置入口。"""
     html = auth.get("/tesla/settings").text
+    html += auth.get("/tesla/static/settings.js?v=1").text
     for frag in ['id="tm-host"', 'id="tm-save"', "保存并连接", 'id="amap-key"',
                  'id="drv-list"', "/tesla/api/settings", "/tesla/api/drivers",
                  'id="toast"', "设为默认", "留空 = 保持现值",
