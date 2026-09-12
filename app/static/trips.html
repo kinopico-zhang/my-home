@@ -1475,13 +1475,15 @@ try {
 const speedZoom = v => Math.max(10.5, Math.min(18.5,
   Math.max(13.5, Math.min(16.3, 16.3 - v / 46)) + zoomBias));
 
-/* 开播/重播: 视角中心先到位, 档位从地图当前值开始缓动到初始档 ——
-   不硬切也不依赖 AMap 动画 (会被逐帧 setCenter 打断), 换轨迹/收尾拉远
-   后重播都是平滑飞入 */
+/* 开播/重播: 视角中心与档位都直接到位, 开场不做缓动过渡 (只限最开始,
+   之后速度档变化仍逐帧缓动)。档位取整 —— AMap 对小数档会在设置后
+   1~2s 自动吸附到最近整数, 开场静止期最容易踩中。 */
 function zoomEaseStart(zoom) {
+  zoom = Math.round(zoom);
   followZoomOn = true;
   followZoomCur = zoom;
-  zoomShown = zoomApplied = tripMap.getZoom();
+  tripMap.setZoom(zoom, true);
+  zoomShown = zoomApplied = zoom;
   zoomLastT = performance.now();
 }
 
@@ -1725,7 +1727,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
       head.setCenter(path[0]);
       head.setOptions({ fillColor: TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(pts[0][2] || 0)] });
       tripMap.add([progress, head]);
-      tripMap.setCenter(path[0], true);        // 中心先到位, 档位从收尾拉远处缓动回来
+      tripMap.setCenter(path[0], true);        // 中心与档位都直接到位 (开场不缓动)
       zoomEaseStart(zoom);
       $("#sh-spd-lb").textContent = "车速";
       $("#sh-pw-lb").textContent = "功耗";
@@ -1818,7 +1820,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
 
   resetPlaybar();
   pbSpeed.textContent = "1×";
-  tripMap.setCenter(path[0], true);            // 中心先到位, 档位从上一视角缓动飞入
+  tripMap.setCenter(path[0], true);            // 中心与档位都直接到位 (开场不缓动)
   zoomEaseStart(zoom);
   frameLoop();
   return s;

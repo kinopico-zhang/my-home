@@ -783,6 +783,8 @@ def test_trips_page_has_playbar_and_single_column(auth):
                  # 视角基线: 播放条上加减按钮, 随速变焦整条平移
                  'id="pb-zout"', 'id="pb-zin"', 'id="pb-zval"',
                  "bumpZoomBias", "trip-zoom-bias",
+                 # 开场视角直接到位 (不缓动), 档位取整避开 AMap 小数吸附
+                 "zoom = Math.round(zoom);", "tripMap.setZoom(zoom, true)",
                  'id="list"', "最高车速"]:
         assert frag in html, f"行程页缺少 {frag}"
     assert "spd-legend" not in html   # 速度图例已按需求移除
