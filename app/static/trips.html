@@ -1682,7 +1682,9 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
   const speedLineOverlays = slice => TrackUtil.speedLines(slice).map(b => new AMap.Polyline({
     path: b.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1])),
     strokeColor: b.color, strokeOpacity: 0.28, strokeWeight: 4,
-    lineJoin: "round", zIndex: 50,
+    // 换色处两段共享端点, 但 lineCap 默认 butt 在转角各留一个楔形缺口
+    // (定格后的速度色轨迹一节节断开) —— 圆头端帽补上, 段间无缝
+    lineJoin: "round", lineCap: "round", zIndex: 50,
   }));
   const segs = splitSegments(pts, it.seg_starts);
   const bgLines = [];
@@ -1925,7 +1927,8 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
     const line = new AMap.Polyline({
       path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
       strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
-      lineJoin: "round", zIndex: 50,
+      // 圆头端帽: 虚线与两侧实线在断档岸边转角处衔接无缝 (同速度色线)
+      lineJoin: "round", lineCap: "round", zIndex: 50,
     });
     allLines.push(line);
     tripMap.add(line);

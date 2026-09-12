@@ -818,6 +818,9 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "speedZoom(vSum / ZOOM_SAMPLES)",
                  "Math.min(15.3, 15.3 - v / 46)", "Math.max(12.5,",
                  "(km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11)",
+                 # 速度色分段线/断档虚线圆头端帽: 换色处两段共享端点, butt 端帽
+                 # 在转角各留楔形缺口 (定格后一节节断开), 圆头补上段间无缝
+                 'lineJoin: "round", lineCap: "round", zIndex: 50,',
                  # 地图样式走 config (设置页可换), 兜底幻影黑 (配深色 App)
                  "mapStyle: amapStyle",
                  'let amapStyle = "amap://styles/dark"',
@@ -839,6 +842,8 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
     # 滑窗已无状态化: 旧 zoomWin 残留任何一处引用都会让整页 JS 抛
     # ReferenceError (严格模式), 播放直接挂
     assert "zoomWin" not in html and "ZOOM_WIN" not in html
+    # 圆头端帽三处: 速度色分段线 + 断档虚线 + 白色进度线 (播放线本就有)
+    assert html.count('lineCap: "round"') == 3
 
 
 # ---------------------------------------------------------------- 页面
