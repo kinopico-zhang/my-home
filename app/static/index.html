@@ -361,12 +361,13 @@ main { max-width: 760px; margin: 0 auto; }
 .cs-cost:active { opacity: .55; }
 .cs-cost .pp { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-left: 7px; }
 .cs-cost .edit-ic { margin-left: 5px; font-size: 11px; font-weight: 400; color: var(--ink-3); }
-.cs-cost.none {
-  width: fit-content; font-size: 11.5px; font-weight: 500; color: var(--ink-3);
-  border: 1px dashed rgba(235,235,245,.28); border-radius: 8px; padding: 4px 10px;
+.cs-cost.none {   /* 没记费用: 红色实心 pill 醒目提醒 (记完变回正常费用) */
+  width: fit-content; font-size: 11.5px; font-weight: 650; color: #fff;
+  background: #e5484d; border: 0; border-radius: 999px; padding: 4.5px 11px;
 }
 /* Sheet 费用块 (可点编辑) */
 .st-cost { cursor: pointer; }
+.st-cost .val.red { color: #e5484d; }   /* 没记费用: 红字提醒 */
 .st-cost:active { background: #2a2a2e; }
 .st-cost .lb::after { content: " ✎"; font-size: 10px; color: var(--ink-3); }
 </style>
@@ -1054,7 +1055,7 @@ async function loadDetail(id) {
     <div class="st-grid">
       <div class="st"><div class="lb">充入电量</div><div class="val">${num(d.energy_added)}<small> kWh</small></div></div>
       <div class="st"><div class="lb">表计电量</div><div class="val">${num(d.energy_used)}<small> kWh</small></div></div>
-      <div class="st st-cost" id="st-cost-tile"><div class="lb">费用</div><div class="val" id="st-cost-val">${d.cost != null ? money(d.cost) : "—"}</div></div>
+      <div class="st st-cost" id="st-cost-tile"><div class="lb">费用</div><div class="val${d.cost == null ? " red" : ""}" id="st-cost-val">${d.cost != null ? money(d.cost) : "未记费用"}</div></div>
       <div class="st"><div class="lb">电价</div><div class="val" id="st-price-val">${d.price_per_kwh != null ? "¥" + d.price_per_kwh.toFixed(3) + "<small>/kWh</small>" : "—"}</div></div>
       <div class="st"><div class="lb">时长</div><div class="val">${fmtDur(d.duration_min)}</div></div>
       <div class="st"><div class="lb">电量变化</div><div class="val">${d.start_soc}<small>%</small> → ${d.end_soc}<small>%</small></div></div>
@@ -1209,7 +1210,10 @@ function applyCostUpdate(id, cost, ppk) {
   if (det) { det.cost = cost; det.price_per_kwh = ppk; }
   if (sheetOpen && currentDetailId === id) {
     const cv = $("#st-cost-val"), pv = $("#st-price-val");
-    if (cv) cv.textContent = cost != null ? money(cost) : "—";
+    if (cv) {
+      cv.textContent = cost != null ? money(cost) : "未记费用";
+      cv.classList.toggle("red", cost == null);
+    }
     if (pv) pv.textContent = ppk != null ? "¥" + ppk.toFixed(3) : "—";
   }
   loadSummary().catch(() => {});   // 统计与图表静默刷新

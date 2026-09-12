@@ -887,18 +887,20 @@ def test_trips_page_consumption_and_driver_filter(auth):
     assert 'id="drv-menu" hidden' in html
 
 
-def test_trips_page_live_kwh_toll_warn_and_standalone(auth):
-    """播放中总电耗随里程累积定格; 未估高速费红标 (卡片+弹层); 桌面图标全屏。"""
+def test_trips_page_live_energy_and_standalone(auth):
+    """播放中电耗/平均电耗按能耗模型动态累积; 桌面图标全屏 meta。"""
     html = auth.get("/tesla/trips").text
     for frag in [
-        # 播放中总电耗按里程均摊累积, 收尾 setOfficial 定格回整体值
-        "num(it.kwh * (cum[idx] + stepKm * frac) / cum[N - 1])",
+        # 能耗模型: 每公里 = 滚阻 + 风阻·v², 全程定标到整体 kWh
+        "const ekW = v => 1 + 3 * Math.pow(v / 100, 2);",
+        "const enerStep = i => (cum[i] - cum[i - 1])",
+        "ecum.push(ecum[i - 1] + enerStep(i));",
+        # setLive: 两格都随模型走 (流式追加段也延伸权重)
+        "const kwhNow = it.kwh * eNow / ecum[N - 1];",
+        'num(kwhNow / kmNow * 1000, 0) + "<small>Wh/km</small>"',
+        # 收尾 setOfficial 定格回整体值
         'if (it.kwh != null) $("#sh-kwh").innerHTML = num(it.kwh)',
-        # 未估高速费: 卡片红标 (估完 rerenderCard 摘掉) + 弹层红 chip 两态
-        '<span class="ct-toll-warn">未估高速费</span>',
-        ".ct-toll-warn {", ".sh-toll.warn {",
-        "高速费估价中…", "未估高速费",
-        "function rerenderCard(",
+        '$("#sh-avg").innerHTML = num(it.wh_per_km, 0)',
         # 桌面图标全屏: trips 页曾缺 standalone meta, 从其他页切过来会被
         # iOS 弹回 Safari 露地址栏 (其余页都有, 本页补齐)
         'name="apple-mobile-web-app-capable" content="yes"',
