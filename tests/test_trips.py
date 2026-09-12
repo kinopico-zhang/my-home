@@ -887,6 +887,26 @@ def test_trips_page_consumption_and_driver_filter(auth):
     assert 'id="drv-menu" hidden' in html
 
 
+def test_trips_page_live_kwh_toll_warn_and_standalone(auth):
+    """播放中总电耗随里程累积定格; 未估高速费红标 (卡片+弹层); 桌面图标全屏。"""
+    html = auth.get("/tesla/trips").text
+    for frag in [
+        # 播放中总电耗按里程均摊累积, 收尾 setOfficial 定格回整体值
+        "num(it.kwh * (cum[idx] + stepKm * frac) / cum[N - 1])",
+        'if (it.kwh != null) $("#sh-kwh").innerHTML = num(it.kwh)',
+        # 未估高速费: 卡片红标 (估完 rerenderCard 摘掉) + 弹层红 chip 两态
+        '<span class="ct-toll-warn">未估高速费</span>',
+        ".ct-toll-warn {", ".sh-toll.warn {",
+        "高速费估价中…", "未估高速费",
+        "function rerenderCard(",
+        # 桌面图标全屏: trips 页曾缺 standalone meta, 从其他页切过来会被
+        # iOS 弹回 Safari 露地址栏 (其余页都有, 本页补齐)
+        'name="apple-mobile-web-app-capable" content="yes"',
+        'name="apple-mobile-web-app-status-bar-style" content="black-translucent"',
+    ]:
+        assert frag in html, f"行程页缺少 {frag}"
+
+
 def test_trips_page_playback_pacing_and_nowrap(auth):
     """超长轨迹不再 12 秒放完: 时长含里程分量 + 0.5× 慢速档; 统计值不折行。"""
     html = auth.get("/tesla/trips").text
