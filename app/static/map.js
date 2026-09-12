@@ -73,6 +73,9 @@ const TIME_RANGES = [
   { v: "1y", days: 365, lb: "近一年" },
   { v: "all", days: 0, lb: "全部" },
 ];
+const pad = n => String(n).padStart(2, "0");
+const fmtDate = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+
 function timeFrom(v) {   // 档位 → from 本地日期 (含今天共 N 天; 24h 即"昨天起")
   const r = TIME_RANGES.find(x => x.v === v);
   if (!r || !r.days) return null;
@@ -106,9 +109,6 @@ async function getJSON(url) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
   return r.json();
 }
-
-const pad = n => String(n).padStart(2, "0");
-const fmtDate = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 
 function rangeParams() {
   if (timeSel.v === "custom")   // 自定义起止 (日历)

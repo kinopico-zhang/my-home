@@ -482,6 +482,7 @@ masonryEl.addEventListener("click", e => {
 
 /* ============================ 详情 Sheet ============================ */
 const sheet = $("#sheet"), backdrop = $("#backdrop"), sheetBody = $("#sheet-body");
+const alertBd = $("#alert-bd"), alInput = $("#al-input");
 let chSoc, chPw, pwMode = "kw", sheetOpen = false, currentDetailId = null;
 const PW_SERIES = {
   kw:       { name: "功率", color: "#3987e5", unit: "kW", key: "kw" },
@@ -638,7 +639,6 @@ function renderPwChart(d) {
 }
 
 /* ============================ 费用编辑 ============================ */
-const alertBd = $("#alert-bd"), alInput = $("#al-input");
 let editing = null, saving = false;
 
 function editCost(it) {

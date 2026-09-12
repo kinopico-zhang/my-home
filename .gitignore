@@ -8,3 +8,4 @@ data/
 .pytest_cache/
 uv.lock
 .coverage
+node_modules
