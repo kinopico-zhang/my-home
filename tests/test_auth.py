@@ -48,7 +48,7 @@ def test_all_pages_have_standalone_meta(auth):
     全屏 (2026-09-12 用户踩坑)。任何新增页面都必须带上。
     """
     for path in ["/tesla/login", "/tesla/charging", "/tesla/map",
-                 "/tesla/trips", "/tesla/settings"]:
+                 "/tesla/trips", "/tesla/live", "/tesla/settings"]:
         html = auth.get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
         assert 'content="black-translucent"' in html, path
@@ -61,12 +61,12 @@ def test_webapp_manifest_scope_covers_tesla(auth):
     行程页加的图标, 切充电/足迹出 Safari 菜单, 切回行程又正常)。"""
     r = auth.get("/tesla/static/manifest.json")
     assert r.status_code == 200
-    m = r.json()
-    assert m["scope"] == "/tesla/"
-    assert m["display"] == "standalone"
-    assert m["start_url"].startswith("/tesla/")
-    assert any(i["sizes"] == "192x192" for i in m["icons"])
-    assert any(i["sizes"] == "512x512" for i in m["icons"])
+    manifest = r.json()
+    assert manifest["scope"] == "/tesla/"
+    assert manifest["display"] == "standalone"
+    assert manifest["start_url"].startswith("/tesla/")
+    assert any(i["sizes"] == "192x192" for i in manifest["icons"])
+    assert any(i["sizes"] == "512x512" for i in manifest["icons"])
     for icon in ("/tesla/static/icon-192.png", "/tesla/static/icon-512.png"):
         assert auth.get(icon).status_code == 200, icon
 
@@ -132,7 +132,8 @@ def test_logout_rotates_secret_and_revokes(client):
 
 # ---------------------------------------------------------------- 中间件
 def test_unauthed_pages_redirect_to_login(client):
-    for path in ("/tesla", "/tesla/charging", "/tesla/map", "/tesla/trips"):
+    for path in ("/tesla", "/tesla/charging", "/tesla/map", "/tesla/trips",
+                 "/tesla/live"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
         assert r.headers["location"] == "/tesla/login", path
@@ -142,7 +143,8 @@ def test_unauthed_apis_return_401_json(client):
     for path in ("/tesla/charging/api/summary", "/tesla/charging/api/sessions",
                  "/tesla/map/api/summary", "/tesla/map/api/tracks",
                  "/tesla/map/api/tracks/detail", "/tesla/map/api/config",
-                 "/tesla/trips/api/sessions", "/tesla/trips/api/1/track"):
+                 "/tesla/trips/api/sessions", "/tesla/trips/api/1/track",
+                 "/tesla/live/api/status"):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
@@ -216,7 +218,8 @@ def test_pages_served_after_login(auth):
     for path, marker in (("/tesla/charging", "My Tesla"),
                          ("/tesla/map", "My Tesla"),
                          ("/tesla/trips", "My Tesla"),
-                         ("/tesla/login", "My Tesla")):
+                         ("/tesla/login", "My Tesla"),
+                         ("/tesla/live", "My Tesla")):
         r = auth.get(path)
         assert r.status_code == 200, path
         assert marker in r.text, path
@@ -241,7 +244,7 @@ def test_cache_control_headers(auth):
 
 def test_all_pages_declare_png_and_touch_icons(client):
     """每个页面都要有 PNG favicon + apple-touch-icon (Safari/iOS 看不见 SVG)。"""
-    for page in ["login", "index", "map", "trips"]:
+    for page in ["login", "index", "map", "trips", "live"]:
         r = client.get(f"/tesla/{page}", follow_redirects=False)
         if r.status_code == 302:      # 未登录跳转的页面换成登录后取
             r = client.get(f"/tesla/{page}")
@@ -254,13 +257,15 @@ def test_all_pages_have_brand_menu(auth):
     """品牌即入口: My Tesla 是下拉按钮, 展开是三个页面 + 退出登录, 当前页高亮。"""
     for path, cur, slug in (("/tesla/charging", "充电", "charging"),
                             ("/tesla/map", "足迹", "map"),
-                            ("/tesla/trips", "行程", "trips")):
+                            ("/tesla/trips", "行程", "trips"),
+                            ("/tesla/live", "当前驾驶", "live")):
         html = auth.get(path).text
         assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
         assert '<nav class="tabs">' not in html, path       # 平铺页签已删
         assert "<h1>My Tesla</h1>" not in html, path        # 旧标题位换成品牌下拉
         assert 'id="nav-menu"' not in html, path            # 旧页签菜单已删
-        for href in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
+        for href in ("/tesla/charging", "/tesla/map", "/tesla/trips",
+                     "/tesla/live"):
             assert f'href="{href}"' in html, (path, href)
         assert f'<a class="on" href="/tesla/{slug}">{cur}</a>' in html, (path, cur)
         # 退出收进品牌菜单 (不再是顶栏独立按钮)
