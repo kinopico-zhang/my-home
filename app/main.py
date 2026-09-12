@@ -71,7 +71,7 @@ mapapi = APIRouter(prefix="/tesla/map/api")
 trips = APIRouter(prefix="/tesla/trips/api")
 # 当前驾驶 API (页面: /tesla/live —— 未结束行程的实时状态)
 live = APIRouter(prefix="/tesla/live/api")
-# 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 司机)
+# 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 驾驶员)
 settingsapi = APIRouter(prefix="/tesla/api")
 
 
@@ -350,7 +350,7 @@ def get_trip_sessions(  # pylint: disable=too-many-arguments,too-many-positional
                       own: Session = Depends(database.get_own_db)) -> TripsPage:
     """行程列表 (最新在前, 只含已结束行程); from/to 按出发时间过滤 (本地日期),
     from_loc/to_loc 按起终省市区 ("/" 路径, 1~3 段 = 精确到省/市/区县),
-    km_min/km_max 按里程 (km) 过滤, driver_id 按驾驶员 (含默认司机兜底口径)。"""
+    km_min/km_max 按里程 (km) 过滤, driver_id 按驾驶员 (含默认驾驶员兜底口径)。"""
     if offset < 0 or not 1 <= limit <= 100:
         raise HTTPException(400, "分页参数非法")
     for v in (km_min, km_max):
@@ -530,7 +530,7 @@ def post_trip_toll(drive_id: int, body: TripTollIn,
 def mark_trip_driver(drive_id: int, body: DriverMark,
                      db: Session = Depends(database.get_db),
                      own: Session = Depends(database.get_own_db)) -> TripItem:
-    """标/清行程驾驶员 (driver_id 空 = 清除, 展示回默认司机兜底)。
+    """标/清行程驾驶员 (driver_id 空 = 清除, 展示回默认驾驶员兜底)。
     返回更新后的行程条目 (前端直接刷新卡片与弹层)。"""
     if repository.get_trip(db, own, drive_id) is None:
         raise HTTPException(404, "行程不存在或未完成")
@@ -604,7 +604,7 @@ def live_page() -> FileResponse:
 
 @app.get("/tesla/settings")
 def settings_page() -> FileResponse:
-    """设置页: TeslaMate 数据库 / 高德 Key / 司机。"""
+    """设置页: TeslaMate 数据库 / 高德 Key / 驾驶员。"""
     return _page("settings.html")
 
 
@@ -632,14 +632,14 @@ def save_settings(body: SettingsUpdate,
 
 @settingsapi.get("/drivers")
 def get_drivers(own: Session = Depends(database.get_own_db)) -> list[DriverInfo]:
-    """全部司机。"""
+    """全部驾驶员。"""
     return settings_store.list_drivers(own)
 
 
 @settingsapi.post("/drivers")
 def add_driver(body: DriverIn,
                own: Session = Depends(database.get_own_db)) -> DriverInfo:
-    """添加司机。"""
+    """添加驾驶员。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "名字不能为空")
@@ -649,7 +649,7 @@ def add_driver(body: DriverIn,
 @settingsapi.patch("/drivers/{driver_id}")
 def change_driver(driver_id: int, body: DriverUpdate,
                   own: Session = Depends(database.get_own_db)) -> DriverInfo:
-    """改司机: 改名 / 设默认 (全库至多一个默认)。"""
+    """改驾驶员: 改名 / 设默认 (全库至多一个默认)。"""
     name = body.name.strip() if body.name is not None else None
     if name == "":
         raise HTTPException(400, "名字不能为空")
@@ -662,7 +662,7 @@ def change_driver(driver_id: int, body: DriverUpdate,
 @settingsapi.delete("/drivers/{driver_id}")
 def remove_driver(driver_id: int,
                   own: Session = Depends(database.get_own_db)) -> OkResponse:
-    """删司机。"""
+    """删驾驶员。"""
     try:
         settings_store.delete_driver(own, driver_id)
     except repository.NotFound as exc:

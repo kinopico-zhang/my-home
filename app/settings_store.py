@@ -1,4 +1,4 @@
-"""运行时设置与司机 (自有库): 设置页可改, 未设字段回落 env/.env 默认值。
+"""运行时设置与驾驶员 (自有库): 设置页可改, 未设字段回落 env/.env 默认值。
 
 TeslaMate 连接改动会换引擎重连 (database.rebuild_engine) 并实测 SELECT 1,
 连不上整体回滚 (设置与引擎都退回旧值); 高德 Key 即时生效 (map config
@@ -116,7 +116,7 @@ def save_settings(own: Session, body: SettingsUpdate) -> tuple[SettingsState, bo
     return settings_state(own), True
 
 
-# ---------------------------------------------------------------- 司机
+# ---------------------------------------------------------------- 驾驶员
 
 def _info(driver: Driver) -> DriverInfo:
     """ORM 行 → API 条目。"""
@@ -125,13 +125,13 @@ def _info(driver: Driver) -> DriverInfo:
 
 
 def list_drivers(own: Session) -> list[DriverInfo]:
-    """全部司机 (添加顺序)。"""
+    """全部驾驶员 (添加顺序)。"""
     return [_info(d) for d in
             own.scalars(select(Driver).order_by(Driver.id)).all()]
 
 
 def create_driver(own: Session, name: str) -> DriverInfo:
-    """添加司机。"""
+    """添加驾驶员。"""
     driver = Driver(name=name)
     own.add(driver)
     own.commit()
@@ -140,10 +140,10 @@ def create_driver(own: Session, name: str) -> DriverInfo:
 
 def update_driver(own: Session, driver_id: int,
                   name: str | None, is_default: bool | None) -> DriverInfo:
-    """改司机: 改名 / 设默认 (设默认会把其他人的默认清掉, 全库至多一个)。"""
+    """改驾驶员: 改名 / 设默认 (设默认会把其他人的默认清掉, 全库至多一个)。"""
     driver = own.get(Driver, driver_id)
     if driver is None:
-        raise NotFound("司机不存在")
+        raise NotFound("驾驶员不存在")
     if name is not None:
         driver.name = name
     if is_default is True:
@@ -156,10 +156,10 @@ def update_driver(own: Session, driver_id: int,
 
 
 def delete_driver(own: Session, driver_id: int) -> None:
-    """删司机 (标注联动清掉, 行程展示回默认兜底; 默认被删后暂时无默认)。"""
+    """删驾驶员 (标注联动清掉, 行程展示回默认兜底; 默认被删后暂时无默认)。"""
     driver = own.get(Driver, driver_id)
     if driver is None:
-        raise NotFound("司机不存在")
+        raise NotFound("驾驶员不存在")
     own.execute(delete(TripDriver).where(TripDriver.driver_id == driver_id))
     own.delete(driver)
     own.commit()

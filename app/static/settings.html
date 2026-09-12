@@ -124,7 +124,7 @@ input::placeholder { color: var(--ink-3); }
 .primary:active { transform: scale(.97); }
 .primary:disabled { opacity: .4; }
 
-/* ---------- 司机列表 ---------- */
+/* ---------- 驾驶员列表 ---------- */
 .drv-add { display: flex; gap: 8px; margin-bottom: 12px; }
 .drv-add input { flex: 1; }
 .drv-add button {
@@ -207,14 +207,14 @@ input::placeholder { color: var(--ink-3); }
   </section>
 
   <section class="card">
-    <h2>司机</h2>
-    <p class="hint">用于给行程标注驾驶员; 未标注的行程按<b>默认司机</b>显示。</p>
+    <h2>驾驶员</h2>
+    <p class="hint">用于给行程标注驾驶员; 未标注的行程按<b>默认驾驶员</b>显示。</p>
     <div class="drv-add">
-      <input id="drv-name" maxlength="30" placeholder="司机名字" autocomplete="off">
+      <input id="drv-name" maxlength="30" placeholder="驾驶员名字" autocomplete="off">
       <button id="drv-add">添加</button>
     </div>
     <div id="drv-list"></div>
-    <div class="drv-empty" id="drv-empty" hidden>还没有司机 — 添加后可在行程里标注谁开的</div>
+    <div class="drv-empty" id="drv-empty" hidden>还没有驾驶员 — 添加后可在行程里标注谁开的</div>
   </section>
 </main>
 
@@ -310,7 +310,7 @@ $("#amap-save").addEventListener("click", async () => {
   }
 });
 
-/* ---------- 司机 ---------- */
+/* ---------- 驾驶员 ---------- */
 let drivers = [];
 
 function renderDrivers() {
@@ -361,7 +361,7 @@ $("#drv-list").addEventListener("click", async e => {
         { body: JSON.stringify({ is_default: true }) }));
       await loadDrivers();
     } else if (t.closest(".del")) {
-      if (!confirm("删除这个司机?")) return;
+      if (!confirm("删除这个驾驶员?")) return;
       await api(`/tesla/api/drivers/${id}`, { method: "DELETE" });
       await loadDrivers();
     }

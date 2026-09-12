@@ -184,7 +184,7 @@ class AppSetting(OwnBase):
 
 
 class Driver(OwnBase):
-    """司机 (设置页维护): 行程可标注驾驶员, 未标注 = 默认司机兜底。
+    """驾驶员 (设置页维护): 行程可标注驾驶员, 未标注 = 默认驾驶员兜底。
 
     is_default 全库至多一个 (设置新默认时其余清掉)。"""
 
@@ -215,10 +215,10 @@ class TripToll(OwnBase):
 
 
 class TripDriver(OwnBase):
-    """行程 → 司机标注 (逻辑标注, TeslaMate 原数据不动)。
+    """行程 → 驾驶员标注 (逻辑标注, TeslaMate 原数据不动)。
 
-    一行程至多一条 (drive_id 唯一); 标注的司机被删时标注一起清掉,
-    行程展示回落默认司机兜底。"""
+    一行程至多一条 (drive_id 唯一); 标注的驾驶员被删时标注一起清掉,
+    行程展示回落默认驾驶员兜底。"""
 
     __tablename__ = "trip_drivers"
 

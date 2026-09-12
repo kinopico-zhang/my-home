@@ -92,7 +92,7 @@ def test_trip_session_one(auth, db):
         "start": "2026-09-10 08:32", "end": "2026-09-10 09:44",
         "km": 42.5, "min": 72, "speed_max": 118,
         "from": "广东省深圳市龙岗区坂田街道", "to": "广东省东莞市长安镇",
-        "driver": None, "driver_id": None,     # 没配司机 → 不显示
+        "driver": None, "driver_id": None,     # 没配驾驶员 → 不显示
         "toll": None, "toll_km": None,         # 高速费还没算过
         "kwh": None, "wh_per_km": None,        # 没有充电记录 → 换算系数缺失
     }
@@ -104,7 +104,7 @@ def test_trip_session_one_404(auth):
 
 
 def test_trip_driver_mark(auth, db, owndb):
-    """标/清行程驾驶员: 展示名显式标注 > 默认司机兜底; 删司机联动清标注。"""
+    """标/清行程驾驶员: 展示名显式标注 > 默认驾驶员兜底; 删驾驶员联动清标注。"""
     seed_addresses(db)
     seed_drive(db, id=1838)
     owndb.add(Driver(id=1, name="大导子", is_default=True))
@@ -113,7 +113,7 @@ def test_trip_driver_mark(auth, db, owndb):
     base = "/tesla/trips/api/sessions/1838"
 
     it = auth.get(base).json()
-    assert it["driver"] == "大导子"            # 未标注 → 默认司机
+    assert it["driver"] == "大导子"            # 未标注 → 默认驾驶员
     assert it["driver_id"] is None             # 但显式标注为空
 
     it = auth.post("/tesla/trips/api/1838/driver",
@@ -127,14 +127,14 @@ def test_trip_driver_mark(auth, db, owndb):
     assert it["driver"] == "大导子" and it["driver_id"] is None   # 清除回默认
 
     auth.post("/tesla/trips/api/1838/driver", json={"driver_id": 2})
-    auth.delete("/tesla/api/drivers/2")       # 删司机 → 标注联动清掉
+    auth.delete("/tesla/api/drivers/2")       # 删驾驶员 → 标注联动清掉
     it = auth.get(base).json()
     assert it["driver"] == "大导子" and it["driver_id"] is None
 
 
 def test_trip_list_filters_by_driver(auth, db, owndb):
-    """行程列表按驾驶员筛选, 与卡片展示同口径: 显式标注的 + 默认司机时
-    未标注的 (未标注在卡片上就显示默认司机名)。"""
+    """行程列表按驾驶员筛选, 与卡片展示同口径: 显式标注的 + 默认驾驶员时
+    未标注的 (未标注在卡片上就显示默认驾驶员名)。"""
     seed_addresses(db)
     for did in (11, 12, 13):
         seed_drive(db, id=did)
@@ -151,7 +151,7 @@ def test_trip_list_filters_by_driver(auth, db, owndb):
     assert sorted(x["id"] for x in lst["items"]) == [12, 13]
     assert lst["total"] == 2
 
-    lst = auth.get("/tesla/trips/api/sessions?driver_id=99").json()  # 司机不存在 → 空
+    lst = auth.get("/tesla/trips/api/sessions?driver_id=99").json()  # 驾驶员不存在 → 空
     assert lst["items"] == [] and lst["total"] == 0
 
 
@@ -237,14 +237,14 @@ def test_trip_toll_errors(auth, db):
 
 
 def test_trip_driver_mark_errors(auth, db):
-    """行程不存在 / 司机不存在 → 404。"""
+    """行程不存在 / 驾驶员不存在 → 404。"""
     assert auth.post("/tesla/trips/api/9999/driver",
                      json={"driver_id": 1}).status_code == 404
     seed_addresses(db)
     seed_drive(db, id=1838)
     r = auth.post("/tesla/trips/api/1838/driver", json={"driver_id": 77})
     assert r.status_code == 404
-    assert "司机不存在" in r.json()["detail"]
+    assert "驾驶员不存在" in r.json()["detail"]
 
 
 def test_trips_sessions_filters_by_date(auth, db):
@@ -873,20 +873,20 @@ def test_trips_page_has_playbar_and_single_column(auth):
 
 
 def test_trips_page_consumption_and_driver_filter(auth):
-    """卡片与弹层显示总电耗/平均电耗; 筛选行有驾驶员菜单且请求带司机参数。"""
+    """卡片与弹层显示总电耗/平均电耗; 筛选行有驾驶员菜单且请求带驾驶员参数。"""
     html = auth.get("/tesla/trips").text
     for frag in [
         'id="sh-cell-kwh"', 'id="sh-cell-avg"',       # 弹层: 总电耗/平均电耗格
         'class="ct-cells"',                            # 卡片统计瓷砖 (量): 里程/时长/总电耗
         "总电耗", "平均电耗 ${num(it.wh_per_km, 0)}",     # 率 (均速/平均电耗) 收进子行
-        'id="drv-menu"', 'id="drv-opts"', 'id="drv-lb"',   # 司机筛选菜单
-        'p.set("driver_id", state.drvId)',            # 列表请求/地址栏都带司机
+        'id="drv-menu"', 'id="drv-opts"', 'id="drv-lb"',   # 驾驶员筛选菜单
+        'p.set("driver_id", state.drvId)',            # 列表请求/地址栏都带驾驶员
         "function fillSheetHeader(",                  # 弹层填充电耗格
     ]:
         assert frag in html, f"行程页缺少 {frag}"
     # 电耗格初始隐藏, 有数据才亮 (充电换算系数缺失时整块不出)
     assert 'id="sh-cell-kwh" hidden' in html
-    # 司机菜单没配司机时整颗藏掉
+    # 驾驶员菜单没配驾驶员时整颗藏掉
     assert 'id="drv-menu" hidden' in html
 
 
@@ -1086,15 +1086,15 @@ def test_trips_page_has_toll_tools(auth):
 
 
 def test_trips_page_has_driver_picker(auth):
-    """行程页司机标注: 弹层选择行 + 卡片 pill + 标注接口都挂在页面上。"""
+    """行程页驾驶员标注: 弹层选择行 + 卡片 pill + 标注接口都挂在页面上。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="sh-drv"', 'id="sh-drv-sel"', "setupDriverPicker",
                  'class="ct-drv${it.driver_id != null ? "" : " def"}"',
                  ".ct-drv.def", "/tesla/api/drivers",
                  "function postJSON(", "已标注为", "已清除标注"]:
-        assert frag in html, f"行程页缺少司机标注片段 {frag}"
-    # 卡片 pill 默认司机兜底也显示 (弱化 .def 与显式标注区分)
-    # 没配司机时选择器藏 (兜底, 不会闪一个空下拉); 选择器和高速费 chip 都藏才整行藏
+        assert frag in html, f"行程页缺少驾驶员标注片段 {frag}"
+    # 卡片 pill 默认驾驶员兜底也显示 (弱化 .def 与显式标注区分)
+    # 没配驾驶员时选择器藏 (兜底, 不会闪一个空下拉); 选择器和高速费 chip 都藏才整行藏
     assert "driversCache.length > 0) {" in html
     assert "function metaRowSync()" in html
 

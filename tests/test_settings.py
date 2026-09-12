@@ -1,4 +1,4 @@
-"""设置页 API: TeslaMate 连接/高德 Key 存自有库 + 司机管理。
+"""设置页 API: TeslaMate 连接/高德 Key 存自有库 + 驾驶员管理。
 
 引擎重建在测试里 monkeypatch 成记录器 (真重建会把注入的测试引擎换掉);
 验证查询走当前工厂 —— 注入引擎是 SQLite, SELECT 1 必通。
@@ -81,7 +81,7 @@ def test_settings_tmdb_rollback_when_verify_fails(  # pylint: disable=redefined-
 
 
 def test_drivers_crud_and_single_default(auth):
-    """司机: 添加/列表/改名/删除; 设默认互斥 (全库至多一个)。"""
+    """驾驶员: 添加/列表/改名/删除; 设默认互斥 (全库至多一个)。"""
     d1 = auth.post("/tesla/api/drivers", json={"name": "爸爸"}).json()
     d2 = auth.post("/tesla/api/drivers", json={"name": " 妈妈 "}).json()
     assert d2["name"] == "妈妈"                       # 名字 strip
@@ -107,7 +107,7 @@ def test_drivers_crud_and_single_default(auth):
 
 
 def test_settings_page_and_nav_entries(auth):
-    """设置页挂全 (表单/司机/轻提示); 三个页面品牌菜单都有设置入口。"""
+    """设置页挂全 (表单/驾驶员/轻提示); 三个页面品牌菜单都有设置入口。"""
     html = auth.get("/tesla/settings").text
     for frag in ['id="tm-host"', 'id="tm-save"', "保存并连接", 'id="amap-key"',
                  'id="drv-list"', "/tesla/api/settings", "/tesla/api/drivers",
