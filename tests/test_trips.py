@@ -815,13 +815,17 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "ZOOM_WIN_MS = 8000", "zoomWin.push", "zoomWin = []",
                  "Math.min(15.3, 15.3 - v / 46)", "Math.max(12.5,",
                  "(km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11)",
-                 # 地图样式走 config (设置页可换), 兜底极夜蓝 (深色带地名)
+                 # 地图样式走 config (设置页可换), 兜底幻影黑 (配深色 App)
                  "mapStyle: amapStyle",
-                 'let amapStyle = "amap://styles/darkblue"',
-                 # 播放动画期间禁止熄屏 (Wake Lock): 开播/重播/继续播申请,
-                 # 暂停/播完/关弹层释放, 切后台自动释放回前台重申请
+                 'let amapStyle = "amap://styles/dark"',
+                 # 播放动画期间禁止熄屏: 双保险 —— Wake Lock (standalone iOS
+                 # 申请成功也可能不生效) + 1px 循环无声视频 (NoSleep.js 同款,
+                 # 正在播放的媒体 iOS 一定不熄屏); 暂停/播完/关弹层释放,
+                 # 切后台自动释放回前台重启用
                  'if (!("wakeLock" in navigator)) return;',
                  "holdScreenAwake()", "releaseScreenAwake()",
+                 'v.setAttribute("playsinline", "")', "awakeVideo.play()",
+                 "AWAKE_VIDEO_WEBM", '["video/webm", AWAKE_VIDEO_WEBM]',
 
                  "postGapFill(it, g, route)", "gcj02ToWgs84"]:
         assert frag in html, f"行程页缺少片段 {frag}"

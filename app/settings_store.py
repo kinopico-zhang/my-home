@@ -29,12 +29,13 @@ class StyleError(ValueError):
     """地图样式格式不合法 (调用方转 400, 未写库)。"""
 
 
-# 地图样式: amap://styles/<官方样式名或自定义ID>。默认极夜蓝 (darkblue) ——
-# 官方深色样式中唯一带地名标注的 (矢量渲染实测有青色路名/地名; dark/midnight
-# 的运行时样式数据把标注层整体藏掉, grey 底色浅且文字低对比, JSAPI 也没有
-# 反向强开标注的开关), 底色实测 #000/#001 比幻影黑 (#151516) 还黑。
-# 想要纯黑又带地名只能在高德个性化地图编辑器自建样式后贴 ID。
-AMAP_STYLE_DEFAULT = "amap://styles/darkblue"
+# 地图样式: amap://styles/<官方样式名或自定义ID>。默认幻影黑 (dark) —— 底色
+# 纯黑 (#111) 与 App 深灰 UI 最协调。代价: 官方深色样式 (幻影黑/午夜蓝) 的
+# 运行时数据在真机矢量渲染下不带地名标注, 深色带地名的两条路: 极夜蓝
+# (darkblue, 偏蓝) 或用户在高德个性化地图以幻影黑为模板自建样式贴 ID
+# (编辑器里标注是开着的, 容器实测 dark 标注是"首帧不画重渲染才画"的容器
+# 伪象, 真机 (用户 iPhone) 上确实无字)。
+AMAP_STYLE_DEFAULT = "amap://styles/dark"
 _STYLE_RE = re.compile(r"^amap://styles/[A-Za-z0-9_-]{1,64}$")
 
 
