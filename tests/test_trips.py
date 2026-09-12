@@ -806,6 +806,8 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
     html = auth.get("/tesla/trips").text
     for frag in ["function loadMergedStream(", "sess.append(d.pts, d.ts)",
                  "sess.more = false", "正在下载轨迹", "等待后续轨迹",
+                 # 首段开播前也扫路预取 (矢量), 后续段靠环形前瞻容器边播边覆盖
+                 "await preloadVectorTrack(d.pts, d.ts, followZoom(it.km || 0),",
                  "const speedZoom =", "followZoomOn", "zoomEaseStart(zoom)",
                  "tripMap.setZoom(zoomShown, true)",
                  'addEventListener("wheel", zoomTakeover,',
@@ -815,7 +817,8 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "let zoomUserLock = false, zoomUserZoom = 0;",
                  "zoomUserLock = true;                 // 手动接管 = 视角锁定, 换行程也保持",
                  'tripMap.on("zoomend", () => {',
-                 "if (zoomUserLock && anim && !anim.finished) zoomUserZoom = tripMap.getZoom();",
+                 "if (zoomUserLock && anim && !anim.finished)"
+                 " zoomUserZoom = tripMap.getZoom();",
                  "if (zoomUserLock) {\n    const z = Math.round(zoomUserZoom || tripMap.getZoom());",
                  "zoomUserLock = false;                    // 手动锁定解除, 恢复随速变焦",
                  # 堵车平滑 + 提前量: 滑窗开在播放时间轴上 (过去 2s + 预看 5s,
@@ -1023,10 +1026,21 @@ def test_trips_page_preloads_tiles(auth):
                  "let dur = animDurMs(N, cum[N - 1]);",
                  "dur = animDurMs(N, cum[N - 1]);",
                  "tripMap.setZoomAndCenter(z, p, true)",
-                 "VECTOR_PRELOAD_STEP_MS = 600, VECTOR_PRELOAD_CAP_MS = 10000,",
-                 "Math.round(speedZoom(vSum / ZOOM_SAMPLES))",
+                 # 环形前瞻: 容器四周扩出 (wrap 裁掉可视区不变), 播放中四周
+                 # 瓦片提前 4~13s 进缓存 = 真正的边播边下; logo/版权推回可视区
+                 "width: calc(100% + 320px); height: calc(100% + 640px);",
+                 "left: -160px; top: -320px;",
+                 "#trip-map .amap-logo, #trip-map .amap-copyright",
+                 "left: auto !important; right: 168px !important; bottom: 328px !important;",
+                 "const MAP_RING_X = 160, MAP_RING_Y = 320;",
+                 "const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y,"
+                 " 46 + MAP_RING_X, 46 + MAP_RING_X];",
+                 "tripMap.setFitView(allLines, false, FIT_AVOID);",
+                 "tripMap.setFitView([whole], true, FIT_AVOID);",
+                 "VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,",
+                 "const zt = speedZoom(vSum / ZOOM_SAMPLES);",
+                 "if (Math.abs(zt - hystZoom) > 0.6) hystZoom = Math.round(zt);",
                  "if (zoomUserLock) return Math.round(zoomUserZoom || tripMap.getZoom());",
-                 "tripMap.setFitView([whole], false, [46, 46, 46, 46]);",
                  "else await preloadVectorTrack(c.pts, c.ts || [], zoom,"]:
         assert frag in html, f"行程页缺少瓦片预载片段 {frag}"
 

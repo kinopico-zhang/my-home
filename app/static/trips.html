@@ -421,7 +421,20 @@ body.selecting #refresh-btn { display: none; }
   position: relative; flex: 1; min-height: 0; margin-bottom: 62px;
   border-radius: 14px; overflow: hidden; background: var(--surface);
 }
-#trip-map { position: absolute; inset: 0; }
+#trip-map {   /* 环形前瞻: 容器四周扩出 (上下 ±320, 左右 ±160, 与 MAP_RING_* 一致),
+  wrap overflow 裁掉, 可视区不变 —— 引擎按容器矩形取瓦, 播放中四周瓦片提前
+  4~13 秒进缓存 (随速档下视野米宽与镜头扫速同比例缩放, 领先量近似恒定),
+  地名/道路不迟到, 边播边下天然成立 (流式分组播放也靠它)。代价: 渲染像素
+  ~4× (现代手机 GPU 无压力)。配套: setFitView 避让边距补环宽 (FIT_AVOID),
+  高德 logo/版权推回可视区 */
+  position: absolute; width: calc(100% + 320px); height: calc(100% + 640px);
+  left: -160px; top: -320px;
+}
+#trip-map .amap-logo, #trip-map .amap-copyright {
+  /* 高德给 logo 锚块内联 left:4px (钉在容器左缘 = 可视区外): 只写 right 时
+     锚块被拉宽、油墨仍停在左缘; left:auto 清掉内联值, right 才真正接管 */
+  left: auto !important; right: 168px !important; bottom: 328px !important;
+}
 .trip-msg {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 12px;
@@ -1906,7 +1919,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       followZoomOn = false;              // 播放结束, 随速变焦停用 (重播恢复)
       tripMap.remove([progress, head]);
       allLines.forEach(l => l.setOptions({ strokeOpacity: 1 }));  // 淡线变亮
-      tripMap.setFitView(allLines, false, [46, 46, 46, 46]);      // 拉远 → 全局视角
+      tripMap.setFitView(allLines, false, FIT_AVOID);      // 拉远 → 全局视角 (避让补环宽, 整轨收进可视区)
       setOfficial();
       pbToggle.innerHTML = ICON_REPLAY;
       pbToggle.setAttribute("aria-label", "重播");
@@ -2093,18 +2106,32 @@ function preloadTiles(pts, z, tpl, onProgress) {
 /* 栅格抄 URL 预热那套对矢量无效: 瓦片数据走 POST 鉴权 + 每次新签名的 URL,
    缓存又在地图实例内部 (隐藏第二张图拉过了也不认, dbg70 实测)。改在预载
    遮罩下把主图相机沿路线扫一遍 —— 引擎按视图拉瓦灌进 TileCache (500 条,
-   一条走廊绰绰有余), 播放期不再现场等数据, 地名/道路不再迟到。
-   每步档位 = 播放同口径滑窗均速的 round(speedZoom()) (镜头自动拉远拉近都
-   覆盖; 视角锁定时整条按用户档); 开场档 (followZoom) 在起点补一步; 收尾
-   补一步整轨 setFitView 同款视野 (定格拉远不冷启动)。步距 ~55% 视口宽
-   (按当步档位换算米/px), 600ms/步, 上限 10s —— 超时扫到哪算哪, 剩下照常
-   按需补, 不挡播放。 */
-const VECTOR_PRELOAD_STEP_MS = 600, VECTOR_PRELOAD_CAP_MS = 10000,
-      VECTOR_PRELOAD_STEP_FRAC = 0.55;
+   一条走廊绰绰有余)。播放中的连续前瞻由环形前瞻容器负责 (见 CSS #trip-map),
+   扫路只管开场到位 + 慢网兜底: 每步档位 = 播放同口径滑窗均速档
+   (±0.6 迟滞带同款, 镜头自动拉远拉近都覆盖; 视角锁定时整条按用户档);
+   开场档 (followZoom) 在起点补一步; 收尾补一步整轨拉远视野 (直跳, 动画
+   式会被开播抢镜)。步距 ~85% 容器宽 (扩边后很宽, 视图并集连续覆盖走廊),
+   400ms/步 (鉴权请求随视角变更即时发, 停留只为错开相邻访问), 上限 4s
+   —— 城市行程 (z15 慢段步距 1.3km) 10km 内全走廊扫完, 更长的尾部交给
+   环形前瞻, 不挡播放。 */
+const VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,
+      VECTOR_PRELOAD_STEP_FRAC = 0.85;
+/* 环形前瞻 (CSS #trip-map 四周扩边) 负责播放中的连续前瞻 (领先 4~13s),
+   扫路只负责: 开场几秒 (视角/瓦片到位再起跑) + 沿途保险 (慢网兜底) +
+   收尾整轨拉远。setFitView 的避让边距补上环宽, 整轨恰好收进可视区
+   (finish() 与扫路收尾步共用)。注意 avoid 顺序是 [上,下,右,左] (引擎
+   源码: 高=容器高−a[0]−a[1], 宽=容器宽−a[2]−a[3], 不对称还会平移中心),
+   不是直觉的 [上,右,下,左]。 */
+const MAP_RING_X = 160, MAP_RING_Y = 320;
+const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y, 46 + MAP_RING_X, 46 + MAP_RING_X];
 
 async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
   const N = pts.length;
-  if (N < 2 || !tripMap || !document.querySelector("#trip-map canvas")) return;
+  if (N < 2 || !tripMap) return;
+  let cv = null;   // 首次建图 WebGL 就绪有延迟 (流式路径没等过): 轮询一小会儿
+  for (let i = 0; i < 6 && !(cv = document.querySelector("#trip-map canvas")); i++)
+    await new Promise(r => setTimeout(r, 250));
+  if (!cv) return;   // 栅格 (有自己的抄 URL 预载) 或未就绪: 放弃, 播放照常
   const vt = TrackUtil.animTimes(pts, ts);
   const vtTotal = vt[vt.length - 1] || 0;
   if (vtTotal <= 0) return;
@@ -2124,10 +2151,15 @@ async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
             vb = p.idx + 1 < N ? pts[p.idx + 1][2] || 0 : va;
       vSum += va + (vb - va) * p.frac;
     }
-    return Math.round(speedZoom(vSum / ZOOM_SAMPLES));
+    /* 与 zoomTick 同款 ±0.6 迟滞带 (纯 round 会在档位边界与播放分道:
+       播放还端着旧档, 扫路已去新档, 过渡带的瓦片谁都没拉过) */
+    const zt = speedZoom(vSum / ZOOM_SAMPLES);
+    if (Math.abs(zt - hystZoom) > 0.6) hystZoom = Math.round(zt);
+    return hystZoom;
   };
   const alive = () => seq === openSeq;
   const dwell = () => new Promise(r => setTimeout(r, VECTOR_PRELOAD_STEP_MS));
+  let hystZoom = Math.round(openZoom);   // 迟滞状态机初值 = 开场档 (zoomTick 同款)
   const visit = async (z, p) => {
     tripMap.setZoomAndCenter(z, p, true);
     await dwell();
@@ -2143,10 +2175,10 @@ async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
     onProgress(Math.min(95, 5 + Math.round(km / (cum[N - 1] || 1) * 90)));   // 单调 5→95
     let mpp = 200;   // 米/px 回落值: 步距偏大 = 少扫几步, 不致命
     try { mpp = tripMap.getResolution() || 200; } catch { /* 老版本缺这个接口 */ }
-    km += VECTOR_PRELOAD_STEP_FRAC * mapW * mpp / 1000;   // 步距 ~55% 视口宽
+    km += VECTOR_PRELOAD_STEP_FRAC * mapW * mpp / 1000;   // 步距 ~85% 容器宽
     while (idx < N - 1 && cum[idx] < km) idx++;
   }
-  /* 收尾一步: 整轨拉远视野 (finish() 的 setFitView 同款边距), 定格时
+  /* 收尾一步: 整轨拉远视野 (finish() 同款避让边距, 补环宽), 定格时
      整张全局图的数据也已在手。隐形折线只为供出范围, 用完即删 */
   if (alive()) {
     const stride = Math.max(1, Math.floor(N / 4000));
@@ -2154,7 +2186,9 @@ async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
     for (let i = 0; i < N; i += stride) path.push(toGcj(pts[i]));
     const whole = new AMap.Polyline({ path, strokeOpacity: 0, zIndex: 1 });
     tripMap.add(whole);
-    tripMap.setFitView([whole], false, [46, 46, 46, 46]);
+    /* 直跳 (immediately): 动画式会被紧随的开播抢镜, 收尾档瓦片 (含
+       contain_range 低层父级) 拉不满, 播完拉远时还得现场补 */
+    tripMap.setFitView([whole], true, FIT_AVOID);
     await dwell();
     tripMap.remove(whole);
     onProgress(100);
@@ -2528,6 +2562,12 @@ async function loadMergedStream(it, seq) {
         if (seq !== openSeq) { reader.cancel().catch(() => {}); return; }   // 弹层已换
         segsGot++;
         if (!sess) {
+          /* 首段开播前扫路预取 (矢量; 栅格走下面的后台抄 URL 预载):
+             环形前瞻容器管播放中的连续前瞻, 这里把开场几秒 + 首段走廊
+             先灌进缓存, 后续段边播边由环带覆盖 */
+          await preloadVectorTrack(d.pts, d.ts, followZoom(it.km || 0),
+            p => tripMsg(`正在预载地图 ${p}%`, true), seq);
+          if (seq !== openSeq) { reader.cancel().catch(() => {}); return; }   // 扫路中弹层已换
           tripMsg(null, false);
           sess = playTrack(d.pts, d.ts, it, followZoom(it.km || 0), true);
         } else {
