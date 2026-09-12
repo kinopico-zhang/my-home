@@ -106,7 +106,11 @@ class Drive(Base):
 
 
 class Position(Base):
-    """行车 GPS 采样点。"""
+    """行车 GPS 采样点。
+
+    speed/power 是流式数据 (每秒多条); battery_level 同样全程有值,
+    而 rated_battery_range_km / odometer 等车 API 轮询字段约每 12 秒
+    才有一个非空值 (当前驾驶页按"最新非空"取)。"""
 
     __tablename__ = "positions"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -116,6 +120,9 @@ class Position(Base):
     latitude: Mapped[float]
     speed: Mapped[float | None]
     power: Mapped[float | None]
+    battery_level: Mapped[int | None]
+    rated_battery_range_km: Mapped[float | None]
+    odometer: Mapped[float | None]
 
 
 # ---------------------------------------------------------------- 自有表

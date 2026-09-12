@@ -43,6 +43,7 @@ from .schemas import (
     GapFillRequest,
     GapFillResponse,
     LocationStat,
+    LiveStatus,
     LoginCredentials,
     MapSummary,
     MergedTrack,
@@ -68,6 +69,8 @@ charging = APIRouter(prefix="/tesla/charging/api")
 mapapi = APIRouter(prefix="/tesla/map/api")
 # 行程轨迹 API (页面: /tesla/trips —— 行程卡片瀑布流 + 点击查看单条全精度轨迹)
 trips = APIRouter(prefix="/tesla/trips/api")
+# 当前驾驶 API (页面: /tesla/live —— 未结束行程的实时状态)
+live = APIRouter(prefix="/tesla/live/api")
 # 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 司机)
 settingsapi = APIRouter(prefix="/tesla/api")
 
@@ -553,6 +556,14 @@ def get_trip_track(drive_id: int,
         raise HTTPException(404, str(exc)) from exc
 
 
+# ---------------------------------------------------------------- 当前驾驶 API
+
+@live.get("/status")
+def get_live_status(db: Session = Depends(database.get_db)) -> LiveStatus:
+    """当前驾驶状态 (未结束行程 + 足够新的位置点, 前端轮询)。"""
+    return repository.live_status(db)
+
+
 # ---------------------------------------------------------------- 静态页面
 
 @app.get("/")
@@ -583,6 +594,12 @@ def map_page() -> FileResponse:
 def trips_page() -> FileResponse:
     """行程轨迹页。"""
     return _page("trips.html")
+
+
+@app.get("/tesla/live")
+def live_page() -> FileResponse:
+    """当前驾驶页: 在开时实时速度 / 位置 / 电耗 / 剩余电量。"""
+    return _page("live.html")
 
 
 @app.get("/tesla/settings")
@@ -656,5 +673,6 @@ def remove_driver(driver_id: int,
 app.include_router(charging)
 app.include_router(mapapi)
 app.include_router(trips)
+app.include_router(live)
 app.include_router(settingsapi)
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
