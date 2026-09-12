@@ -49,6 +49,18 @@ disable = [
 init_forbid_extra = true
 init_typed = true
 
+# ---------------------------------------------------------------- coverage
+[tool.coverage.run]
+# 只统计 app 包 (tests 自身不计入); 分支覆盖: 一行的 if/else 两边都走到才算过
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+# 门槛: 覆盖率 <95% 直接退出非零, pytest --cov 挂门禁
+fail_under = 95
+show_missing = true
+skip_covered = false
+
 [tool.pylint.typecheck]
 # SQLAlchemy 2.0 的泛型订阅 (sessionmaker[Session]) 与动态构造器 (func.count 等)
 # 是运行时合法的, pylint 静态推断不了 → 按官方常见配置豁免这两个模块
