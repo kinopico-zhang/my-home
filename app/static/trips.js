@@ -163,7 +163,6 @@ async function refreshList() {
   window.scrollTo({ top: 0 });
 }
 
-
 $("#refresh-btn").addEventListener("click", async () => {
   const btn = $("#refresh-btn");
   btn.classList.add("busy");
@@ -1018,6 +1017,35 @@ $("#pb-zout").addEventListener("click", () => bumpZoomBias(-0.5));
 $("#pb-zin").addEventListener("click", () => bumpZoomBias(0.5));
 $("#pb-zval").textContent = zoomBias > 0 ? `+${zoomBias}` : String(zoomBias);
 
+/* ---------- 矢量模式预载 (扫路) ---------- */
+/* 栅格抄 URL 预热那套对矢量无效: 瓦片数据走 POST 鉴权 + 每次新签名的 URL,
+   缓存又在地图实例内部 (隐藏第二张图拉过了也不认, dbg70 实测)。改在预载
+   遮罩下把主图相机沿路线扫一遍 —— 引擎按视图拉瓦灌进 TileCache (500 条,
+   一条走廊绰绰有余)。播放中的连续前瞻由环形前瞻容器负责 (见 CSS #trip-map),
+   扫路只管开场到位 + 慢网兜底: 每步档位 = 播放同口径滑窗均速档
+   (±0.6 迟滞带同款, 镜头自动拉远拉近都覆盖; 视角锁定时整条按用户档);
+   开场档 (followZoom) 在起点补一步; 收尾补一步整轨拉远视野 (直跳, 动画
+   式会被开播抢镜)。步距 ~85% 容器宽 (扩边后很宽, 视图并集连续覆盖走廊),
+   400ms/步 (鉴权请求随视角变更即时发, 停留只为错开相邻访问), 上限 4s
+   —— 城市行程 (z15 慢段步距 1.3km) 10km 内全走廊扫完, 更长的尾部交给
+   环形前瞻, 不挡播放。 */
+const VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,
+      VECTOR_PRELOAD_STEP_FRAC = 0.85;
+/* 环形前瞻 (CSS #trip-map 四周扩边) 负责播放中的连续前瞻 (领先 4~13s),
+   扫路只负责: 开场几秒 (视角/瓦片到位再起跑) + 沿途保险 (慢网兜底) +
+   收尾整轨拉远。setFitView 的避让边距补上环宽, 整轨恰好收进可视区
+   (finish() 与扫路收尾步共用)。注意 avoid 顺序是 [上,下,右,左] (引擎
+   源码: 高=容器高−a[0]−a[1], 宽=容器宽−a[2]−a[3], 不对称还会平移中心),
+   不是直觉的 [上,右,下,左]。 */
+const MAP_RING_X = 160, MAP_RING_Y = 320;
+const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y, 46 + MAP_RING_X, 46 + MAP_RING_X];
+
+const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed");
+const PB_SPEEDS = [0.5, 1, 2, 4, 8];
+const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7.5 4.6v14.8L20 12z" fill="currentColor"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M6.6 4.8h4.1v14.4H6.6zM13.3 4.8h4.1v14.4h-4.1z" fill="currentColor"/></svg>';
+const ICON_REPLAY = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 5V1.8L7 6l5 4.2V7a5.5 5.5 0 1 1-5.5 5.5H4.5A7.5 7.5 0 1 0 12 5z" fill="currentColor"/></svg>';
+
 /* 播放轨迹动画。more=true 表示轨迹还会通过 append 追加 (合并轨迹流式
    下载边下边播): 播到当前末尾时停在原地等数据, 全部到齐后调用方关掉 more。 */
 /* 播放时长 (1× 基准, ms): 点数与里程取大, 3~300s。只看点数会亏待被下采样的
@@ -1133,6 +1161,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
     while (i < sp.route.length && sp.rcum[i] < q) i++;
     return sp.route.slice(0, i).concat([headPos(sp.aIdx, frac)]);
   }
+
   const s = {
     pts, N, dur, vt, playT: 0, speed: 1, paused: false, seeking: false,
     finished: false, alive: true, lastIdx: -1, lastFrac: -1, drawn: 0,
@@ -1287,11 +1316,10 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
   };
   anim = s;
   curSess = s;
-
   /* GPS 断档处 (隧道/信号丢失) 没有真实采样: 蓝色虚线沿真实道路连接,
      先画直线占位, 规划路径回来后整段替换; 规划成功的还会回传服务端存档
      (存自有库, 之后服务端直接下发拼好的连续轨迹)。 */
-  const addGap = (g, aIdx, bIdx) => {
+  function addGap(g, aIdx, bIdx) {
     const line = new AMap.Polyline({
       path: g.pts.map(gcj), strokeColor: "#3987e5", strokeOpacity: 0.28,
       strokeWeight: 4, strokeStyle: "dashed", strokeDasharray: [8, 8],
@@ -1332,18 +1360,16 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
     if (hit) settle(hit);
     else routeBetween(gcj(g.pts[0]), gcj(g.pts[1]))
       .then(r => { if (r) routeCache.set(key, r); settle(r); });
-  };
-  for (const g of TrackUtil.gapsBetween(segs))
-    addGap(g, pts.indexOf(g.pts[0]), pts.indexOf(g.pts[1]));
+  }
 
-  const resetPlaybar = () => {
+  function resetPlaybar() {
     pbSeek.value = 0;
     pbSeek.style.setProperty("--pb", "0%");
     pbToggle.innerHTML = ICON_PAUSE;
     pbToggle.setAttribute("aria-label", "暂停");
     $("#playbar").hidden = false;
-  };
-  const frameLoop = () => {
+  }
+  function frameLoop() {
     let lastNow = 0;
     (function frame(now) {
       if (anim !== s || s.finished) return;    // 会话已停止/替换, 或已收尾
@@ -1367,7 +1393,10 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       }
       animRaf = requestAnimationFrame(frame);
     })(performance.now());
-  };
+  }
+
+  for (const g of TrackUtil.gapsBetween(segs))
+    addGap(g, pts.indexOf(g.pts[0]), pts.indexOf(g.pts[1]));
 
   resetPlaybar();
   pbSpeed.textContent = "1×";
@@ -1442,29 +1471,6 @@ function preloadTiles(pts, z, tpl, onProgress) {
   });
 }
 
-/* ---------- 矢量模式预载 (扫路) ---------- */
-/* 栅格抄 URL 预热那套对矢量无效: 瓦片数据走 POST 鉴权 + 每次新签名的 URL,
-   缓存又在地图实例内部 (隐藏第二张图拉过了也不认, dbg70 实测)。改在预载
-   遮罩下把主图相机沿路线扫一遍 —— 引擎按视图拉瓦灌进 TileCache (500 条,
-   一条走廊绰绰有余)。播放中的连续前瞻由环形前瞻容器负责 (见 CSS #trip-map),
-   扫路只管开场到位 + 慢网兜底: 每步档位 = 播放同口径滑窗均速档
-   (±0.6 迟滞带同款, 镜头自动拉远拉近都覆盖; 视角锁定时整条按用户档);
-   开场档 (followZoom) 在起点补一步; 收尾补一步整轨拉远视野 (直跳, 动画
-   式会被开播抢镜)。步距 ~85% 容器宽 (扩边后很宽, 视图并集连续覆盖走廊),
-   400ms/步 (鉴权请求随视角变更即时发, 停留只为错开相邻访问), 上限 4s
-   —— 城市行程 (z15 慢段步距 1.3km) 10km 内全走廊扫完, 更长的尾部交给
-   环形前瞻, 不挡播放。 */
-const VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,
-      VECTOR_PRELOAD_STEP_FRAC = 0.85;
-/* 环形前瞻 (CSS #trip-map 四周扩边) 负责播放中的连续前瞻 (领先 4~13s),
-   扫路只负责: 开场几秒 (视角/瓦片到位再起跑) + 沿途保险 (慢网兜底) +
-   收尾整轨拉远。setFitView 的避让边距补上环宽, 整轨恰好收进可视区
-   (finish() 与扫路收尾步共用)。注意 avoid 顺序是 [上,下,右,左] (引擎
-   源码: 高=容器高−a[0]−a[1], 宽=容器宽−a[2]−a[3], 不对称还会平移中心),
-   不是直觉的 [上,右,下,左]。 */
-const MAP_RING_X = 160, MAP_RING_Y = 320;
-const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y, 46 + MAP_RING_X, 46 + MAP_RING_X];
-
 async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
   const N = pts.length;
   if (N < 2 || !tripMap) return;
@@ -1479,6 +1485,7 @@ async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
   const dur = animDurMs(N, cum[N - 1]);
   /* 该点处播放会用的档位: 与 zoomTick 同口径 (过去2s+预看5s 滑窗均速);
      视角锁定时播放全程一个档, 扫路也整条按用户档 */
+  let hystZoom = Math.round(openZoom);   // 迟滞状态机初值 = 开场档 (zoomTick 同款)
   const zoomAt = i => {
     if (zoomUserLock) return Math.round(zoomUserZoom || tripMap.getZoom());
     const t = dur * vt[i] / vtTotal;
@@ -1499,7 +1506,6 @@ async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
   };
   const alive = () => seq === openSeq;
   const dwell = () => new Promise(r => setTimeout(r, VECTOR_PRELOAD_STEP_MS));
-  let hystZoom = Math.round(openZoom);   // 迟滞状态机初值 = 开场档 (zoomTick 同款)
   const visit = async (z, p) => {
     tripMap.setZoomAndCenter(z, p, true);
     await dwell();
@@ -1938,11 +1944,6 @@ async function loadMergedStream(it, seq) {
 }
 
 /* ---------- 播放控制条: 只绑定一次, 操作当前 anim 会话 ---------- */
-const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed");
-const PB_SPEEDS = [0.5, 1, 2, 4, 8];
-const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7.5 4.6v14.8L20 12z" fill="currentColor"/></svg>';
-const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M6.6 4.8h4.1v14.4H6.6zM13.3 4.8h4.1v14.4h-4.1z" fill="currentColor"/></svg>';
-const ICON_REPLAY = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 5V1.8L7 6l5 4.2V7a5.5 5.5 0 1 1-5.5 5.5H4.5A7.5 7.5 0 1 0 12 5z" fill="currentColor"/></svg>';
 
 pbToggle.addEventListener("click", () => {
   if (!anim) return;

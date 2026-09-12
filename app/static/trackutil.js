@@ -7,7 +7,7 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.TrackUtil = factory();
-})(typeof self !== "undefined" ? self : this, function () {
+})(/** @type {Window | Record<string, unknown>} */(typeof self !== "undefined" ? self : this), function () {
   "use strict";
   const MIN_GAP = 0.0016;   // ~160m, 城市里正常采样不会一步跨这么远
 

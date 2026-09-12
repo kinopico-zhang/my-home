@@ -5,7 +5,7 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.GCJ02 = factory();
-})(typeof self !== "undefined" ? self : this, function () {
+})(/** @type {Window | Record<string, unknown>} */(typeof self !== "undefined" ? self : this), function () {
   "use strict";
   const PI = 3.14159265358979324;
   const A = 6378245.0;            // 长半轴
