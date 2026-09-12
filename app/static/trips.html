@@ -449,7 +449,10 @@ body.selecting #refresh-btn { display: none; }
   border: 1px solid var(--hairline); border-radius: 999px; padding: 5px 0;
   font-variant-numeric: tabular-nums;
 }
-.pb-seek { flex: 1; -webkit-appearance: none; appearance: none; height: 28px; background: transparent; cursor: pointer; }
+.pb-seek {   /* min-width: 0 必须: flex 项默认 min-width:auto = 控件内在宽
+  (进度条 Chromium 129px / Safari 更宽), 窄屏时把 +/- 视角钮挤出屏幕右缘 */
+  flex: 1; min-width: 0;
+  -webkit-appearance: none; appearance: none; height: 28px; background: transparent; cursor: pointer; }
 /* 视角基线微调: 整条随速变焦曲线平移 (慢近快远不变, 只挪基准远近) */
 .pb-zoom { flex: none; display: flex; align-items: center; gap: 3px; }
 .pb-zb {
