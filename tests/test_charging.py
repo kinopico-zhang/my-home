@@ -295,6 +295,19 @@ def test_charging_page_single_column_and_lazy_chain(auth):
     assert "m-col" not in html and "colCount" not in html
 
 
+def test_charging_page_unrecorded_cost_red(auth):
+    """没记费用的充电记录红标醒目: 卡片红色"添加费用"胶囊 + 详情费用格红字。"""
+    html = auth.get("/tesla/charging").text
+    for frag in [
+        '<button class="cs-cost none" data-cost>＋ 添加费用</button>',
+        ".cs-cost.none {", "background: #e5484d",   # 红色实心胶囊
+        '未记费用',                                   # 详情格文案
+        ".st-cost .val.red { color: #e5484d; }",     # 详情红字
+        'cv.classList.toggle("red", cost == null)',  # 记完费用就地摘红
+    ]:
+        assert frag in html, f"充电页缺少 {frag}"
+
+
 def test_charging_page_soc_axis_fixed_and_dense(auth):
     """SOC 轴固定 0-100% 量程: 标签按真实百分比定位 (贴边的 space-between 读起来像自适应);
     电量与费用并入一行, 收紧卡片纵向留白。"""
