@@ -247,6 +247,9 @@ def test_map_page_time_menu_in_filters_row(auth):
     for i in ("time-menu", "time-lb", "time-opts", "tm-dates", "tm-cal", "tm-prev",
               "tm-next", "tm-ym", "tm-sel", "brand-menu", "logout"):
         assert html.count(f'id="{i}"') == 1, f"足迹页 {i} 重复"
+    # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)
+    assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
+    assert ".filters::-webkit-scrollbar { display: none; }" in html
 
 
 # ---------------------------------------------------------------- 视野内高精度轨迹

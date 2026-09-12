@@ -102,6 +102,12 @@ header {
 .nav-menu .menu button:active { background: var(--surface-3); }
 /* 筛选栏 (顶栏下方): 行程独有筛选, 下拉不能被横向滚动裁掉 */
 .filters { display: flex; gap: 8px; margin-top: 10px; }
+/* 手机: 筛选行放不下就自己横滑 (下拉此时锚在全宽 header 上, 不受横滑容器
+   裁剪; 桌面下拉锚在胶囊内不能加), 不把整个页面带着滑 */
+@media (max-width: 479px) {
+  .filters { overflow-x: auto; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+}
 .filters .nav-menu { margin-left: 0; }              /* 不吃顶栏的靠右边距 */
 .filters .nav-menu .menu { left: 0; right: auto; }  /* 下拉锚左, 行首也不出屏 */
 /* 手机: 下拉改顶栏正下方近全宽面板 —— 自定义日历一行要 ~300px, 挂在胶囊
