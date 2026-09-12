@@ -4,10 +4,15 @@
    - 城市轨迹段长 10-30m, 断档 700m+ → 拆;
    - 概览粗轨迹 (40 点/条, 段长常达公里级) → 阈值跟着变大, 不误拆。
    UMD: 浏览器挂 window.TrackUtil, node (测试) 走 module.exports。 */
+/* UMD 挂载层: node (测试 require) 与浏览器 (生产 <script> 加载) 二选一。
+   浏览器分支在 node 覆盖率里天然统计不到 (require 时 module 一定存在),
+   c8 标记忽略; 挂载行为由 *_test 的 eval 桩用例验证。 */
+/* c8 ignore start */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.TrackUtil = factory();
 })(/** @type {Window | Record<string, unknown>} */(typeof self !== "undefined" ? self : this), function () {
+/* c8 ignore stop */
   "use strict";
   const MIN_GAP = 0.0016;   // ~160m, 城市里正常采样不会一步跨这么远
 

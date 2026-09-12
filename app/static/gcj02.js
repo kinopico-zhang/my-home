@@ -2,10 +2,15 @@
    TeslaMate 记录的是 GPS 原始坐标 (WGS-84), 高德地图使用 GCJ-02,
    不转换会整体偏移几百米。国测局算法为公开近似式, 精度 ~1-2m。
    UMD 包装: 浏览器挂 window.GCJ02, node (测试) 走 module.exports。 */
+/* UMD 挂载层: node (测试 require) 与浏览器 (生产 <script> 加载) 二选一。
+   浏览器分支在 node 覆盖率里天然统计不到 (require 时 module 一定存在),
+   c8 标记忽略; 挂载行为由 *_test 的 eval 桩用例验证。 */
+/* c8 ignore start */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.GCJ02 = factory();
 })(/** @type {Window | Record<string, unknown>} */(typeof self !== "undefined" ? self : this), function () {
+/* c8 ignore stop */
   "use strict";
   const PI = 3.14159265358979324;
   const A = 6378245.0;            // 长半轴
