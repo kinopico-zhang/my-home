@@ -141,7 +141,14 @@ form.addEventListener("submit", async e => {
         password: document.getElementById("pass").value,
       }),
     });
-    if (r.ok) { location.replace("/tesla/charging"); return; }
+    if (r.ok) {
+      // 回上次停留的页面 (主屏 App 里会话过期重新登录 / Safari 书签进来都适用)
+      var last = null;
+      try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
+      location.replace(last && /^\/tesla\/(charging|map|trips|live|settings)(\?|$)/.test(last)
+        ? last : "/tesla/charging");
+      return;
+    }
     // 优先展示后端给出的原因 (账号密码错误 / 尝试次数过多…), 兜底按状态码
     const d = await r.json().catch(() => null);
     let msg;

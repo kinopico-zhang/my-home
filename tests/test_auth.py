@@ -55,6 +55,40 @@ def test_all_pages_have_standalone_meta(auth):
         assert '<link rel="manifest" href="/tesla/static/manifest.json">' in html, path
 
 
+def test_pages_remember_last_page(auth):
+    """上次停留页: 五个业务页 head 挂 lastpage.js (冷启动在任何渲染前跳转,
+    不闪启动页), 登录页不挂 (它不是停留目标); 登录成功回上次页而非写死充电页。
+
+    iOS 主屏图标每次都从添加时定格的 start_url 启动, 不记得停在哪页 ——
+    localStorage 记 path+search, 冷启动 (sessionStorage 无标记) 且 standalone
+    才 replace 过去; 行程弹层开合只动 URL 不重载, 靠 visibilitychange 补记。"""
+    for path in ["/tesla/charging", "/tesla/map", "/tesla/trips",
+                 "/tesla/live", "/tesla/settings"]:
+        html = auth.get(path).text
+        tag = '<script src="/tesla/static/lastpage.js?v=1"></script>'
+        assert tag in html, path
+        assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
+    assert "lastpage.js" not in auth.get("/tesla/login").text
+    # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落充电页)
+    login_html = auth.get("/tesla/login").text
+    assert 'localStorage.getItem("mytesla-last-page")' in login_html
+    assert "/^\\/tesla\\/(charging|map|trips|live|settings)(\\?|$)/.test(last)" in login_html
+
+    r = auth.get("/tesla/static/lastpage.js")
+    assert r.status_code == 200
+    js = r.text
+    for frag in [
+        '"/tesla/charging", "/tesla/map", "/tesla/trips",',   # 白名单五页
+        "PAGES.indexOf(path) === -1) return",                  # login/静态不记不跳
+        "sessionStorage.getItem(LAUNCH)",                      # 冷启动判据 (会话标记)
+        "catch (e) { return; }",                               # 隐私模式防回弹循环
+        "navigator.standalone === true",                       # 只在主屏全屏 App 里跳
+        'location.replace(saved)',                             # 目标过白名单才跳
+        'if (document.hidden) record()',                       # 后台时补记 (弹层开合)
+    ]:
+        assert frag in js, f"lastpage.js 缺少 {frag}"
+
+
 def test_webapp_manifest_scope_covers_tesla(auth):
     """Web App Manifest: scope 圈住 /tesla/ 全站 —— 没有它, iOS 全屏 App 只认
     添加图标时的那个启动 URL, 跳到其他页面就当地址栏处理 (2026-09-12 用户实测:
