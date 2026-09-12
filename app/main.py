@@ -335,16 +335,19 @@ async def map_diag(request: Request) -> OkResponse:
 # (distance IS NOT NULL) 的过滤口径一致。
 
 @trips.get("/sessions")
-def get_trip_sessions(offset: int = 0, limit: int = 24,
+# 行程列表筛选项逐个加 (时间/起终地区/里程/驾驶员), 都是平铺查询参数
+def get_trip_sessions(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    offset: int = 0, limit: int = 24,
                       frm: str | None = Query(None, alias="from"),
                       to: str | None = Query(None, alias="to"),
                       from_loc: str | None = None, to_loc: str | None = None,
                       km_min: float | None = None, km_max: float | None = None,
+                      driver_id: int | None = None,
                       db: Session = Depends(database.get_db),
                       own: Session = Depends(database.get_own_db)) -> TripsPage:
     """行程列表 (最新在前, 只含已结束行程); from/to 按出发时间过滤 (本地日期),
     from_loc/to_loc 按起终省市区 ("/" 路径, 1~3 段 = 精确到省/市/区县),
-    km_min/km_max 按里程 (km) 过滤。"""
+    km_min/km_max 按里程 (km) 过滤, driver_id 按驾驶员 (含默认司机兜底口径)。"""
     if offset < 0 or not 1 <= limit <= 100:
         raise HTTPException(400, "分页参数非法")
     for v in (km_min, km_max):
@@ -358,7 +361,7 @@ def get_trip_sessions(offset: int = 0, limit: int = 24,
     total, items = repository.list_trips(db, own, offset, limit, repository.TripFilter(
         date_range=_date_range_or_400(frm, to),
         from_loc=from_loc or None, to_loc=to_loc or None,
-        km_min=km_min, km_max=km_max))
+        km_min=km_min, km_max=km_max, driver_id=driver_id))
     return TripsPage(total=total, items=items)
 
 

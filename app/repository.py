@@ -479,8 +479,42 @@ def _sum_field(rows: list[ChargeRow], field: str) -> float | None:
 # ---------------------------------------------------------------- 行程
 
 
+def charge_efficiency(session: Session) -> float | None:
+    """额定续航 km → 桩端 kWh 换算系数: 充电记录 Σ能量 / Σ续航增量。
+
+    桩端口径 (含充电损耗), 与充电页对账一致 —— 同期 "充了多少" 和 "开了
+    多少" 能对上。没有可用充电记录 → None, 前端不显示电耗。"""
+    kwh, rng = session.execute(
+        select(func.sum(ChargingProcess.charge_energy_added),
+               func.sum(ChargingProcess.end_rated_range_km
+                        - ChargingProcess.start_rated_range_km))
+        .where(ChargingProcess.end_date.is_not(None),
+               ChargingProcess.charge_energy_added > 1,
+               ChargingProcess.end_rated_range_km.is_not(None),
+               ChargingProcess.start_rated_range_km.is_not(None),
+               ChargingProcess.end_rated_range_km
+               - ChargingProcess.start_rated_range_km > 1)).one()
+    if not kwh or not rng or float(rng) <= 0:
+        return None
+    return float(kwh) / float(rng)
+
+
+def _consumption(drive: Drive, eff: float | None) -> tuple[float | None, float | None]:
+    """(总电耗 kWh, 平均电耗 Wh/km): 额定续航差 × 换算系数。
+
+    续航差为负 (行驶中续航校准回弹) 夹到 0; 里程不足 1km 时平均无意义。"""
+    if eff is None or drive.start_rated_range_km is None or drive.end_rated_range_km is None:
+        return None, None
+    raw = max(0.0, (float(drive.start_rated_range_km)
+                    - float(drive.end_rated_range_km)) * eff)
+    dist = float(drive.distance) if drive.distance is not None else None
+    return (round(raw, 1),
+            round(raw / dist * 1000) if dist and dist >= 1 else None)
+
+
 def _trip_item(drive: Drive, start_addr: str | None,
-               end_addr: str | None) -> TripItem:
+               end_addr: str | None, eff: float | None = None) -> TripItem:
+    kwh, wh_per_km = _consumption(drive, eff)
     return TripItem(
         id=drive.id,
         date=fdate(drive.start_date),
@@ -490,7 +524,8 @@ def _trip_item(drive: Drive, start_addr: str | None,
         min=drive.duration_min,
         speed_max=drive.speed_max,
         from_=_clean_addr(start_addr),
-        to=_clean_addr(end_addr))
+        to=_clean_addr(end_addr),
+        kwh=kwh, wh_per_km=wh_per_km)
 
 
 @dataclass(frozen=True)
@@ -506,6 +541,7 @@ class TripFilter:
     to_loc: str | None = None       # 终点地区 (空 = 全部)
     km_min: float | None = None     # 里程下限 (km)
     km_max: float | None = None     # 里程上限 (km)
+    driver_id: int | None = None    # 驾驶员 (own 库司机 id, 空 = 全部)
 
 
 # ---------------------------------------------------------------- 省市区解析
@@ -613,10 +649,27 @@ def _trip_conditions(session: Session,
     return conds
 
 
+def _driver_condition(own: Session, driver_id: int) -> ColumnElement[bool]:
+    """按驾驶员筛选, 与卡片展示同口径: 显式标注的行程; 选默认司机时
+    未标注的也算 (未标注在卡片上就显示默认司机名)。司机不存在 → 空。
+
+    标注表在自有库, 与 TeslaMate 库不是同一个连接 —— 先取出 id 列表再
+    下推条件, 不能跨库做子查询。"""
+    marked = own.scalars(
+        select(TripDriver.drive_id).where(TripDriver.driver_id == driver_id)).all()
+    driver = own.get(Driver, driver_id)
+    if driver is not None and driver.is_default:
+        all_marked = own.scalars(select(TripDriver.drive_id)).all()
+        return Drive.id.in_(marked) | Drive.id.not_in(all_marked)
+    return Drive.id.in_(marked)
+
+
 def list_trips(session: Session, own: Session, offset: int, limit: int,
                flt: TripFilter | None = None) -> tuple[int, list[TripItem]]:
     """行程列表 (最新在前), total 为已结束行程数; 按出发时间/起终地区/里程过滤。"""
     conds = _trip_conditions(session, flt)
+    if flt and flt.driver_id is not None:
+        conds.append(_driver_condition(own, flt.driver_id))
     total = session.scalar(
         select(func.count()).select_from(Drive)
         .where(Drive.end_date.is_not(None), *conds)) or 0
@@ -624,7 +677,8 @@ def list_trips(session: Session, own: Session, offset: int, limit: int,
         _trip_rows_stmt(aliased(Address), aliased(Address)).where(*conds)
         .order_by(Drive.start_date.desc())
         .offset(offset).limit(limit)).all()
-    items = [_trip_item(d, s, e) for d, s, e in rows]
+    eff = charge_efficiency(session)   # 电耗换算: 一页行程共用一次充电记录聚合
+    items = [_trip_item(d, s, e, eff) for d, s, e in rows]
     annotate_drivers(own, items)
     annotate_tolls(own, items)
     return int(total), items
@@ -755,7 +809,8 @@ def get_trip(session: Session, own: Session, drive_id: int) -> TripItem | None:
         .where(Drive.id == drive_id)).all()
     if not rows:
         return None
-    item = _trip_item(rows[0][0], rows[0][1], rows[0][2])
+    item = _trip_item(rows[0][0], rows[0][1], rows[0][2],
+                      charge_efficiency(session))
     annotate_drivers(own, [item])
     annotate_tolls(own, [item])
     return item
@@ -1017,13 +1072,19 @@ def merged_track_plan(session: Session, ids: Sequence[int]) -> MergedPlan:
                          round(MERGED_TRACK_BUDGET * cnt / total))
                 for did, cnt in counts.items()} if total else {})
     first, last = drive_rows[0][0], drive_rows[-1][0]
+    eff = charge_efficiency(session)
+    raw_kwh = sum(_consumption(d, eff)[0] or 0.0 for d, _, _ in drive_rows)
+    total_km = sum(float(d.distance or 0) for d, _, _ in drive_rows)
     header = MergedTrack(
         ids=id_list, n=len(id_list), pts=[], ts=[], seg_starts=[],
         date=fdate(first.start_date), start=ftime(first.start_date),
         end=ftime(last.end_date) if last.end_date else None,
-        km=round(sum(float(d.distance or 0) for d, _, _ in drive_rows), 2),
+        km=round(total_km, 2),
         min=sum(d.duration_min or 0 for d, _, _ in drive_rows),
         speed_max=max((d.speed_max or 0) for d, _, _ in drive_rows) or None,
+        kwh=round(raw_kwh, 1) if eff is not None else None,
+        wh_per_km=(round(raw_kwh / total_km * 1000)
+                   if eff is not None and total_km >= 1 else None),
         from_=_clean_addr(drive_rows[0][1]),
         to=_clean_addr(drive_rows[-1][2]))
     return MergedPlan(header, id_list, budgets)

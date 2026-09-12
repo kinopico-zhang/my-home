@@ -181,6 +181,8 @@ class TripItem(BaseModel):
     driver_id: int | None = None   # 显式标注的司机 id (未标 = None)
     toll: float | None = None      # 估价高速费 (元); None=还没算过
     toll_km: float | None = None   # 收费路段里程 (km)
+    kwh: float | None = None       # 总电耗 (kWh): 额定续航差 × 桩端换算系数
+    wh_per_km: float | None = None # 平均电耗 (Wh/km); 里程 <1km 无意义 → None
 
 
 class TollRoad(BaseModel):
@@ -265,6 +267,8 @@ class MergedTrack(BaseModel):
     km: float
     min: int
     speed_max: int | None
+    kwh: float | None = None        # 总电耗 (kWh, 各段续航差换算之和)
+    wh_per_km: float | None = None  # 平均电耗 (Wh/km, 按总里程)
     from_: str = Field(alias="from")
     to: str
 

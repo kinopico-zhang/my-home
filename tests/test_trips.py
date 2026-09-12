@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 
 from app import repository
 from app.models import (Address, Drive, Driver, Position, TrackFill,
-                        TripToll)
-from tests.conftest import seed_addresses, seed_drive, seed_position
+                        TripDriver, TripToll)
+from tests.conftest import (seed_addresses, seed_charging, seed_drive,
+                            seed_position)
 
 
 # ---------------------------------------------------------------- 列表
@@ -93,6 +94,7 @@ def test_trip_session_one(auth, db):
         "from": "广东省深圳市龙岗区坂田街道", "to": "广东省东莞市长安镇",
         "driver": None, "driver_id": None,     # 没配司机 → 不显示
         "toll": None, "toll_km": None,         # 高速费还没算过
+        "kwh": None, "wh_per_km": None,        # 没有充电记录 → 换算系数缺失
     }
 
 
@@ -128,6 +130,69 @@ def test_trip_driver_mark(auth, db, owndb):
     auth.delete("/tesla/api/drivers/2")       # 删司机 → 标注联动清掉
     it = auth.get(base).json()
     assert it["driver"] == "大导子" and it["driver_id"] is None
+
+
+def test_trip_list_filters_by_driver(auth, db, owndb):
+    """行程列表按驾驶员筛选, 与卡片展示同口径: 显式标注的 + 默认司机时
+    未标注的 (未标注在卡片上就显示默认司机名)。"""
+    seed_addresses(db)
+    for did in (11, 12, 13):
+        seed_drive(db, id=did)
+    owndb.add(Driver(id=1, name="大导子", is_default=True))
+    owndb.add(Driver(id=2, name="小导子"))
+    owndb.add(TripDriver(drive_id=11, driver_id=2))
+    owndb.commit()
+
+    lst = auth.get("/tesla/trips/api/sessions?driver_id=2").json()
+    assert [x["id"] for x in lst["items"]] == [11]
+    assert lst["total"] == 1
+
+    lst = auth.get("/tesla/trips/api/sessions?driver_id=1").json()   # 默认 → 含未标注
+    assert sorted(x["id"] for x in lst["items"]) == [12, 13]
+    assert lst["total"] == 2
+
+    lst = auth.get("/tesla/trips/api/sessions?driver_id=99").json()  # 司机不存在 → 空
+    assert lst["items"] == [] and lst["total"] == 0
+
+
+def test_trip_consumption_from_charge_calibration(auth, db):
+    """电耗 = 额定续航差 × 充电换算系数 (桩端口径): 列表/单条/合并三处同源;
+    续航回弹夹 0, 里程不足 1km 不算平均。"""
+    seed_addresses(db)
+    # 充电记录定标: 30 kWh 换 200km 额定续航 → 0.15 kWh/km
+    seed_charging(db, id=1, charge_energy_added=30.0,
+                  start_rated_range_km=100.0, end_rated_range_km=300.0)
+    t = datetime(2026, 9, 10, 0, 32)
+
+    def drive(did, dist, s_rated, e_rated, with_pts=False):
+        seed_drive(db, id=did, distance=dist, duration_min=60,
+                   start_date=t + timedelta(hours=did),
+                   end_date=t + timedelta(hours=did, minutes=60),
+                   start_rated_range_km=s_rated, end_rated_range_km=e_rated)
+        if with_pts:      # 合并轨迹需要位置点
+            for k, lng in enumerate((114.1, 114.2)):
+                seed_position(db, did, id=None,
+                              date=t + timedelta(hours=did, minutes=10 * k),
+                              longitude=lng, latitude=22.5, speed=10.0, power=None)
+
+    drive(11, 80.0, 200.0, 100.0, with_pts=True)   # 15.0 kWh, 187.5 Wh/km
+    drive(12, 30.0, 100.0, 80.0, with_pts=True)    # 3.0 kWh, 100 Wh/km
+    drive(13, 50.0, 100.0, 110.0)                  # 续航回弹 → 夹 0
+    drive(14, 0.4, 200.0, 198.0)                   # 里程 <1km → 平均 None
+
+    by_id = {x["id"]: x
+             for x in auth.get("/tesla/trips/api/sessions").json()["items"]}
+    assert by_id[11]["kwh"] == 15.0 and by_id[11]["wh_per_km"] == 188.0
+    assert by_id[12]["kwh"] == 3.0 and by_id[12]["wh_per_km"] == 100.0
+    assert by_id[13]["kwh"] == 0.0 and by_id[13]["wh_per_km"] == 0.0
+    assert by_id[14]["kwh"] == 0.3 and by_id[14]["wh_per_km"] is None
+
+    one = auth.get("/tesla/trips/api/sessions/11").json()
+    assert one["kwh"] == 15.0 and one["wh_per_km"] == 188.0
+
+    merged = auth.get("/tesla/trips/api/merged?ids=11,12").json()
+    assert merged["kwh"] == 18.0                       # 15.0 + 3.0
+    assert merged["wh_per_km"] == round(18.0 / 110 * 1000)   # ≈164
 
 
 def test_trip_toll_store_and_readback(auth, db, owndb):
@@ -795,6 +860,24 @@ def test_trips_page_has_playbar_and_single_column(auth):
     assert 'id="ptr"' not in html and "setupPullRefresh" not in html
     # 瀑布流的列容器已删
     assert "m-col" not in html
+
+
+def test_trips_page_consumption_and_driver_filter(auth):
+    """卡片与弹层显示总电耗/平均电耗; 筛选行有驾驶员菜单且请求带司机参数。"""
+    html = auth.get("/tesla/trips").text
+    for frag in [
+        'id="sh-cell-kwh"', 'id="sh-cell-avg"',       # 弹层: 总电耗/平均电耗格
+        'class="ct-cells"',                            # 卡片统计瓷砖 (量): 里程/时长/总电耗
+        "总电耗", "平均电耗 ${num(it.wh_per_km, 0)}",     # 率 (均速/平均电耗) 收进子行
+        'id="drv-menu"', 'id="drv-opts"', 'id="drv-lb"',   # 司机筛选菜单
+        'p.set("driver_id", state.drvId)',            # 列表请求/地址栏都带司机
+        "function fillSheetHeader(",                  # 弹层填充电耗格
+    ]:
+        assert frag in html, f"行程页缺少 {frag}"
+    # 电耗格初始隐藏, 有数据才亮 (充电换算系数缺失时整块不出)
+    assert 'id="sh-cell-kwh" hidden' in html
+    # 司机菜单没配司机时整颗藏掉
+    assert 'id="drv-menu" hidden' in html
 
 
 def test_trips_page_playback_pacing_and_nowrap(auth):

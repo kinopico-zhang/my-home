@@ -198,8 +198,12 @@ body.selecting .card-t.picked .pick::after {
   content: ""; display: block; width: 9px; height: 5px; margin: 5px auto 0;
   border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg);
 }
-.ct-dist { font-size: 23px; font-weight: 650; letter-spacing: -.4px; margin: 8px 0 1px; }
-.ct-dist small { font-size: 11px; color: var(--ink-2); font-weight: 500; }
+.ct-cells { display: flex; gap: 8px; margin: 9px 0 1px; }
+.ct-cell { flex: 1; min-width: 0; background: var(--surface); border-radius: 10px; padding: 7px 10px; }
+.ct-cell .lb { font-size: 10px; color: var(--ink-3); }
+.ct-cell .val { font-size: 17px; font-weight: 650; letter-spacing: -.3px; margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-cell .val small { font-size: 10.5px; color: var(--ink-2); font-weight: 500; }
 .ct-addr { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
 .ct-addr .line {
   font-size: 12px; color: var(--ink-2); display: flex; gap: 6px; align-items: baseline;
@@ -385,9 +389,9 @@ body.selecting #refresh-btn { display: none; }
   white-space: nowrap; max-width: 52%; overflow: hidden; text-overflow: ellipsis;
 }
 .sh-cells { flex: none; display: flex; gap: 8px; padding-bottom: 10px; }
-/* 有功耗数据时共 4 格, 窄屏改 2×2 (没数据时第 4 格隐藏, 保持一行) */
+/* 可见格 ≥5 (电耗/功耗有数据) 时窄屏改 2 列网格, 不挤成一条 */
 @media (max-width: 479px) {
-  .sh-cells:has(#sh-cell-pw:not([hidden])) {
+  .sh-cells:has(.sh-cell:not([hidden]):nth-child(5)) {
     display: grid; grid-template-columns: 1fr 1fr;
   }
 }
@@ -508,6 +512,10 @@ body.selecting #refresh-btn { display: none; }
         <button data-k="300+">300km 以上</button>
       </div>
     </details>
+    <details class="nav-menu filt" id="drv-menu" hidden>
+      <summary><span class="fl" id="drv-lb">驾驶员: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu" id="drv-opts"><button data-id="" class="on">全部</button></div>
+    </details>
   </div>
 </header>
 
@@ -559,6 +567,8 @@ body.selecting #refresh-btn { display: none; }
   <div class="sh-cells">
     <div class="sh-cell"><div class="lb">里程</div><div class="val" id="sh-km">–</div></div>
     <div class="sh-cell"><div class="lb">时长</div><div class="val" id="sh-dur">–</div></div>
+    <div class="sh-cell" id="sh-cell-kwh" hidden><div class="lb">总电耗</div><div class="val" id="sh-kwh">–</div></div>
+    <div class="sh-cell" id="sh-cell-avg" hidden><div class="lb">平均电耗</div><div class="val" id="sh-avg">–</div></div>
     <div class="sh-cell"><div class="lb" id="sh-spd-lb">最高车速</div><div class="val" id="sh-spd">–</div></div>
     <div class="sh-cell" id="sh-cell-pw" hidden><div class="lb" id="sh-pw-lb">平均功耗</div><div class="val" id="sh-pw">–</div></div>
   </div>
@@ -711,8 +721,10 @@ const locParam = k => {   // ?from_loc=省/市/区 (1~3 段, 脏参数丢弃)
 const state = { range: range0, cFrom: cFrom0, cTo: cTo0,
                 fromLoc: locParam("from_loc"), toLoc: locParam("to_loc"),
                 km: KM_BUCKETS.some(b => b.v === qs0.get("km")) ? qs0.get("km") : "all",
+                drvId: /^\d+$/.test(qs0.get("driver_id") || "") ? +qs0.get("driver_id") : null,
                 offset: 0, total: 0, loading: false, done: false, err: null };
 const trackCache = new Map();       // id → {pts, ts} 全精度轨迹
+let driversCache;   // 设置页司机表 (undefined=还没拉过, null=失败, 数组=结果), 筛选行与弹层共用
 const items = [];                   // 已加载卡片数据 (与 #list 子元素一一对应, 多选用)
 
 const listEl = $("#list");
@@ -729,12 +741,18 @@ function renderCard(it) {
       <span class="ct-arrow">→ 查看轨迹</span>
       <span class="pick" aria-hidden="true"></span>
     </div>
-    <div class="ct-dist">${num(it.km)}<small>km</small></div>
+    <div class="ct-cells">
+      <div class="ct-cell"><div class="lb">里程</div>
+        <div class="val">${it.km != null ? num(it.km) + "<small>km</small>" : "—"}</div></div>
+      <div class="ct-cell"><div class="lb">时长</div><div class="val">${fmtDur(it.min)}</div></div>
+      ${it.kwh != null ? `<div class="ct-cell"><div class="lb">总电耗</div>
+        <div class="val">${num(it.kwh)}<small>kWh</small></div></div>` : ""}
+    </div>
     <div class="ct-addr">
       <div class="line from"><i class="dot"></i><span class="txt">${esc(it.from)}</span></div>
       <div class="line to"><i class="dot"></i><span class="txt">${esc(it.to)}</span></div>
     </div>
-    <div class="ct-sub">${fmtDur(it.min)}${avg ? ` · 均速 ${avg} km/h` : ""}${it.speed_max != null ? ` · 最高 ${it.speed_max} km/h` : ""}</div>`;
+    <div class="ct-sub">${avg ? `均速 ${avg} km/h` : ""}${avg && it.wh_per_km != null ? " · " : ""}${it.wh_per_km != null ? `平均电耗 ${num(it.wh_per_km, 0)} Wh/km` : ""}</div>`;
   el.addEventListener("click", () => {
     if (document.body.classList.contains("selecting")) pickCard(el);
     else openTrip(it);
@@ -788,6 +806,7 @@ async function loadMore() {
     const kb = KM_BUCKETS.find(b => b.v === state.km);
     if (kb && kb.min != null) p.set("km_min", kb.min);
     if (kb && kb.max != null) p.set("km_max", kb.max);
+    if (state.drvId != null) p.set("driver_id", state.drvId);
     const d = await getJSON("/tesla/trips/api/sessions?" + p.toString());
     state.total = d.total; state.offset += d.items.length;
     if (state.offset >= d.total) state.done = true;
@@ -816,6 +835,7 @@ function filterQS() {   // 时间/起终点/里程 → 参数串 (无 ? 前缀),
   if (state.fromLoc) p.set("from_loc", state.fromLoc);
   if (state.toLoc) p.set("to_loc", state.toLoc);
   if (state.km !== "all") p.set("km", state.km);
+  if (state.drvId != null) p.set("driver_id", state.drvId);
   return p.toString();
 }
 function listURL(key) {   // 行程页地址栏: 筛选参数 + 可选行程深链 (?id=/ ?ids=)
@@ -998,6 +1018,42 @@ if (state.km !== "all") {
   } catch (_e) { /* keep empty */ }
   renderLocStart(); renderLocEnd();
 })();
+
+/* 司机筛选: 选项来自设置页的司机表 (没配司机整颗筛选藏掉); 筛选口径与
+   卡片一致 —— 选默认司机 = 标注它的 + 未标注的 (后端合并处理) */
+(async () => {
+  if (driversCache === undefined) {
+    try { driversCache = await getJSON("/tesla/api/drivers"); }
+    catch { driversCache = null; }
+  }
+  const drivers = driversCache || [];
+  if (!drivers.length) return;
+  const opts = $("#drv-opts");
+  opts.innerHTML = `<button data-id=""${state.drvId == null ? ' class="on"' : ""}>全部</button>` +
+    drivers.map(d =>
+      `<button data-id="${d.id}"${state.drvId === d.id ? ' class="on"' : ""}>${esc(d.name)}</button>`).join("");
+  if (state.drvId != null) {               // URL 深链带入的司机要存在才算数
+    const hit = drivers.find(d => d.id === state.drvId);
+    if (hit) $("#drv-lb").textContent = "驾驶员: " + hit.name;
+    else {
+      state.drvId = null;
+      opts.querySelector(".on")?.classList.remove("on");
+      opts.querySelector('button[data-id=""]').classList.add("on");
+    }
+  }
+  $("#drv-menu").hidden = false;
+})();
+$("#drv-opts").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const v = b.dataset.id === "" ? null : +b.dataset.id;
+  if (v === state.drvId) return;
+  $("#drv-menu").removeAttribute("open");
+  state.drvId = v;
+  $("#drv-opts .on").classList.remove("on"); b.classList.add("on");
+  $("#drv-lb").textContent = "驾驶员: " + b.textContent;
+  syncURL(); resetList();
+});
 
 /* 懒加载: 触底前 PRELOAD_PX 预加载下一页 */
 new IntersectionObserver(es => {
@@ -1946,6 +2002,11 @@ function fillSheetHeader(it) {
   $("#sh-dur").textContent = fmtDur(it.min);
   $("#sh-spd-lb").textContent = "最高车速";
   $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
+  $("#sh-cell-kwh").hidden = it.kwh == null;
+  $("#sh-kwh").innerHTML = it.kwh == null ? "—" : num(it.kwh) + "<small>kWh</small>";
+  $("#sh-cell-avg").hidden = it.wh_per_km == null;
+  $("#sh-avg").innerHTML = it.wh_per_km == null
+    ? "—" : num(it.wh_per_km, 0) + "<small>Wh/km</small>";
   $("#sh-pw-lb").textContent = "平均功耗";
   $("#sh-pw").textContent = "—";
 }
@@ -1957,12 +2018,12 @@ function fillSheetHeaderPending() {
   $("#sh-km").textContent = "—";
   $("#sh-dur").textContent = "—";
   $("#sh-spd").textContent = "—";
+  $("#sh-cell-kwh").hidden = true;
+  $("#sh-cell-avg").hidden = true;
   $("#sh-pw").textContent = "—";
 }
 
 /* ---------- 弹层司机标注: 未标 = 默认司机兜底, 没配司机整行不显示 ---------- */
-let driversCache;   // undefined=还没拉过, null=拉取失败, 数组=结果 (含空数组)
-
 async function setupDriverPicker(it, seq) {
   const pick = $("#sh-drv-pick");
   pick.hidden = true;                             // 先藏, 数据到位再亮

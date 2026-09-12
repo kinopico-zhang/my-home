@@ -99,6 +99,8 @@ class Drive(Base):
     distance: Mapped[float | None]
     duration_min: Mapped[int | None]
     speed_max: Mapped[int | None]
+    start_rated_range_km: Mapped[float | None]
+    end_rated_range_km: Mapped[float | None]
     start_address_id: Mapped[int | None]
     end_address_id: Mapped[int | None]
 
