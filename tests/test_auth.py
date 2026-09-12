@@ -52,6 +52,23 @@ def test_all_pages_have_standalone_meta(auth):
         html = auth.get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
         assert 'content="black-translucent"' in html, path
+        assert '<link rel="manifest" href="/tesla/static/manifest.json">' in html, path
+
+
+def test_webapp_manifest_scope_covers_tesla(auth):
+    """Web App Manifest: scope 圈住 /tesla/ 全站 —— 没有它, iOS 全屏 App 只认
+    添加图标时的那个启动 URL, 跳到其他页面就当地址栏处理 (2026-09-12 用户实测:
+    行程页加的图标, 切充电/足迹出 Safari 菜单, 切回行程又正常)。"""
+    r = auth.get("/tesla/static/manifest.json")
+    assert r.status_code == 200
+    m = r.json()
+    assert m["scope"] == "/tesla/"
+    assert m["display"] == "standalone"
+    assert m["start_url"].startswith("/tesla/")
+    assert any(i["sizes"] == "192x192" for i in m["icons"])
+    assert any(i["sizes"] == "512x512" for i in m["icons"])
+    for icon in ("/tesla/static/icon-192.png", "/tesla/static/icon-512.png"):
+        assert auth.get(icon).status_code == 200, icon
 
 
 def test_login_ok_sets_cookie_attributes(client):
