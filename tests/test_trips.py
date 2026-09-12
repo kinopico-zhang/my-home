@@ -818,6 +818,10 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  # 地图样式走 config (设置页可换), 兜底幻影黑 (配深色 App)
                  "mapStyle: amapStyle",
                  'let amapStyle = "amap://styles/dark"',
+                 # 地名首帧竞态: 矢量样式数据异步加载, 首帧不画地名 (同一轨迹
+                 # 第二次进入才有地名的原因); 开弹层后延时补重渲染
+                 "tripMap.setFeatures(tripMap.getFeatures())",
+                 "setTimeout(nudgeLabels, 1500)",
                  # 播放动画期间禁止熄屏: 双保险 —— Wake Lock (standalone iOS
                  # 申请成功也可能不生效) + 1px 循环无声视频 (NoSleep.js 同款,
                  # 正在播放的媒体 iOS 一定不熄屏); 暂停/播完/关弹层释放,
@@ -861,13 +865,15 @@ def test_trips_page_time_menu_and_filter_row(auth):
 
 
 def test_trips_page_has_playbar_and_single_column(auth):
-    """播放控制条 + 单列列表 都在页面上; 信息层不占地图高度。"""
+    """播放控制条 + 单列列表 都在页面上; 统计格不占地图高度。"""
     html = auth.get("/tesla/trips").text
     for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
                  'id="sh-cell-pw"', 'id="sh-pw-lb"', "ICON_REPLAY",
-                 # 让位地图: 播放条是浮在地图上的玻璃胶囊 (不占一整行),
+                 # 播放条是贴弹层底部的浮层玻璃胶囊 (不占一整行), 地图
+                 # margin-bottom 让位 —— 跟车的动态轨迹不再被控制条压住;
                  # 统计格单行横滑 (不折 2×3 网格), 弹层整体加高
                  "position: absolute; left: 14px; right: 14px;",
+                 "margin-bottom: 62px;",
                  "backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);",
                  "overflow-x: auto; scrollbar-width: none;",
                  "height: 82vh; height: 82dvh;",
@@ -1124,6 +1130,11 @@ def test_trips_page_has_group_panel(auth):
                  'id="gp-close"', "api/groups", "function toast(", 'id="toast"',
                  "openMerged(item.dataset.ids)"]:
         assert frag in html, f"行程页缺少分组片段 {frag}"
+    # 面板不再全屏盖顶: 上边留给 My Tesla 顶栏 (顶栏含安全区 padding,
+    # 高度只能 JS 现量); 全屏写法不许回来
+    assert 'position: fixed; left: 0; right: 0; bottom: 0; z-index: 92;' in html
+    assert 'panel.style.top = $("header").offsetHeight' in html
+    assert "inset: 0; z-index: 92" not in html
     # 面板条目渲染 + 改名/删除两段式委托 (isConnected 防脱链)
     assert "function gpRowHTML(" in html
     assert 'gp-list").addEventListener("click"' in html

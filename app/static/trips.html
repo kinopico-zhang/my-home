@@ -291,8 +291,8 @@ body.selecting .card-t.picked .pick::after {
 }
 
 /* ---------- 轨迹分组面板 ---------- */
-.gpanel {
-  position: fixed; inset: 0; z-index: 92; background: var(--bg);
+.gpanel {   /* 不盖 My Tesla 顶栏: top 由 JS 按顶栏实际高度 (含安全区) 下发 */
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 92; background: var(--bg);
   display: flex; flex-direction: column;
   transform: translateX(100%); transition: transform .28s cubic-bezier(.32,.72,.33,1);
 }
@@ -416,8 +416,9 @@ body.selecting #refresh-btn { display: none; }
 #sh-spd .n { min-width: 3ch; }
 #sh-pw .n { min-width: 5ch; }    /* 可负 (动能回收 "-12.3") */
 #sh-avg .n { min-width: 4ch; }   /* 播放初期每公里成本高, 平均值可冲 4 位 */
-.trip-map-wrap {
-  position: relative; flex: 1; min-height: 0;
+.trip-map-wrap {   /* 底部让位浮层播放条 (62px = 胶囊高50+距底16+净距8 − 弹层底padding12):
+  跟车的动态轨迹不再被控制条压住, AMap logo 也完整露出 */
+  position: relative; flex: 1; min-height: 0; margin-bottom: 62px;
   border-radius: 14px; overflow: hidden; background: var(--surface);
 }
 #trip-map { position: absolute; inset: 0; }
@@ -429,7 +430,7 @@ body.selecting #refresh-btn { display: none; }
 }
 .trip-msg .spin { margin: 0 auto; }
 /* ---------- 播放控制条 ---------- */
-.playbar {   /* 浮层胶囊: 压在地图底部, 半透明毛玻璃 (AMap logo 透出来) */
+.playbar {   /* 浮层胶囊: 贴弹层底部; 地图已 margin-bottom 让位, 不再压住轨迹 */
   position: absolute; left: 14px; right: 14px;
   bottom: calc(env(safe-area-inset-bottom) + 16px);
   z-index: 6; display: flex; align-items: center; gap: 10px;
@@ -1287,6 +1288,7 @@ function gpRender() {
 
 async function openGroups() {
   const panel = $("#gpanel");
+  panel.style.top = $("header").offsetHeight + "px";   // 顶栏含安全区 padding, 高度只能现量
   panel.hidden = false;
   requestAnimationFrame(() => panel.classList.add("show"));
   $("#gp-list").innerHTML = "";
@@ -2346,6 +2348,15 @@ async function openTrip(it, fromUrl) {
         if (e.touches.length >= 2) zoomTakeover();   // 双指 = 捏合缩放
       }, { passive: true });
     }
+    /* 高德矢量样式数据是异步加载的: 首帧渲染时标注规则还没到, 地名不画;
+       数据到货后要一次重渲染才补画 (同一轨迹第二次进入就有地名的原因)。
+       开弹层后延时补几拍 —— setFeatures 同值重设 = 只触发重渲染, 不动视角 */
+    const nudgeLabels = () => {
+      if (tripMap && tripMap.getFeatures) tripMap.setFeatures(tripMap.getFeatures());
+    };
+    setTimeout(nudgeLabels, 1500);
+    setTimeout(nudgeLabels, 5000);
+    setTimeout(nudgeLabels, 12000);
     tripMap.clearMap();
 
     if (it.merged && !it.pts) {   // 合并轨迹流式: 汇总 → 首段开播 → 逐段追加
