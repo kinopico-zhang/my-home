@@ -236,6 +236,7 @@ def test_diag_endpoint_logs_and_requires_auth(auth, capsys):
 def test_map_page_time_menu_in_filters_row(auth):
     """足迹页没有独有筛选: 时间下拉 (含自定义日历) 放顶栏下方的筛选栏。"""
     html = auth.get("/tesla/map").text
+    html += auth.get("/tesla/static/map.js?v=1").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',

@@ -286,6 +286,7 @@ def test_cost_patch_rounds_to_two_decimals(auth, db):
 def test_charging_page_single_column_and_lazy_chain(auth):
     """充电列表单列 (手机优先, 对齐行程页) + Chrome 懒加载修复 (装载后链式续载)。"""
     html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
     for frag in ['id="masonry"', "flex-direction: column", "PRELOAD_PX = 800",
                  'rootMargin: PRELOAD_PX + "px"',
                  "getBoundingClientRect().top < window.innerHeight + PRELOAD_PX",
@@ -298,6 +299,7 @@ def test_charging_page_single_column_and_lazy_chain(auth):
 def test_charging_page_unrecorded_cost_red(auth):
     """没记费用的充电记录红标醒目: 卡片红色"添加费用"胶囊 + 详情费用格红字。"""
     html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
     for frag in [
         '<button class="cs-cost none" data-cost>＋ 添加费用</button>',
         ".cs-cost.none {", "background: #e5484d",   # 红色实心胶囊
@@ -312,6 +314,7 @@ def test_charging_page_soc_axis_fixed_and_dense(auth):
     """SOC 轴固定 0-100% 量程: 标签按真实百分比定位 (贴边的 space-between 读起来像自适应);
     电量与费用并入一行, 收紧卡片纵向留白。"""
     html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
     assert "soc-lbl" not in html                 # 贴边标签行已删
     assert 'class="sa-lb"' in html               # 轴标签钉在真实位置
     assert "Math.min(it.start_soc, 93)" in html  # 左标签左缘 = 充电起点
@@ -358,6 +361,7 @@ def test_charging_sessions_filters_by_city(auth, db):
 def test_charging_page_time_menu_calendar_and_city_filter(auth):
     """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行城市下拉, 筛选写进 URL。"""
     html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',

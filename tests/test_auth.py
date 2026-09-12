@@ -69,8 +69,8 @@ def test_pages_remember_last_page(auth):
         assert tag in html, path
         assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
     assert "lastpage.js" not in auth.get("/tesla/login").text
-    # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落充电页)
-    login_html = auth.get("/tesla/login").text
+    # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落充电页) —— 逻辑在 login.js
+    login_html = auth.get("/tesla/static/login.js?v=1").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
     assert "/^\\/tesla\\/(charging|map|trips|live|settings)(\\?|$)/.test(last)" in login_html
 
