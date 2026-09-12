@@ -115,10 +115,11 @@ class CostUpdateResult(BaseModel):
 
 # ---------------------------------------------------------------- 足迹地图
 class AmapConfig(BaseModel):
-    """高德地图前端配置 (env 注入)。"""
+    """高德地图前端配置 (env / 设置页注入)。"""
 
     amap_key: str | None
     security_code: str | None
+    style: str
 
 
 class MapSummary(BaseModel):
@@ -305,10 +306,11 @@ class TeslaMateSettings(BaseModel):
 
 
 class AmapSettings(BaseModel):
-    """高德 Key 现值 (打码回显 + 安全码是否在用)。"""
+    """高德 Key 现值 (打码回显 + 安全码是否在用) + 地图样式现值。"""
 
     key_masked: str
     security_code_set: bool
+    style: str
 
 
 class SettingsState(BaseModel):
@@ -328,6 +330,7 @@ class SettingsUpdate(BaseModel):
     tmdb_name: str = ""
     amap_key: str = ""
     amap_security_code: str = ""
+    amap_style: str = ""   # 官方样式名或 amap://styles/<自定义ID> (空 = 保持现值)
 
 
 class DriverInfo(BaseModel):

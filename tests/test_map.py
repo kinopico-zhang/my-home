@@ -16,15 +16,20 @@ from tests.conftest import seed_addresses, seed_drive, seed_position
 def test_config_empty_without_env(auth, monkeypatch):
     monkeypatch.delenv("AMAP_KEY", raising=False)
     monkeypatch.delenv("AMAP_SECURITY_CODE", raising=False)
+    monkeypatch.delenv("AMAP_STYLE", raising=False)
+    # 样式默认标准图: 幻影黑 (dark) 官方样式按设计不带地名标注
     assert auth.get("/tesla/map/api/config").json() == \
-        {"amap_key": None, "security_code": None}
+        {"amap_key": None, "security_code": None,
+         "style": "amap://styles/normal"}
 
 
 def test_config_returns_env_values(auth, monkeypatch):
     monkeypatch.setenv("AMAP_KEY", "abc123")
     monkeypatch.setenv("AMAP_SECURITY_CODE", "sec456")
+    monkeypatch.setenv("AMAP_STYLE", "amap://styles/light")
     assert auth.get("/tesla/map/api/config").json() == \
-        {"amap_key": "abc123", "security_code": "sec456"}
+        {"amap_key": "abc123", "security_code": "sec456",
+         "style": "amap://styles/light"}
 
 
 # ---------------------------------------------------------------- summary
@@ -250,6 +255,8 @@ def test_map_page_time_menu_in_filters_row(auth):
     # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)
     assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
     assert ".filters::-webkit-scrollbar { display: none; }" in html
+    # 地图样式走 config (设置页可换), 不再写死幻影黑
+    assert 'mapStyle: cfg.style ||' in html
 
 
 # ---------------------------------------------------------------- 视野内高精度轨迹

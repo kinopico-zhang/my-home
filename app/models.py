@@ -179,6 +179,7 @@ class AppSetting(OwnBase):
     tmdb_name: Mapped[str] = mapped_column(String, default="")
     amap_key: Mapped[str] = mapped_column(String, default="")
     amap_security_code: Mapped[str] = mapped_column(String, default="")
+    amap_style: Mapped[str] = mapped_column(String, default="")
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now,
                                                  onupdate=datetime.now)
 

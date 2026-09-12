@@ -1376,6 +1376,7 @@ $("#gp-list").addEventListener("keydown", e => {
 
 /* ============================ 轨迹弹层 ============================ */
 let amapLoading = null;             // Promise<true>: 高德脚本就绪
+let amapStyle = "amap://styles/normal";   // 地图样式 (config 下发, 设置页可换)
 let tripMap = null;                 // 弹层内地图实例, 复用不销毁
 let openSeq = 0;                    // 连续点开多条时, 只认最后一次
 let curKey = null;                  // 弹层当前行程 key (单条 "2200" / 合并 "1836-1839"), 地址栏同步用
@@ -1408,6 +1409,7 @@ function ensureAMap() {
     amapLoading = (async () => {
       const cfg = await getJSON("/tesla/map/api/config?_=" + Date.now());
       if (!cfg.amap_key) throw new Error("未配置高德地图 Key (.env 里设置 AMAP_KEY)");
+      if (cfg.style) amapStyle = cfg.style;
       await loadAMapScript(cfg.amap_key, cfg.security_code);
       return true;
     })();
@@ -1544,12 +1546,14 @@ function splitSegments(pts, starts) {
   return segs.length ? segs : TrackUtil.splitGaps(pts);
 }
 
-/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。目标档取整,
-   速度连续值 (46km/h 一档, 13.5~16.3 夹紧) 带 ±0.6 迟滞带 —— 档位边界
-   的速度抖动 (等灯起步) 不至于来回打摆; 实际档位每帧指数缓动逼近目标
-   (帧率无关)。缓动必须自己做: AMap 的动画 setZoom 会被逐帧 setCenter
-   打成爬行 (实测 3s 只挪 0.1 档), 而立即档设小数是保真的 (逐帧 setCenter
-   下 set 14.12 → 读回 14.12)。用户接管见建图处的输入事件监听 (重播恢复)。 */
+/* 播放视角随车速缩放: 慢速拉近看细节, 高速拉远看全局。速度先过 8 秒滑动
+   窗口取均值再喂曲线 —— 堵车走走停停时瞬时速度高频打摆, 直接喂视角跟着
+   频繁拉近拉远, 看得人头晕。窗口均值连续值 (46km/h 一档, 12.5~15.3 夹紧)
+   目标档取整, 带 ±0.6 迟滞带 —— 档位边界的速度抖动 (等灯起步) 不至于来回
+   打摆; 实际档位每帧指数缓动逼近目标 (帧率无关)。缓动必须自己做: AMap 的
+   动画 setZoom 会被逐帧 setCenter 打成爬行 (实测 3s 只挪 0.1 档), 而立即档
+   设小数是保真的 (逐帧 setCenter 下 set 14.12 → 读回 14.12)。用户接管见
+   建图处的输入事件监听 (重播恢复)。 */
 let followZoomOn = false, followZoomCur = 0;    // 开关 / 目标档 (迟滞簿记)
 let zoomShown = 0, zoomApplied = 0, zoomLastT = 0;   // 缓动值 / 已下发值 / 上帧时刻
 let zoomBias = 0;   // 视角基线: 随速变焦整条曲线平移 (±2.5, 0.5 步进, localStorage 记住)
@@ -1557,14 +1561,17 @@ try {
   zoomBias = Math.max(-2.5, Math.min(2.5,
     Math.round((parseFloat(localStorage.getItem("trip-zoom-bias")) || 0) * 2) / 2));
 } catch { /* 无痕模式等 localStorage 不可用 → 当 0 */ }
+let zoomWin = [];   // 最近 ZOOM_WIN_MS 的车速采样 (墙钟时间): 均值喂随速变焦
+const ZOOM_WIN_MS = 8000;
 const speedZoom = v => Math.max(10.5, Math.min(18.5,
-  Math.max(13.5, Math.min(16.3, 16.3 - v / 46)) + zoomBias));
+  Math.max(12.5, Math.min(15.3, 15.3 - v / 46)) + zoomBias));
 
 /* 开播/重播: 视角中心与档位都直接到位, 开场不做缓动过渡 (只限最开始,
    之后速度档变化仍逐帧缓动)。档位取整 —— AMap 对小数档会在设置后
    1~2s 自动吸附到最近整数, 开场静止期最容易踩中。 */
 function zoomEaseStart(zoom) {
   zoom = Math.round(zoom);
+  zoomWin = [];                // 开场直接落档: 平滑窗重攒, 不拖上一轮的速度
   followZoomOn = true;
   followZoomCur = zoom;
   tripMap.setZoom(zoom, true);
@@ -1594,7 +1601,7 @@ $("#pb-zval").textContent = zoomBias > 0 ? `+${zoomBias}` : String(zoomBias);
 
 /* 播放轨迹动画。more=true 表示轨迹还会通过 append 追加 (合并轨迹流式
    下载边下边播): 播到当前末尾时停在原地等数据, 全部到齐后调用方关掉 more。 */
-function playTrack(pts, ts, it, zoom = 15, more = false) {
+function playTrack(pts, ts, it, zoom = 14, more = false) {
   stopAnim();
   if (curSess) curSess.alive = false;
   const gcj = p => GCJ02.wgs84ToGcj02(p[0], p[1]);
@@ -1717,7 +1724,11 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
       const now = performance.now();
       const dt = Math.min(Math.max(now - zoomLastT, 0), 500);
       zoomLastT = now;
-      const zt = speedZoom(s.lastV);          // 慢速拉近 / 高速拉远
+      zoomWin.push({ t: now, v: s.lastV });   // 8 秒滑动窗均值: 堵车不打摆
+      while (zoomWin.length && now - zoomWin[0].t > ZOOM_WIN_MS) zoomWin.shift();
+      let vSum = 0;
+      for (const p of zoomWin) vSum += p.v;
+      const zt = speedZoom(vSum / zoomWin.length);   // 慢速拉近 / 高速拉远
       if (Math.abs(zt - followZoomCur) > 0.6)   // 出迟滞带才换目标档
         followZoomCur = Math.round(zt);
       // 指数趋近 + 速率上限 (1.5 档/s): 低帧率下单帧也不会跳档 (纯指数在
@@ -1763,6 +1774,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
     },
     seek(frac) {                // 0..1: 拖进度条/外部跳转统一入口, 立即生效
       s.playT = Math.min(Math.max(frac, 0), 1) * dur;
+      zoomWin = [];                            // 跳到新位置: 平滑窗重攒
       const p = TrackUtil.animAt(vt, s.playT, dur);
       s.apply(p.idx, p.frac);
     },
@@ -1944,7 +1956,7 @@ const TILE_HOSTS = ["webrd01", "webrd02", "webrd03", "webrd04"];
    基线平移同步生效 (预载瓦片的倍率跟实际开播档一致) */
 function followZoom(km) {
   return Math.max(10.5, Math.min(18.5,
-    (km < 20 ? 15 : km < 80 ? 14 : km < 200 ? 13 : 12) + zoomBias));
+    (km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11) + zoomBias));
 }
 
 /* 从地图 DOM 抄一张真实瓦片 URL 当模板 (lang/style/scale 跟实际渲染走, 高德改版不用跟)。
@@ -2267,7 +2279,7 @@ async function openTrip(it, fromUrl) {
     if (seq !== openSeq) return;
 
     if (!tripMap) {
-      tripMap = new AMap.Map("trip-map", { mapStyle: "amap://styles/dark", zoom: 11 });
+      tripMap = new AMap.Map("trip-map", { mapStyle: amapStyle, zoom: 11 });
       // iOS Safari 双指缩放劫持成页面缩放: 拦掉, 手势只给地图
       for (const ev of ["gesturestart", "gesturechange"])
         document.getElementById("trip-map").addEventListener(ev, e => e.preventDefault());

@@ -39,10 +39,56 @@ def test_settings_save_amap_and_map_config_reflects(auth, monkeypatch):
     assert r.status_code == 200
     assert r.json()["amap"]["key_masked"] == "abcd****5678"
     assert auth.get("/tesla/map/api/config").json() == {
-        "amap_key": "abcd1234efgh5678", "security_code": "9182ac3b"}
+        "amap_key": "abcd1234efgh5678", "security_code": "9182ac3b",
+        "style": "amap://styles/normal"}
     # 留空 = 保持现值
     auth.post("/tesla/api/settings", json={"amap_key": "", "amap_security_code": ""})
     assert auth.get("/tesla/map/api/config").json()["amap_key"] == "abcd1234efgh5678"
+
+
+def test_settings_save_map_style_and_validation(auth, monkeypatch):
+    """地图样式: 预设/自定义 ID 存得下, map config 即时反映; 留空保持; 坏格式 400 不落库。
+
+    幻影黑 (dark) 官方样式按设计不带地名标注, 默认标准图; 想要深色带地名
+    在高德个性化地图编辑器自建样式后贴 ID (amap://styles/<ID>)。"""
+    monkeypatch.delenv("AMAP_STYLE", raising=False)
+    assert auth.get("/tesla/api/settings").json()["amap"]["style"] \
+        == "amap://styles/normal"
+    r = auth.post("/tesla/api/settings", json={"amap_style": "amap://styles/light"})
+    assert r.json()["amap"]["style"] == "amap://styles/light"
+    assert auth.get("/tesla/map/api/config").json()["style"] == "amap://styles/light"
+    # 自定义样式 ID (个性化地图编辑器产出)
+    custom = "amap://styles/d2b1f2e34c5a6789"
+    r = auth.post("/tesla/api/settings", json={"amap_style": custom})
+    assert r.json()["amap"]["style"] == custom
+    assert auth.get("/tesla/map/api/config").json()["style"] == custom
+    # 留空 = 保持现值
+    r = auth.post("/tesla/api/settings", json={"amap_style": ""})
+    assert r.json()["amap"]["style"] == custom
+    # 坏格式 400 且不落库
+    for bad in ("dark", "amap://styles/", "amap://styles/带空格",
+                "amap://styles/a/b", "http://evil/x"):
+        assert auth.post("/tesla/api/settings",
+                         json={"amap_style": bad}).status_code == 400, bad
+    assert auth.get("/tesla/api/settings").json()["amap"]["style"] == custom
+    # env 回落: 设置行有值时 env 不生效 (清不掉, 但能被覆盖) —— 换回预设即可
+    monkeypatch.setenv("AMAP_STYLE", "amap://styles/grey")
+    r = auth.post("/tesla/api/settings", json={"amap_style": "amap://styles/normal"})
+    assert r.json()["amap"]["style"] == "amap://styles/normal"
+
+
+def test_settings_tmdb_rollback_also_reverts_style(auth, monkeypatch):
+    """引擎验证失败整体回滚: 同请求里改的地图样式也要一起退回去。"""
+    monkeypatch.setenv("TMDB_HOST", "10.0.0.1")
+    auth.post("/tesla/api/settings",
+              json={"tmdb_host": "10.0.0.1", "tmdb_user": "u", "tmdb_password": "p"})
+    bad = sessionmaker(create_engine("sqlite:////nonexistent-dir/x.db"))
+    monkeypatch.setattr(database, "session_factory", lambda: bad)
+    r = auth.post("/tesla/api/settings",
+                  json={"tmdb_host": "10.0.0.2", "amap_style": "amap://styles/grey"})
+    assert r.status_code == 400
+    assert auth.get("/tesla/api/settings").json()["amap"]["style"] \
+        == "amap://styles/normal"   # 样式没被半路写入
 
 
 def test_settings_save_tmdb_rebuilds_only_on_change(  # pylint: disable=redefined-outer-name
@@ -111,7 +157,10 @@ def test_settings_page_and_nav_entries(auth):
     html = auth.get("/tesla/settings").text
     for frag in ['id="tm-host"', 'id="tm-save"', "保存并连接", 'id="amap-key"',
                  'id="drv-list"', "/tesla/api/settings", "/tesla/api/drivers",
-                 'id="toast"', "设为默认", "留空 = 保持现值"]:
+                 'id="toast"', "设为默认", "留空 = 保持现值",
+                 # 地图样式选择 (官方预设 + 自定义 ID, 默认标准图)
+                 'id="amap-style"', 'value="amap://styles/normal"',
+                 '幻影黑 (无地名)', 'id="amap-style-custom"', "amap_style:"]:
         assert frag in html, f"设置页缺少片段 {frag}"
     for page in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
         assert '<a href="/tesla/settings">设置</a>' in auth.get(page).text, page
