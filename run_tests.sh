@@ -10,6 +10,11 @@
 cd "$(dirname "$0")" || exit 1
 rc=0
 
+# pytest 的 tmp_path 不落 /tmp —— 那是 64M tmpfs, 一轮全量测试要 ~14M,
+# 攒几轮就撑爆 (SQLite 种子库 ENOSPC 报 OperationalError, 极像代码坏了)
+mkdir -p .pytest-tmp
+export TMPDIR="$PWD/.pytest-tmp"
+
 .venv/bin/python -m pytest tests -q --cov=app || rc=1
 
 DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker
