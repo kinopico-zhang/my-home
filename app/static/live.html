@@ -449,7 +449,7 @@ async function initMap() {
       sc.onerror = () => reject(new Error("script"));
       document.head.appendChild(sc);
     });
-    map = new AMap.Map("map", { mapStyle: cfg.style || "amap://styles/normal",
+    map = new AMap.Map("map", { mapStyle: cfg.style || "amap://styles/darkblue",
       zoom: 16, center: [114.05, 22.55] });
     // iOS Safari 双指缩放劫持成整页缩放: 手势只给高德
     for (const ev of ["gesturestart", "gesturechange"])

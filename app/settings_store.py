@@ -29,10 +29,12 @@ class StyleError(ValueError):
     """地图样式格式不合法 (调用方转 400, 未写库)。"""
 
 
-# 地图样式: amap://styles/<官方样式名或自定义ID>。幻影黑 (dark) 按设计不带
-# 地名标注 (用户看地图没有路名/地名就是这个原因), 默认给带标注的标准图;
-# 想要深色带地名只能在高德个性化地图编辑器自建样式后贴 ID。
-AMAP_STYLE_DEFAULT = "amap://styles/normal"
+# 地图样式: amap://styles/<官方样式名或自定义ID>。默认极夜蓝 (darkblue) ——
+# 官方深色样式中唯一带地名标注的 (矢量渲染实测有青色路名/地名; dark/midnight
+# 的运行时样式数据把标注层整体藏掉, grey 底色浅且文字低对比, JSAPI 也没有
+# 反向强开标注的开关), 底色实测 #000/#001 比幻影黑 (#151516) 还黑。
+# 想要纯黑又带地名只能在高德个性化地图编辑器自建样式后贴 ID。
+AMAP_STYLE_DEFAULT = "amap://styles/darkblue"
 _STYLE_RE = re.compile(r"^amap://styles/[A-Za-z0-9_-]{1,64}$")
 
 
