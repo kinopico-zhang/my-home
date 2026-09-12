@@ -17,11 +17,11 @@ def test_config_empty_without_env(auth, monkeypatch):
     monkeypatch.delenv("AMAP_KEY", raising=False)
     monkeypatch.delenv("AMAP_SECURITY_CODE", raising=False)
     monkeypatch.delenv("AMAP_STYLE", raising=False)
-    # 样式默认极夜蓝: 深色官方样式中唯一带地名标注的 (dark/midnight 运行时
-    # 把标注层藏掉, JSAPI 无反向强开开关)
+    # 样式默认幻影黑: 底色纯黑配深色 App (用户明确要的观感); 官方深色样式
+    # 按设计不带地名, 要地名走设置页 (极夜蓝或自建样式 ID)
     assert auth.get("/tesla/map/api/config").json() == \
         {"amap_key": None, "security_code": None,
-         "style": "amap://styles/darkblue"}
+         "style": "amap://styles/dark"}
 
 
 def test_config_returns_env_values(auth, monkeypatch):
@@ -257,7 +257,7 @@ def test_map_page_time_menu_in_filters_row(auth):
     assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
     assert ".filters::-webkit-scrollbar { display: none; }" in html
     # 地图样式走 config (设置页可换), 不再写死幻影黑
-    assert 'mapStyle: cfg.style || "amap://styles/darkblue"' in html
+    assert 'mapStyle: cfg.style || "amap://styles/dark"' in html
 
 
 # ---------------------------------------------------------------- 视野内高精度轨迹
