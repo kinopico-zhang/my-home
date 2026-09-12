@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" type="image/png" sizes="32x32" href="/tesla/static/favicon-32.png">
 <link rel="icon" type="image/svg+xml" href="/tesla/static/favicon.svg">
 <link rel="apple-touch-icon" href="/tesla/static/apple-touch-icon.png?v=2">
@@ -175,6 +178,10 @@ body.selecting #groups-btn, body.selecting #toll-btn { display: none; }
 .ct-arrow {
   flex: none; font-size: 10.5px; font-weight: 600; color: #7db3f0;
   background: rgba(57,135,229,.14); padding: 2px 8px; border-radius: 999px;
+}
+.ct-toll-warn {   /* 高速费没估过的行程: 红标提醒 (估完消失) */
+  flex: none; font-size: 10px; font-weight: 650; color: #fff;
+  background: #e5484d; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
 }
 .ct-drv {
   flex: none; font-size: 10.5px; color: var(--ink-2);
@@ -388,6 +395,7 @@ body.selecting #refresh-btn { display: none; }
   background: rgba(57,135,229,.14); padding: 4px 10px; border-radius: 999px;
   white-space: nowrap; max-width: 52%; overflow: hidden; text-overflow: ellipsis;
 }
+.sh-toll.warn { color: #fff; background: #e5484d; }   /* 没估过/估价中: 红标提醒 */
 .sh-cells {   /* 单行横滑: 放不下就滑, 不折行挤地图 (里程/时长/车速/功耗 实时格排前) */
   flex: none; display: flex; gap: 8px; padding-bottom: 10px;
   overflow-x: auto; scrollbar-width: none;
@@ -742,6 +750,8 @@ function renderCard(it) {
   el.innerHTML = `
     <div class="ct-top">
       <span class="ct-date">${esc(fmtCardDate(it.start))}</span>
+      ${!it.merged && it.toll == null ?   /* 没估过高速费: 红标提醒, 估完就摘 */
+        '<span class="ct-toll-warn">未估高速费</span>' : ""}
       ${it.driver ?   /* 有司机就上卡: 显式标注正常亮, 默认兜底弱化 .def */
         `<span class="ct-drv${it.driver_id != null ? "" : " def"}">${esc(it.driver)}</span>` : ""}
       <span class="ct-arrow">→ 查看轨迹</span>
@@ -1622,6 +1632,11 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
     const va = pts[idx][2] || 0, vb = last ? va : (pts[idx + 1][2] || 0);
     const v = va + (vb - va) * frac;            // 车速两端线性插值 (断档推算模型)
     $("#sh-km").innerHTML = (cum[idx] + stepKm * frac).toFixed(1) + "<small>km</small>";
+    /* 总电耗跟着里程累积 (没有逐点功耗数据, 按整体每公里电耗恒定均摊),
+       播完 setOfficial 定格回整体值 */
+    if (it.kwh != null && cum[N - 1] > 0)
+      $("#sh-kwh").innerHTML =
+        num(it.kwh * (cum[idx] + stepKm * frac) / cum[N - 1]) + "<small>kWh</small>";
     const ta = ts[idx] || 0, tb = last ? ta : (ts[idx + 1] || ta);
     $("#sh-dur").textContent = fmtDurLive(ta + (tb - ta) * frac);
     $("#sh-spd").innerHTML = Math.round(v) + "<small>km/h</small>";
@@ -1633,6 +1648,7 @@ function playTrack(pts, ts, it, zoom = 15, more = false) {
   };
   const setOfficial = () => {
     $("#sh-km").innerHTML = num(it.km) + "<small>km</small>";
+    if (it.kwh != null) $("#sh-kwh").innerHTML = num(it.kwh) + "<small>kWh</small>";
     $("#sh-dur").textContent = fmtDur(it.min);
     $("#sh-spd-lb").textContent = "最高车速";
     $("#sh-spd").innerHTML = (it.speed_max != null ? it.speed_max : "—") + "<small>km/h</small>";
@@ -2027,6 +2043,8 @@ function fillSheetHeaderPending() {
   $("#sh-cell-kwh").hidden = true;
   $("#sh-cell-avg").hidden = true;
   $("#sh-pw").textContent = "—";
+  const tc = $("#sh-toll");                       // 上一条的 chip 不带进来
+  tc.hidden = true; tc.classList.remove("warn");
 }
 
 /* ---------- 弹层司机标注: 未标 = 默认司机兜底, 没配司机整行不显示 ---------- */
@@ -2052,10 +2070,18 @@ async function setupDriverPicker(it, seq) {
   metaRowSync();
 }
 
-/* 高速费 chip: 算过的才显示 (¥0 也是"算过" = 没走收费路) */
+/* 高速费 chip: 算过的显示值 (¥0 也是"算过" = 没走收费路);
+   没算过不藏了, 红标提醒 (估价中 → 未估/结果) */
+let tollEstimating = false;   // 打开未算行程时的自动估价进行中
 function fillTollChip(it) {
   const chip = $("#sh-toll");
-  if (it.merged || it.toll == null) { chip.hidden = true; return; }
+  if (it.merged) { chip.hidden = true; chip.classList.remove("warn"); return; }
+  if (it.toll == null) {
+    chip.hidden = false; chip.classList.add("warn");
+    chip.textContent = tollEstimating ? "高速费估价中…" : "未估高速费";
+    return;
+  }
+  chip.classList.remove("warn");
   chip.hidden = false;
   chip.textContent = it.toll > 0
     ? `高速 ¥${Number.isInteger(it.toll) ? it.toll : it.toll.toFixed(1)}` +
@@ -2106,8 +2132,14 @@ function calcTripToll(pts) {
 
 /* 打开还没算过的行程时顺手估一次, 成功即回传存库 (以后打开不再算)。 */
 async function autoCalcToll(it, pts, seq) {
+  tollEstimating = it.toll == null;
+  fillTollChip(it);                              // 估价中: 红 chip 先亮提示
   const est = await calcTripToll(pts);
-  if (!est || seq !== openSeq) return;
+  tollEstimating = false;
+  if (!est || seq !== openSeq) {
+    if (seq === openSeq) fillTollChip(it);       // 估失败: 红"未估高速费"留着
+    return;
+  }
   it.toll = est.tolls;
   it.toll_km = est.toll_km;
   fillTollChip(it);
@@ -2119,7 +2151,18 @@ async function autoCalcToll(it, pts, seq) {
     });
     const card = items.find(x => x.id === it.id);
     if (card && card !== it) { card.toll = est.tolls; card.toll_km = est.toll_km; }
+    rerenderCard(it.id);                         // 卡片红标摘掉
   } catch { /* 存失败无所谓: 下次打开再估 */ }
+}
+
+/* 行程数据变了 (估完高速费) 就地重渲染卡片; 多选圈状态带过去 */
+function rerenderCard(id) {
+  const card = items.find(x => x.id === id);
+  const cel = listEl.querySelector(`.card-t[data-id="${id}"]`);
+  if (!card || !cel) return;
+  const fresh = renderCard(card);
+  if (cel.classList.contains("picked")) fresh.classList.add("picked");
+  cel.replaceWith(fresh);
 }
 
 $("#sh-drv-sel").addEventListener("change", async () => {
@@ -2181,6 +2224,7 @@ $("#toll-go").addEventListener("click", async () => {
           done++; streak = 0;
           const card = items.find(x => x.id === id);
           if (card) { card.toll = est.tolls; card.toll_km = est.toll_km; }
+          rerenderCard(id);
         } catch { fails++; streak++; }
       } else { fails++; streak++; }
       $("#toll-fill").style.width = `${(done + fails) / pending.length * 100}%`;
