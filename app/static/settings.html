@@ -205,8 +205,8 @@ input::placeholder { color: var(--ink-3); }
     <label><span>安全码</span><input id="amap-code" type="password" placeholder="留空保持现值" autocomplete="new-password"></label>
     <label><span>地图样式</span>
       <select id="amap-style">
-        <option value="amap://styles/dark">幻影黑 (纯黑 · 无地名)</option>
-        <option value="amap://styles/darkblue">极夜蓝 (深色 · 带地名)</option>
+        <option value="amap://styles/dark">幻影黑 (纯黑)</option>
+        <option value="amap://styles/darkblue">极夜蓝 (深色 · 偏蓝)</option>
         <option value="amap://styles/normal">标准 (浅色)</option>
         <option value="amap://styles/light">月光银</option>
         <option value="amap://styles/grey">雅士灰</option>
@@ -218,7 +218,7 @@ input::placeholder { color: var(--ink-3); }
     <label id="amap-style-custom-row" hidden><span>样式地址</span>
       <input id="amap-style-custom" placeholder="amap://styles/你的样式ID" autocomplete="off" spellcheck="false">
     </label>
-    <p class="hint">默认<b>幻影黑</b> —— 纯黑底色和深色 App 最搭, 但官方深色样式按设计<b>不带地名</b>。要深色又带地名: ① 现成可选「极夜蓝」(偏蓝); ② 到高德开放平台控制台「个性化地图」新建样式、选幻影黑为模板, 编辑器预览里确认能看到地名后发布, 把样式 ID 填到「自定义」(纯黑底+地名, 底色字号都能自己调)。改样式后刷新地图页生效。</p>
+    <p class="hint">默认<b>幻影黑</b> —— 纯黑底色和深色 App 最搭。深色样式也有地名: 标注依赖样式数据异步加载, 首次打开过一两秒才出现 (页面会自动补画), 网络慢时更久。想调别的配色: 换上面的预设, 或到高德开放平台「个性化地图」自建样式 (底色字号都能调), 把样式 ID 填到「自定义」。改样式后刷新地图页生效。</p>
     <button class="primary" id="amap-save">保存</button>
   </section>
 

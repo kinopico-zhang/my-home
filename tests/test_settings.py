@@ -49,8 +49,8 @@ def test_settings_save_amap_and_map_config_reflects(auth, monkeypatch):
 def test_settings_save_map_style_and_validation(auth, monkeypatch):
     """地图样式: 预设/自定义 ID 存得下, map config 即时反映; 留空保持; 坏格式 400 不落库。
 
-    默认幻影黑 (dark): 底色纯黑配深色 App; 官方深色样式按设计不带地名,
-    要深色带地名走设置页选极夜蓝或自建样式贴 ID (amap://styles/<ID>)。"""
+    默认幻影黑 (dark): 底色纯黑配深色 App。深色样式也有地名 —— 标注依赖
+    样式数据异步加载, 首次打开过一两秒才出现 (页面自动补重渲染)。"""
     monkeypatch.delenv("AMAP_STYLE", raising=False)
     assert auth.get("/tesla/api/settings").json()["amap"]["style"] \
         == "amap://styles/dark"
@@ -158,11 +158,12 @@ def test_settings_page_and_nav_entries(auth):
     for frag in ['id="tm-host"', 'id="tm-save"', "保存并连接", 'id="amap-key"',
                  'id="drv-list"', "/tesla/api/settings", "/tesla/api/drivers",
                  'id="toast"', "设为默认", "留空 = 保持现值",
-                 # 地图样式选择 (深色默认幻影黑配 App; 极夜蓝=深色带地名备选)
+                 # 地图样式选择 (深色默认幻影黑配 App; 提示讲清地名是异步到的)
                  'id="amap-style"', 'value="amap://styles/dark"',
                  'value="amap://styles/darkblue"', '极夜蓝',
-                 '幻影黑 (纯黑 · 无地名)',
+                 '幻影黑 (纯黑)</option>', '首次打开过一两秒才出现',
                  'id="amap-style-custom"', "amap_style:"]:
         assert frag in html, f"设置页缺少片段 {frag}"
+    assert "无地名" not in html   # 深色样式有地名, 旧说法不许回潮
     for page in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
         assert '<a href="/tesla/settings">设置</a>' in auth.get(page).text, page

@@ -451,6 +451,10 @@ async function initMap() {
     });
     map = new AMap.Map("map", { mapStyle: cfg.style || "amap://styles/dark",
       zoom: 16, center: [114.05, 22.55] });
+    map.on("complete", () => {   // 矢量样式数据异步加载: 首帧不画地名, 到货后补几拍重渲染
+      const nudge = () => { if (map.getFeatures) map.setFeatures(map.getFeatures()); };
+      setTimeout(nudge, 1500); setTimeout(nudge, 5000); setTimeout(nudge, 12000);
+    });
     // iOS Safari 双指缩放劫持成整页缩放: 手势只给高德
     for (const ev of ["gesturestart", "gesturechange"])
       document.getElementById("map").addEventListener(ev, e => e.preventDefault());

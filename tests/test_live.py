@@ -163,6 +163,8 @@ def test_live_page_skeleton(auth):
     assert "min-width: 3ch" in html and "min-width: 7ch" in html
     assert '<span class="n">' in html
     assert "cur && cur.driving" in html   # 地图异步就位后补画车点/轨迹
-    # 地图样式走 config (设置页可换), 不再写死幻影黑 (无地名标注)
+    # 地图样式走 config (设置页可换), 不再写死幻影黑
     assert 'mapStyle: cfg.style || "amap://styles/dark"' in html
+    # 地名首帧竞态: 样式数据异步加载, complete 后延时补重渲染才有地名
+    assert 'map.setFeatures(map.getFeatures())' in html
     assert "s.soc > 50" in html and "#32d74b" in html
