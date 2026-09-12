@@ -40,6 +40,20 @@ def _unfilter_png(raw: bytes, w: int, ch: int) -> list[bytearray]:
 
 
 # ---------------------------------------------------------------- 登录
+def test_all_pages_have_standalone_meta(auth):
+    """五个页面 (含登录页) 都带全屏 App meta。
+
+    桌面图标是全屏 web app, 有独立 cookie 存储: 首次启动必然 302 到登录页。
+    登录页一旦缺 meta, 整个 App 会被弹回 Safari 露地址栏, 之后再也回不去
+    全屏 (2026-09-12 用户踩坑)。任何新增页面都必须带上。
+    """
+    for path in ["/tesla/login", "/tesla/charging", "/tesla/map",
+                 "/tesla/trips", "/tesla/settings"]:
+        html = auth.get(path).text
+        assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
+        assert 'content="black-translucent"' in html, path
+
+
 def test_login_ok_sets_cookie_attributes(client):
     r = client.post("/tesla/api/login",
                     json={"user": config.AUTH_USER, "password": config.AUTH_PASS})

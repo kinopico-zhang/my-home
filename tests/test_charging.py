@@ -372,3 +372,6 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
               'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout', 'city-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
+    # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)
+    assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
+    assert ".filters::-webkit-scrollbar { display: none; }" in html

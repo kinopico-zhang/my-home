@@ -838,6 +838,9 @@ def test_trips_page_time_menu_and_filter_row(auth):
               'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout',
               'fc-opts', 'tc-opts', 'km-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
+    # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)
+    assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
+    assert ".filters::-webkit-scrollbar { display: none; }" in html
 
 
 def test_trips_page_has_playbar_and_single_column(auth):
