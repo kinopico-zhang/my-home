@@ -198,8 +198,8 @@ class TripItem(BaseModel):
     speed_max: int | None
     from_: str = Field(alias="from")
     to: str
-    driver: str | None = None      # 展示名: 显式标注, 未标注回落默认司机
-    driver_id: int | None = None   # 显式标注的司机 id (未标 = None)
+    driver: str | None = None      # 展示名: 显式标注, 未标注回落默认驾驶员
+    driver_id: int | None = None   # 显式标注的驾驶员 id (未标 = None)
     toll: float | None = None      # 估价高速费 (元); None=还没算过
     toll_km: float | None = None   # 收费路段里程 (km)
     kwh: float | None = None       # 总电耗 (kWh): 额定续航差 × 桩端换算系数
@@ -331,7 +331,7 @@ class SettingsUpdate(BaseModel):
 
 
 class DriverInfo(BaseModel):
-    """司机条目。"""
+    """驾驶员条目。"""
 
     id: int
     name: str
@@ -339,13 +339,13 @@ class DriverInfo(BaseModel):
 
 
 class DriverIn(BaseModel):
-    """添加司机。"""
+    """添加驾驶员。"""
 
     name: str = Field(min_length=1, max_length=30)
 
 
 class DriverUpdate(BaseModel):
-    """改司机: 改名 / 设默认 (设默认会清掉其他人的默认)。"""
+    """改驾驶员: 改名 / 设默认 (设默认会清掉其他人的默认)。"""
 
     name: str | None = Field(None, min_length=1, max_length=30)
     is_default: bool | None = None

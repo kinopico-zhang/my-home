@@ -192,7 +192,7 @@ body.selecting #groups-btn, body.selecting #toll-btn { display: none; }
   background: rgba(255,255,255,.08); padding: 2.5px 9px; border-radius: 999px;
   max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ct-drv.def {   /* 默认司机兜底 (没人标过): 弱一档, 和显式标注区分 */
+.ct-drv.def {   /* 默认驾驶员兜底 (没人标过): 弱一档, 和显式标注区分 */
   color: var(--ink-3); background: none; border: 1px solid var(--hairline);
   padding: 1.5px 8px;   /* 补偿 1px 边框, 高度对齐无框 pill */
 }
@@ -753,7 +753,7 @@ const state = { range: range0, cFrom: cFrom0, cTo: cTo0,
                 drvId: /^\d+$/.test(qs0.get("driver_id") || "") ? +qs0.get("driver_id") : null,
                 offset: 0, total: 0, loading: false, done: false, err: null };
 const trackCache = new Map();       // id → {pts, ts} 全精度轨迹
-let driversCache;   // 设置页司机表 (undefined=还没拉过, null=失败, 数组=结果), 筛选行与弹层共用
+let driversCache;   // 设置页驾驶员表 (undefined=还没拉过, null=失败, 数组=结果), 筛选行与弹层共用
 const items = [];                   // 已加载卡片数据 (与 #list 子元素一一对应, 多选用)
 
 const listEl = $("#list");
@@ -765,7 +765,7 @@ function renderCard(it) {
   el.innerHTML = `
     <div class="ct-top">
       <span class="ct-date">${esc(fmtCardDate(it.start))}</span>
-      ${it.driver ?   /* 有司机就上卡: 显式标注正常亮, 默认兜底弱化 .def */
+      ${it.driver ?   /* 有驾驶员就上卡: 显式标注正常亮, 默认兜底弱化 .def */
         `<span class="ct-drv${it.driver_id != null ? "" : " def"}">${esc(it.driver)}</span>` : ""}
       <span class="ct-arrow">→ 查看轨迹</span>
       <span class="pick" aria-hidden="true"></span>
@@ -1048,8 +1048,8 @@ if (state.km !== "all") {
   renderLocStart(); renderLocEnd();
 })();
 
-/* 司机筛选: 选项来自设置页的司机表 (没配司机整颗筛选藏掉); 筛选口径与
-   卡片一致 —— 选默认司机 = 标注它的 + 未标注的 (后端合并处理) */
+/* 驾驶员筛选: 选项来自设置页的驾驶员表 (没配驾驶员整颗筛选藏掉); 筛选口径与
+   卡片一致 —— 选默认驾驶员 = 标注它的 + 未标注的 (后端合并处理) */
 (async () => {
   if (driversCache === undefined) {
     try { driversCache = await getJSON("/tesla/api/drivers"); }
@@ -1061,7 +1061,7 @@ if (state.km !== "all") {
   opts.innerHTML = `<button data-id=""${state.drvId == null ? ' class="on"' : ""}>全部</button>` +
     drivers.map(d =>
       `<button data-id="${d.id}"${state.drvId === d.id ? ' class="on"' : ""}>${esc(d.name)}</button>`).join("");
-  if (state.drvId != null) {               // URL 深链带入的司机要存在才算数
+  if (state.drvId != null) {               // URL 深链带入的驾驶员要存在才算数
     const hit = drivers.find(d => d.id === state.drvId);
     if (hit) $("#drv-lb").textContent = "驾驶员: " + hit.name;
     else {
@@ -2075,11 +2075,11 @@ function fillSheetHeaderPending() {
   $("#sh-pw").textContent = "—";
 }
 
-/* ---------- 弹层司机标注: 未标 = 默认司机兜底, 没配司机整行不显示 ---------- */
+/* ---------- 弹层驾驶员标注: 未标 = 默认驾驶员兜底, 没配驾驶员整行不显示 ---------- */
 async function setupDriverPicker(it, seq) {
   const pick = $("#sh-drv-pick");
   pick.hidden = true;                             // 先藏, 数据到位再亮
-  if (!it.merged) {                               // 合并多段: 司机标注不适用
+  if (!it.merged) {                               // 合并多段: 驾驶员标注不适用
     if (driversCache === undefined) {
       try { driversCache = await getJSON("/tesla/api/drivers"); }
       catch { driversCache = null; }
@@ -2109,7 +2109,7 @@ function fillTollChip(it) {
     : "无高速费";
 }
 
-function metaRowSync() {   // 司机选择和高速费 chip 都藏了才整行藏
+function metaRowSync() {   // 驾驶员选择和高速费 chip 都藏了才整行藏
   $("#sh-drv").hidden = $("#sh-drv-pick").hidden && $("#sh-toll").hidden;
 }
 
@@ -2252,7 +2252,7 @@ async function openTrip(it, fromUrl) {
   if (!fromUrl && urlTripKey() !== curKey)
     history.pushState({ k: curKey }, "", listURL(curKey));
   const seq = ++openSeq;
-  sheetTrip = it.merged ? null : it;   // 司机标注只对单条行程有意义
+  sheetTrip = it.merged ? null : it;   // 驾驶员标注只对单条行程有意义
   const cached = it.merged ? mergedCache.get(it.mergeKey) : null;
   if (cached) Object.assign(it, cached);   // 合并整包缓存命中: 数据齐了直接播
   if (it.pts || !it.merged) fillSheetHeader(it);   // 单条: 字段随卡片/接口齐, 直接填

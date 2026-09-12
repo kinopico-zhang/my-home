@@ -542,7 +542,7 @@ class TripFilter:
     to_loc: str | None = None       # 终点地区 (空 = 全部)
     km_min: float | None = None     # 里程下限 (km)
     km_max: float | None = None     # 里程上限 (km)
-    driver_id: int | None = None    # 驾驶员 (own 库司机 id, 空 = 全部)
+    driver_id: int | None = None    # 驾驶员 (own 库驾驶员 id, 空 = 全部)
 
 
 # ---------------------------------------------------------------- 省市区解析
@@ -651,8 +651,8 @@ def _trip_conditions(session: Session,
 
 
 def _driver_condition(own: Session, driver_id: int) -> ColumnElement[bool]:
-    """按驾驶员筛选, 与卡片展示同口径: 显式标注的行程; 选默认司机时
-    未标注的也算 (未标注在卡片上就显示默认司机名)。司机不存在 → 空。
+    """按驾驶员筛选, 与卡片展示同口径: 显式标注的行程; 选默认驾驶员时
+    未标注的也算 (未标注在卡片上就显示默认驾驶员名)。驾驶员不存在 → 空。
 
     标注表在自有库, 与 TeslaMate 库不是同一个连接 —— 先取出 id 列表再
     下推条件, 不能跨库做子查询。"""
@@ -686,9 +686,9 @@ def list_trips(session: Session, own: Session, offset: int, limit: int,
 
 
 def annotate_drivers(own: Session, items: list[TripItem]) -> None:
-    """行程条目补驾驶员: 显式标注 > 默认司机兜底 (都没配 = None 不显示)。
+    """行程条目补驾驶员: 显式标注 > 默认驾驶员兜底 (都没配 = None 不显示)。
 
-    标注指向的司机已被删时按未标注处理 (标注行会随删司机联动清掉,
+    标注指向的驾驶员已被删时按未标注处理 (标注行会随删驾驶员联动清掉,
     这里再兜一层, 库里残留脏行也不致显示错名字)。"""
     if not items:
         return
@@ -736,7 +736,7 @@ def save_trip_toll(own: Session, drive_id: int, body: TripTollIn) -> None:
 def set_trip_driver(own: Session, drive_id: int, driver_id: int | None) -> None:
     """标/清行程驾驶员 (清 = 删标注行, 展示回默认兜底)。"""
     if driver_id is not None and own.get(Driver, driver_id) is None:
-        raise NotFound("司机不存在")
+        raise NotFound("驾驶员不存在")
     own.execute(delete(TripDriver).where(TripDriver.drive_id == drive_id))
     if driver_id is not None:
         own.add(TripDriver(drive_id=drive_id, driver_id=driver_id))
