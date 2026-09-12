@@ -958,7 +958,8 @@ def test_trips_page_live_energy_and_standalone(auth):
 def test_trips_page_playback_pacing_and_nowrap(auth):
     """超长轨迹不再 12 秒放完: 时长含里程分量 + 0.5× 慢速档; 统计值不折行。"""
     html = auth.get("/tesla/trips").text
-    for frag in ["Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300)",
+    for frag in [   # 时长公式在 animDurMs (预载扫路共用, 口径一致)
+                 "Math.min(Math.max(n / 300, 3 + km * 1.4), 300)",
                  "PB_SPEEDS = [0.5, 1, 2, 4, 8]",
                  "white-space: nowrap",
                  # 进度条是播放条里唯一可缩项: flex 项 <input> 默认 min-width:auto
@@ -1008,12 +1009,25 @@ def test_trips_page_has_url_deeplink(auth):
 
 
 def test_trips_page_preloads_tiles(auth):
-    """播放前预载沿途瓦片: 倍率按里程 + DOM 抄模板 + Image() 刷缓存, 失败静默。"""
+    """播放前预载沿途瓦片: 倍率按里程 + DOM 抄模板 + Image() 刷缓存, 失败静默。
+    矢量模式没有可抄的瓦片 URL → 扫路预取 (相机沿路线按未来档位扫一遍灌
+    TileCache, 收尾补整轨拉远视野); 时长公式抽 animDurMs 与播放同口径。"""
     html = auth.get("/tesla/trips").text
     for frag in ["function followZoom(", "async function tileTemplate(", "function tileUrl(",
                  "function preloadTiles(", "正在预载地图", "TrackUtil.lngLatToTile",
                  "appmaptile", "playTrack(c.pts, c.ts || [], it, zoom)",
-                 "setTimeout(resolve, 8000)", "trackutil.js?v=8"]:
+                 "setTimeout(resolve, 8000)", "trackutil.js?v=8",
+                 # 矢量扫路预取 (隐藏图拉过不认, 只能驱动主图自己扫)
+                 "async function preloadVectorTrack(",
+                 "const animDurMs = (n, km) =>",
+                 "let dur = animDurMs(N, cum[N - 1]);",
+                 "dur = animDurMs(N, cum[N - 1]);",
+                 "tripMap.setZoomAndCenter(z, p, true)",
+                 "VECTOR_PRELOAD_STEP_MS = 600, VECTOR_PRELOAD_CAP_MS = 10000,",
+                 "Math.round(speedZoom(vSum / ZOOM_SAMPLES))",
+                 "if (zoomUserLock) return Math.round(zoomUserZoom || tripMap.getZoom());",
+                 "tripMap.setFitView([whole], false, [46, 46, 46, 46]);",
+                 "else await preloadVectorTrack(c.pts, c.ts || [], zoom,"]:
         assert frag in html, f"行程页缺少瓦片预载片段 {frag}"
 
 

@@ -1667,6 +1667,12 @@ $("#pb-zval").textContent = zoomBias > 0 ? `+${zoomBias}` : String(zoomBias);
 
 /* 播放轨迹动画。more=true 表示轨迹还会通过 append 追加 (合并轨迹流式
    下载边下边播): 播到当前末尾时停在原地等数据, 全部到齐后调用方关掉 more。 */
+/* 播放时长 (1× 基准, ms): 点数与里程取大, 3~300s。只看点数会亏待被下采样的
+   超长轨迹 (260km 也被压到 12 秒放完, 根本看不清路), 里程分量让长途慢下来;
+   系数 1.4s/km ≈ 镜头以 0.7km/s 扫过 —— 再快肉眼跟不上 (超长封顶 300s,
+   嫌慢有倍速按钮)。矢量预载扫路也用它换算窗口时刻 (口径必须一致)。 */
+const animDurMs = (n, km) => Math.min(Math.max(n / 300, 3 + km * 1.4), 300) * 1000;
+
 function playTrack(pts, ts, it, zoom = 14, more = false) {
   stopAnim();
   if (curSess) curSess.alive = false;
@@ -1683,11 +1689,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
   const ecum = [0];                              // 播放中的实时 (模型) 能耗
   for (let i = 1; i < pts.length; i++) ecum.push(ecum[i - 1] + enerStep(i));
   const vt = TrackUtil.animTimes(pts, ts);      // 播放节拍: 每点累计行驶秒
-  // 跟随时长按点数与里程取大: 3~300s (1× 基准)。只看点数会亏待被下采样的
-  // 超长轨迹 (260km 也被压到 12 秒放完, 根本看不清路), 里程分量让长途慢下来;
-  // 系数 1.4s/km ≈ 镜头以 0.7km/s 扫过 —— 再快肉眼跟不上 (超长封顶 300s,
-  // 嫌慢有倍速按钮)
-  let dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300) * 1000;
+  let dur = animDurMs(N, cum[N - 1]);
   let growStep = Math.max(1, Math.floor(N / 200));   // 白线分块生长: 每帧全量重建太卡
 
   // 背景全程速度线 (淡) —— 拉远后就是完整的速度色全局图
@@ -1866,7 +1868,7 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
         vt.push(vt[i - 1] + TrackUtil.animStepSec(pts[i - 1], pts[i],
                  ts.length >= pts.length ? Math.max(0, ts[i] - ts[i - 1]) : 1));
       N = pts.length;
-      dur = Math.min(Math.max(N / 300, 3 + cum[N - 1] * 1.4), 300) * 1000;
+      dur = animDurMs(N, cum[N - 1]);
       growStep = Math.max(1, Math.floor(N / 200));
       s.dur = dur; s.N = N;             // 进度条 seek 用的是对象上的快照
       // 新段速度线 + 段内断档 (段内补路服务端已拼好, 这里只剩稀疏采样断档)
@@ -2085,6 +2087,78 @@ function preloadTiles(pts, z, tpl, onProgress) {
     };
     urls.forEach(u => { const im = new Image(); im.onload = im.onerror = tick; im.src = u; });
   });
+}
+
+/* ---------- 矢量模式预载 (扫路) ---------- */
+/* 栅格抄 URL 预热那套对矢量无效: 瓦片数据走 POST 鉴权 + 每次新签名的 URL,
+   缓存又在地图实例内部 (隐藏第二张图拉过了也不认, dbg70 实测)。改在预载
+   遮罩下把主图相机沿路线扫一遍 —— 引擎按视图拉瓦灌进 TileCache (500 条,
+   一条走廊绰绰有余), 播放期不再现场等数据, 地名/道路不再迟到。
+   每步档位 = 播放同口径滑窗均速的 round(speedZoom()) (镜头自动拉远拉近都
+   覆盖; 视角锁定时整条按用户档); 开场档 (followZoom) 在起点补一步; 收尾
+   补一步整轨 setFitView 同款视野 (定格拉远不冷启动)。步距 ~55% 视口宽
+   (按当步档位换算米/px), 600ms/步, 上限 10s —— 超时扫到哪算哪, 剩下照常
+   按需补, 不挡播放。 */
+const VECTOR_PRELOAD_STEP_MS = 600, VECTOR_PRELOAD_CAP_MS = 10000,
+      VECTOR_PRELOAD_STEP_FRAC = 0.55;
+
+async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
+  const N = pts.length;
+  if (N < 2 || !tripMap || !document.querySelector("#trip-map canvas")) return;
+  const vt = TrackUtil.animTimes(pts, ts);
+  const vtTotal = vt[vt.length - 1] || 0;
+  if (vtTotal <= 0) return;
+  const cum = TrackUtil.cumDistKm(pts);
+  const dur = animDurMs(N, cum[N - 1]);
+  /* 该点处播放会用的档位: 与 zoomTick 同口径 (过去2s+预看5s 滑窗均速);
+     视角锁定时播放全程一个档, 扫路也整条按用户档 */
+  const zoomAt = i => {
+    if (zoomUserLock) return Math.round(zoomUserZoom || tripMap.getZoom());
+    const t = dur * vt[i] / vtTotal;
+    let vSum = 0;
+    for (let k = 0; k < ZOOM_SAMPLES; k++) {
+      const tw = t - ZOOM_PAST_MS
+        + (ZOOM_PAST_MS + ZOOM_FUT_MS) * k / (ZOOM_SAMPLES - 1);
+      const p = TrackUtil.animAt(vt, tw, dur);
+      const va = pts[p.idx][2] || 0,
+            vb = p.idx + 1 < N ? pts[p.idx + 1][2] || 0 : va;
+      vSum += va + (vb - va) * p.frac;
+    }
+    return Math.round(speedZoom(vSum / ZOOM_SAMPLES));
+  };
+  const alive = () => seq === openSeq;
+  const dwell = () => new Promise(r => setTimeout(r, VECTOR_PRELOAD_STEP_MS));
+  const visit = async (z, p) => {
+    tripMap.setZoomAndCenter(z, p, true);
+    await dwell();
+  };
+  const mapW = document.getElementById("trip-map").clientWidth || 390;
+  const t0 = performance.now();
+  await visit(Math.round(openZoom), toGcj(pts[0]));   // 开场档先到位 (zoomEaseStart 同款)
+  if (alive()) onProgress(5);
+  let idx = 0, km = 0;
+  while (idx < N - 1 && performance.now() - t0 < VECTOR_PRELOAD_CAP_MS && alive()) {
+    await visit(zoomAt(idx), toGcj(pts[idx]));
+    if (!alive()) return;
+    onProgress(Math.min(95, 5 + Math.round(km / (cum[N - 1] || 1) * 90)));   // 单调 5→95
+    let mpp = 200;   // 米/px 回落值: 步距偏大 = 少扫几步, 不致命
+    try { mpp = tripMap.getResolution() || 200; } catch { /* 老版本缺这个接口 */ }
+    km += VECTOR_PRELOAD_STEP_FRAC * mapW * mpp / 1000;   // 步距 ~55% 视口宽
+    while (idx < N - 1 && cum[idx] < km) idx++;
+  }
+  /* 收尾一步: 整轨拉远视野 (finish() 的 setFitView 同款边距), 定格时
+     整张全局图的数据也已在手。隐形折线只为供出范围, 用完即删 */
+  if (alive()) {
+    const stride = Math.max(1, Math.floor(N / 4000));
+    const path = [];
+    for (let i = 0; i < N; i += stride) path.push(toGcj(pts[i]));
+    const whole = new AMap.Polyline({ path, strokeOpacity: 0, zIndex: 1 });
+    tripMap.add(whole);
+    tripMap.setFitView([whole], false, [46, 46, 46, 46]);
+    await dwell();
+    tripMap.remove(whole);
+    onProgress(100);
+  }
 }
 
 /* ---------- 地址栏深链: 打开变 /tesla/trips?id=X 或 ?ids=a,b, 方便分享/回退 ---------- */
@@ -2405,11 +2479,14 @@ async function openTrip(it, fromUrl) {
     if (!it.merged && it.toll == null)
       autoCalcToll(it, c.pts, seq);   // 不 await: 估价不挡播放
 
-    /* 播放前把沿途瓦片刷进缓存 (跟随倍率按里程), 播放不再一路补图白屏 */
+    /* 播放前把沿途瓦片刷进缓存 (跟随倍率按里程), 播放不再一路补图白屏;
+       矢量模式没有可抄的瓦片 URL, 改扫路预取 (见 preloadVectorTrack) */
     const zoom = followZoom(TrackUtil.cumDistKm(c.pts).pop() || 0);
     const tpl = await tileTemplate();
     if (tpl) await preloadTiles(c.pts, zoom, tpl,
       p => tripMsg(`正在预载地图 ${p}%`, true));
+    else await preloadVectorTrack(c.pts, c.ts || [], zoom,
+      p => tripMsg(`正在预载地图 ${p}%`, true), seq);
     if (seq !== openSeq) return;
     tripMsg(null, false);
     playTrack(c.pts, c.ts || [], it, zoom);   // 动态播放: 起点跑向终点, 视角跟随, 结束后拉远全局
