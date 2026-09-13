@@ -898,11 +898,13 @@ def test_trips_page_sheet_grab_drag_close(auth):
     js = auth.get("/tesla/static/trips.js?v=1").text
     both = html + js
     for frag in ['id="grab"', "touch-action: none", ".grab::before",   # 整行命中区
-                 "setPointerCapture", 'grab.addEventListener("pointermove"',
-                 'grab.addEventListener("pointercancel"',
+                 'window.addEventListener("pointermove", move)',
+                 'window.addEventListener("pointerup", release)',
+                 'window.removeEventListener("pointermove", move)',
                  "translateY(${dy}px)", "if (dy > 90) closeTrip()",
                  "e.stopImmediatePropagation()"]:
         assert frag in both, f"行程页缺少 {frag}"
+    assert "setPointerCapture(e.pointerId)" not in both   # iOS touch 指针 capture 即 cancel, 别回潮
     assert '$("#grab").addEventListener("click", closeTrip);' not in js
     assert 'grab.addEventListener("touchstart"' not in js   # 手柄不吃旧 touch 三件套
 

@@ -383,28 +383,39 @@ document.addEventListener("keydown", e => {
   else if (sheetOpen) closeSheet();
 });
 
-/* 下滑关闭 (pointer: 触摸/鼠标/笔统一, 拖着跟手, 松手回弹) */
+/* 下滑关闭 (pointer: 触摸/鼠标/笔统一, 拖着跟手, 松手回弹)。
+   不用 setPointerCapture: iOS Safari 对 touch 指针 capture 会当场
+   pointercancel (手指一动事件就被系统收走, 2026-09-13 用户实测拉不动),
+   move/up 挂 window 级 —— 不捕获手指出界照样收, 各端行为一致。 */
 (() => {
   const zone = $("#grab-zone");
   let y0 = null, dy = 0;
-  zone.addEventListener("pointerdown", e => {
-    y0 = e.clientY; dy = 0;
-    zone.setPointerCapture(e.pointerId);   // 手指滑出区域也能继续收事件
-  });
-  zone.addEventListener("pointermove", e => {
-    if (y0 == null) return;
+  const move = e => {
     dy = Math.max(0, e.clientY - y0);      // 只往下拖有效, 往上顶不抬层
     sheet.style.transition = "none";
     sheet.style.transform = `translateY(${dy}px)`;
-  });
+  };
   const release = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", release);
+    window.removeEventListener("pointercancel", release);
     if (y0 == null) return;
     sheet.style.transition = ""; sheet.style.transform = "";
     if (dy > 90) closeSheet();             // 拉过 90px = 明确想关; 否则弹回
     y0 = null;
   };
-  zone.addEventListener("pointerup", release);
-  zone.addEventListener("pointercancel", release);
+  zone.addEventListener("pointerdown", e => {
+    y0 = e.clientY; dy = 0;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+  });
+  // 点一下也关 (trips 手柄同款): 拖过 8px 不算点击, 否则回弹动画结束瞬间
+  // 跟着来的 click 会把刚弹回的弹层又关掉
+  zone.addEventListener("click", () => {
+    if (dy > 8) { dy = 0; return; }
+    closeSheet();
+  });
 })();
 
 async function loadDetail(id) {
