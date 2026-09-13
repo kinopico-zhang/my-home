@@ -126,6 +126,16 @@ header {
 }
 .nav-menu .menu button.on { color: #7db3f0; }
 .nav-menu .menu button:active { background: var(--surface-3); }
+/* 地点省市区级联 (行程页同款): 菜单限高滚动 (区县可能有十几项), 返回行/面包屑/层级行 */
+.nav-menu .menu.loc-menu { max-height: min(420px, 62vh); overflow-y: auto; min-width: 176px; }
+.nav-menu .menu .loc-crumb { font-size: 11px; color: var(--ink-3); padding: 4px 12px 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-menu .menu button.loc-back { color: var(--ink-2); font-size: 13px; padding: 5px 12px 8px; }
+.nav-menu .menu button.loc-row { display: flex; align-items: baseline; gap: 8px; }
+.nav-menu .menu button.loc-row .nm { overflow: hidden; text-overflow: ellipsis; }
+.nav-menu .menu button.loc-row .cnt { color: var(--ink-3); font-size: 12px;
+  margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+.nav-menu .menu button.on .cnt { color: #7db3f0; }
 /* 时间菜单的自定义日历: 月历网格, 同一个日历连点两次 (第一下起点, 第二下终点) */
 .time-menu .tm-custom { border-top: 1px solid var(--hairline); margin-top: 5px; padding-top: 5px; }
 .time-menu .menu { max-height: calc(100vh - 130px); overflow-y: auto; }  /* 矮屏展开日历时兜底滚动 */
@@ -331,12 +341,19 @@ main { max-width: 760px; margin: 0 auto; }
 .al-btn { flex: 1; padding: 13px 0; font-size: 15.5px; color: var(--ink-1); }
 .al-btn + .al-btn { border-left: 1px solid var(--hairline); }
 /* 导航选单: 地图 App 一行一个, 点一个只拉一个 */
-.nav-apps { margin: 12px 16px 16px; border-radius: 10px; overflow: hidden; }
+.nav-hint { padding: 3px 16px 0; font-size: 11px; color: var(--ink-3); text-align: center; }
+.nav-apps { margin: 10px 16px 16px; border-radius: 10px; overflow: hidden; }
 .nav-apps button {
   display: block; width: 100%; padding: 12px 0;
   font-size: 15px; color: #7db3f0;
+  -webkit-touch-callout: none; user-select: none;   /* 长按隐藏别被系统长按菜单打断 */
 }
-.nav-apps button + button { border-top: 1px solid var(--hairline); }
+.nav-apps button + button, .nav-restore + button, button + .nav-restore { border-top: 1px solid var(--hairline); }
+.nav-restore { padding: 2px 0 8px; }
+.nav-restore button {
+  display: inline-block; width: auto; padding: 5px 12px; margin: 5px 6px 0 8px;
+  font-size: 12px; border: 1px solid var(--hairline); border-radius: 14px; color: var(--ink-2);
+}
 .nav-apps button:active { background: rgba(255,255,255,.06); }
 .al-strong { font-weight: 650; color: #7db3f0; }
 .al-btn:active, .al-clear:active { background: rgba(255,255,255,.06); }
@@ -415,9 +432,9 @@ main { max-width: 760px; margin: 0 auto; }
         <button data-v="slow">🔌 慢充</button>
       </div>
     </details>
-    <details class="nav-menu filt" id="city-menu">
-      <summary><span class="fl" id="city-lb">城市: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-      <div class="menu" id="city-opts"></div>
+    <details class="nav-menu filt" id="loc-menu">
+      <summary><span class="fl" id="loc-lb">地点: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <div class="menu loc-menu" id="loc-opts"></div>
     </details>
     <details class="nav-menu filt" id="cost-menu">
       <summary><span class="fl" id="cost-lb">费用: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
@@ -463,6 +480,7 @@ main { max-width: 760px; margin: 0 auto; }
 <div class="alert-backdrop" id="nav-bd" hidden>
   <div class="alert" role="dialog" aria-label="选择地图应用">
     <div class="al-title">导航到充电站</div>
+    <div class="nav-hint">长按可隐藏没装的地图, ＋ 可恢复</div>
     <div class="nav-apps" id="nav-apps">
       <button data-app="amap">高德地图</button>
       <button data-app="baidu">百度地图</button>

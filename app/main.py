@@ -37,7 +37,6 @@ from .schemas import (
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
-    CityCount,
     CostUpdateRequest,
     CostUpdateResult,
     DriverIn,
@@ -53,6 +52,7 @@ from .schemas import (
     MergedTrack,
     MonthlyStat,
     OkResponse,
+    RegionNode,
     SettingsState,
     SettingsUpdate,
     TracksDetailResponse,
@@ -237,30 +237,35 @@ def get_charging_map_locations(
     return repository.charging_map_locations(db, _date_range_or_400(frm, to))
 
 
-@charging.get("/cities")
-def get_charging_cities(
-        db: Session = Depends(database.get_db)) -> list[CityCount]:
-    """充电城市列表 (筛选下拉数据源, 次数降序)。"""
-    return repository.list_charging_cities(db)
+@charging.get("/regions")
+def get_charging_regions(
+        db: Session = Depends(database.get_db)) -> list[RegionNode]:
+    """充电地点省市区树 (级联下拉数据源, 按充电次数降序)。"""
+    return repository.charging_region_tree(db)
 
 
 @charging.get("/sessions")
 def get_sessions(
         offset: int = 0, limit: int = 50, sort: str = "date_desc",
         type_: str = Query("all", alias="type"), q: str | None = None,
-        city: str | None = None, cost: str | None = None,
+        region: str | None = None, cost: str | None = None,
         frm: str | None = Query(None, alias="from"), to: str | None = None,
         db: Session = Depends(database.get_db)) -> ChargingSessionsPage:
-    """充电列表: 过滤 (日期/快慢/城市/费用记录/地址搜索) → 排序 → 分页。"""
+    """充电列表: 过滤 (日期/快慢/地点省市区/费用记录/地址搜索) → 排序 → 分页。
+
+    region 是 "/" 连接的省市区路径 (1~3 段 = 精确到省/市/区县), 与行程页同款。
+    """
     if sort not in repository.SORT_OPTIONS:
         raise HTTPException(400, f"不支持的排序: {sort}")
     if offset < 0 or limit < 0:
         raise HTTPException(400, "分页参数非法")
     if cost not in (None, "all", "recorded", "missing"):
         raise HTTPException(400, "不支持的费用筛选")
+    if region and not 1 <= len([t for t in region.split("/") if t.strip()]) <= 3:
+        raise HTTPException(400, "地区参数非法")
     flt = repository.SessionFilter(
         date_range=_date_range_or_400(frm, to), charge_type=type_,
-        city=city or None, query=q, sort=sort, offset=offset, limit=limit,
+        region=region or None, query=q, sort=sort, offset=offset, limit=limit,
         cost=None if cost == "all" else cost)
     total, items = repository.list_charging_sessions(db, flt)
     return ChargingSessionsPage(total=total, items=items)
