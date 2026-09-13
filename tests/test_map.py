@@ -259,6 +259,8 @@ def test_map_page_time_menu_in_filters_row(auth):
     assert ".filters::-webkit-scrollbar { display: none; }" in html
     # 地图样式走 config (设置页可换), 不再写死幻影黑
     assert 'mapStyle: cfg.style || "amap://styles/dark"' in html
+    # "©…auto navi" 版权文字按需求去掉 (高德无官方开关, CSS 藏)
+    assert '#map .amap-copyright { display: none !important; }' in html
     # 地名首帧竞态: 矢量样式数据异步加载, 首帧不画地名; complete 后延时补
     # 重渲染 (setFeatures 同值重设只触发重绘), 否则地名要等下次交互才出现
     assert 'map.setFeatures(map.getFeatures())' in html

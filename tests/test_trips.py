@@ -1036,10 +1036,11 @@ def test_trips_page_preloads_tiles(auth):
                  "dur = animDurMs(N, cum[N - 1]);",
                  "tripMap.setZoomAndCenter(z, p, true)",
                  # 环形前瞻: 容器四周扩出 (wrap 裁掉可视区不变), 播放中四周
-                 # 瓦片提前 4~13s 进缓存 = 真正的边播边下; logo/版权推回可视区
+                 # 瓦片提前 4~13s 进缓存 = 真正的边播边下; logo 推回可视区
                  "width: calc(100% + 320px); height: calc(100% + 640px);",
                  "left: -160px; top: -320px;",
-                 "#trip-map .amap-logo, #trip-map .amap-copyright",
+                 "#trip-map .amap-logo {",
+                 "#trip-map .amap-copyright { display: none !important; }",
                  "transform: translate(160px, -320px);",
                  "const MAP_RING_X = 160, MAP_RING_Y = 320;",
                  "const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y,"
