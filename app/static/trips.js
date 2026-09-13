@@ -1935,8 +1935,11 @@ function recShowResult(r) {
   if (recURL) URL.revokeObjectURL(recURL);
   recURL = URL.createObjectURL(blob);
   $("#rec-video").src = recURL;
-  $("#rec-save").hidden = !(navigator.canShare &&   // 不支持文件分享: 留长按视频存储的路
-    navigator.canShare({ files: [recFile] }));
+  // 存到相册按钮: Safari (iOS) 没实现 canShare 但 share({files}) 可用 —— 只按
+  // navigator.share 的存在性放行, canShare 仅在实现时作附加校验 (没有 share 的
+  // 老桌面内核才整颗藏掉, 留长按视频存储的路)
+  $("#rec-save").hidden = !(navigator.share &&
+    (!navigator.canShare || navigator.canShare({ files: [recFile] })));
   $("#rec-modal").hidden = false;
 }
 
