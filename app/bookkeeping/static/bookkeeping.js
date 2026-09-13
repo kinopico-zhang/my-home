@@ -235,8 +235,11 @@ function treeFor(kind) {          // 当前收支方向的类别树 (离线用�
 
 function fillChips() {
   const tops = treeFor(sheetKind);
-  $("#cat-chips").innerHTML = tops.map(([name]) =>
-    `<button data-cat="${esc(name)}"${sheetCat === name || sheetCat.startsWith(name + "/") ? ' class="on"' : ""}>${esc(name)}</button>`).join("");
+  $("#cat-tiles").innerHTML = tops.map(([name]) => {
+    const on = sheetCat === name || sheetCat.startsWith(name + "/");
+    return `<button class="tile${on ? " on" : ""}" data-cat="${esc(name)}">` +
+      `<span class="ti">${catIcon(name)}</span><span class="tn">${esc(name)}</span></button>`;
+  }).join("");
   const top = sheetCat.split("/")[0];          // "" = 没选, 子类行藏起来
   const kids = (tops.find(t => t[0] === top) || [null, []])[1];
   $("#cat-sub").hidden = !kids.length;
@@ -290,6 +293,7 @@ function closeSheet() {
 
 $("#fab").addEventListener("click", () => openSheet(null));
 $("#sheet-mask").addEventListener("click", closeSheet);
+$("#sheet-close").addEventListener("click", closeSheet);
 
 $("#kind-seg").addEventListener("click", e => {
   const btn = e.target.closest("button[data-kind]");
@@ -302,7 +306,7 @@ $("#kind-seg").addEventListener("click", e => {
   fillChips();
 });
 
-$("#cat-chips").addEventListener("click", e => {
+$("#cat-tiles").addEventListener("click", e => {
   const btn = e.target.closest("button[data-cat]");
   if (!btn) return;
   sheetCat = sheetCat === btn.dataset.cat ? "" : btn.dataset.cat;
@@ -325,11 +329,44 @@ function refreshAmountPreview() {      // 表达式 (含运算符) 的实时结�
 
 $("#amt-pad").addEventListener("click", e => {
   const btn = e.target.closest("button[data-k]");
-  if (!btn) return;
-  const input = $("#f-amount");
-  input.value = applyAmountKey(input.value, btn.dataset.k);
-  refreshAmountPreview();
+  if (!btn || btn.dataset.k === "back") return;   // ⌫ 在 pointerdown 处理 (要区分长按)
+  if (btn.dataset.k === "done") {
+    if (saveEntry()) closeSheet();
+  } else if (btn.dataset.k === "again") {
+    // 再记: 存完不关弹层, 清空金额备注接着记 (改一笔时按它 = 存修改再开新一笔)
+    if (saveEntry()) {
+      editingId = null;
+      $("#f-amount").value = "";
+      $("#f-note").value = "";
+      sheetCat = "";
+      $("#sheet-title").textContent = "记一笔";
+      $("#sheet-del").hidden = true;
+      fillChips();
+      $("#amt-eq").textContent = "已记 ✓";   // 下一个数字会把预览顶掉
+    }
+  } else {
+    const input = $("#f-amount");
+    input.value = applyAmountKey(input.value, btn.dataset.k);
+    refreshAmountPreview();
+  }
 });
+
+// ⌫: 按下即回删; 按住半秒整串清空 (iOS 键盘习惯), 抬手/移开就停
+(function wireBackspace() {
+  const btn = $("#amt-pad button[data-k=back]");
+  let holdTimer = null;
+  btn.addEventListener("pointerdown", () => {
+    const input = $("#f-amount");
+    input.value = applyAmountKey(input.value, "back");
+    refreshAmountPreview();
+    holdTimer = setTimeout(() => {
+      input.value = applyAmountKey(input.value, "clear");
+      refreshAmountPreview();
+    }, 550);
+  });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"])
+    btn.addEventListener(ev, () => clearTimeout(holdTimer));
+})();
 
 $("#f-amount").addEventListener("input", () => {   // 粘贴/残存输入法兜底: 只留键盘字符
   const input = $("#f-amount");
@@ -338,21 +375,21 @@ $("#f-amount").addEventListener("input", () => {   // 粘贴/残存输入法兜�
   refreshAmountPreview();
 });
 
-// 键盘只在金额输入时展开; 备注/日期要弹系统输入法, 让位收起
-$("#f-amount").addEventListener("focus", () => $("#amt-pad").classList.add("on"));
-$("#f-note").addEventListener("focus", () => $("#amt-pad").classList.remove("on"));
-$("#f-date").addEventListener("focus", () => $("#amt-pad").classList.remove("on"));
+// 键盘随弹层常驻 (完成/再记就长在键盘里, 收了就没法保存了):
+// 备注/日期聚焦弹系统键盘时, 靠弹层自身滚动让位, 不收键盘
 
-$("#sheet-save").addEventListener("click", () => {
+function shakeAmount() {               // 金额无效: 抖一下提示 (不清空, 键盘就在手边)
+  const line = $("#amt-line");
+  line.classList.remove("shake");
+  void line.offsetWidth;
+  line.classList.add("shake");
+}
+
+// 记一笔落库 (键盘上的 完成/再记 共用): 表达式求值 → 条目进本地账本 → 待同步
+function saveEntry() {
   const value = evaluateAmount($("#f-amount").value);
   const amount = value == null ? NaN : Math.round(value * 100) / 100;
-  if (!isFinite(amount) || amount <= 0) {          // 金额无效不存, 抖一下提示 (不清空)
-    const line = $("#amt-line");
-    line.classList.remove("shake");
-    void line.offsetWidth;
-    line.classList.add("shake");
-    return;
-  }
+  if (!isFinite(amount) || amount <= 0) { shakeAmount(); return false; }
   const date = $("#f-date").value || todayStr();
   const note = $("#f-note").value.trim().slice(0, 200);
   const now = new Date().toISOString();
@@ -369,10 +406,10 @@ $("#sheet-save").addEventListener("click", () => {
   else entries.push(entry);
   dirty.add(entry.id);
   persist();
-  closeSheet();
   render();
   scheduleSync();
-});
+  return true;
+}
 
 $("#sheet-del").addEventListener("click", () => {
   const prev = entries.find(x => x.id === editingId);
