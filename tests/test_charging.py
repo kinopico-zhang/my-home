@@ -420,15 +420,23 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
 
 
 def test_charging_sheet_grab_drag_close(auth):
-    """充电详情弹层手柄可拖拽关闭 (pointer 统一触摸/鼠标, 跟手 + 松手回弹)。"""
+    """充电详情弹层手柄: 点一下关, 拖 >90px 松手也关 (跟手 + 回弹)。
+
+    iOS Safari 对 touch 指针 setPointerCapture 会当场 pointercancel
+    (用户实测拉不动), move/up 挂 window 级不捕获 —— 手指出界照样收,
+    各端行为一致 (2026-09-13 修)。"""
     html = auth.get("/tesla/charging").text
     html += auth.get("/tesla/static/index.js?v=1").text
     for frag in ['id="grab-zone"', "touch-action: none",
-                 "setPointerCapture", 'zone.addEventListener("pointermove"',
-                 'zone.addEventListener("pointercancel"',
-                 "translateY(${dy}px)", "if (dy > 90) closeSheet()"]:
+                 'window.addEventListener("pointermove", move)',
+                 'window.addEventListener("pointerup", release)',
+                 'window.removeEventListener("pointermove", move)',
+                 "translateY(${dy}px)", "if (dy > 90) closeSheet()",
+                 # 点一下也关; 拖过 8px 抑制随后的 click (trips 手柄同款)
+                 'if (dy > 8) { dy = 0; return; }']:
         assert frag in html, f"充电页缺少 {frag}"
-    assert "touchstart" not in html    # 旧 touch 三件套已废 (鼠标拖不动)
+    assert "setPointerCapture(e.pointerId)" not in html   # iOS capture 即 cancel, 别回潮
+    assert "touchstart" not in html          # 旧 touch 三件套已废 (鼠标拖不动)
 
 
 def test_charging_page_cost_filter_menu(auth):
