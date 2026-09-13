@@ -662,7 +662,10 @@ $("#groups-btn").addEventListener("click", openGroups);
 $("#gp-close").addEventListener("click", closeGroups);
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && !$("#gpanel").hidden) closeGroups();
+  /* 弹层播分组时面板藏在弹层下面, Esc 不连面板一起关 (关弹层要能回到
+     分组页); 弹层自己不吃 Esc, 这里只挡面板 */
+  if (e.key === "Escape" && !$("#gpanel").hidden &&
+      !$("#sheet").classList.contains("show")) closeGroups();
 });
 
 /* 面板点击委托: 点条目开合并播放; 改名行内编辑; 删除二次确认 (3s 内再点才删)。
@@ -710,7 +713,8 @@ $("#gp-list").addEventListener("click", async e => {
   } else if (t.closest(".gp-no")) {
     gpRender();
   } else if (t.closest(".gp-main")) {
-    closeGroups();
+    /* 面板不关: z-index 89 让弹层盖上来播, 关弹层原地回到分组页
+       (浏览完分组轨迹留在分组页, 不回行程列表) */
     openMerged(item.dataset.ids);   // 逗号串原样直通 (保成员, 不折叠区间)
   }
 });
