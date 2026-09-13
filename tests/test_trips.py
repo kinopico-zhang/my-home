@@ -889,6 +889,22 @@ def test_trips_page_time_menu_and_filter_row(auth):
     assert ".filters::-webkit-scrollbar { display: none; }" in html
 
 
+def test_trips_page_sheet_grab_drag_close(auth):
+    """轨迹弹层手柄: 点一下关, 拖 >90px 松手也关 (pointer 统一触摸/鼠标,
+    跟手 + 回弹); 拖过 8px 抑制随后的 click, 不把刚弹回的弹层又关掉。"""
+    html = auth.get("/tesla/trips").text
+    js = auth.get("/tesla/static/trips.js?v=1").text
+    both = html + js
+    for frag in ['id="grab"', "touch-action: none", ".grab::before",   # 整行命中区
+                 "setPointerCapture", 'grab.addEventListener("pointermove"',
+                 'grab.addEventListener("pointercancel"',
+                 "translateY(${dy}px)", "if (dy > 90) closeTrip()",
+                 "e.stopImmediatePropagation()"]:
+        assert frag in both, f"行程页缺少 {frag}"
+    assert '$("#grab").addEventListener("click", closeTrip);' not in js
+    assert 'grab.addEventListener("touchstart"' not in js   # 手柄不吃旧 touch 三件套
+
+
 def test_trips_page_has_playbar_and_single_column(auth):
     """播放控制条 + 单列列表 都在页面上; 统计格不占地图高度。"""
     html = auth.get("/tesla/trips").text

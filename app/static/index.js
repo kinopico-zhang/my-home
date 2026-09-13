@@ -537,22 +537,28 @@ document.addEventListener("keydown", e => {
   else if (sheetOpen) closeSheet();
 });
 
-/* 下滑关闭 */
+/* 下滑关闭 (pointer: 触摸/鼠标/笔统一, 拖着跟手, 松手回弹) */
 (() => {
   const zone = $("#grab-zone");
   let y0 = null, dy = 0;
-  zone.addEventListener("touchstart", e => { y0 = e.touches[0].clientY; dy = 0; }, { passive: true });
-  zone.addEventListener("touchmove", e => {
+  zone.addEventListener("pointerdown", e => {
+    y0 = e.clientY; dy = 0;
+    zone.setPointerCapture(e.pointerId);   // 手指滑出区域也能继续收事件
+  });
+  zone.addEventListener("pointermove", e => {
     if (y0 == null) return;
-    dy = Math.max(0, e.touches[0].clientY - y0);
+    dy = Math.max(0, e.clientY - y0);      // 只往下拖有效, 往上顶不抬层
     sheet.style.transition = "none";
     sheet.style.transform = `translateY(${dy}px)`;
-  }, { passive: true });
-  zone.addEventListener("touchend", () => {
-    sheet.style.transition = ""; sheet.style.transform = "";
-    if (dy > 110) closeSheet();
-    y0 = null;
   });
+  const release = () => {
+    if (y0 == null) return;
+    sheet.style.transition = ""; sheet.style.transform = "";
+    if (dy > 90) closeSheet();             // 拉过 90px = 明确想关; 否则弹回
+    y0 = null;
+  };
+  zone.addEventListener("pointerup", release);
+  zone.addEventListener("pointercancel", release);
 })();
 
 async function loadDetail(id) {
