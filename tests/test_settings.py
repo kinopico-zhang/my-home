@@ -167,4 +167,4 @@ def test_settings_page_and_nav_entries(auth):
         assert frag in html, f"设置页缺少片段 {frag}"
     assert "无地名" not in html   # 深色样式有地名, 旧说法不许回潮
     for page in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
-        assert '<a href="/tesla/settings">设置</a>' in auth.get(page).text, page
+        assert '<a href="/tesla/settings">软件设置</a>' in auth.get(page).text, page
