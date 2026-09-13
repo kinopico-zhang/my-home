@@ -35,7 +35,7 @@ form.addEventListener("submit", async e => {
       // 回上次停留的页面 (主屏 App 里会话过期重新登录 / Safari 书签进来都适用)
       var last = null;
       try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
-      location.replace(last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog)|bookkeeping)(\?|$)/.test(last)
+      location.replace(last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog))(\?|$)/.test(last)
         ? last : "/tesla/charging");
       return;
     }
@@ -57,3 +57,16 @@ form.addEventListener("submit", async e => {
   btn.disabled = false;
 });
 document.getElementById("user").focus();
+
+// 已登录的访客: 这里是 My Home 的门厅, 不再要密码, 直接给两个应用的入口
+// (My Tesla + My Money 只共享账号, 门厅是唯一交汇处)
+fetch("/tesla/api/me").then(r => r.ok ? r.json() : null).then(me => {
+  if (!me) return;                       // 没登录: 表单照旧
+  document.getElementById("sub").textContent = "欢迎回来 · " + me.name;
+  form.hidden = true;
+  document.getElementById("apps").hidden = false;
+}).catch(() => {});
+document.getElementById("switch-account").addEventListener("click", async () => {
+  await fetch("/tesla/api/logout", { method: "POST" });
+  location.reload();                     // 重新进门厅 → 登录表单
+});

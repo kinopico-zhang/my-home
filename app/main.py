@@ -11,7 +11,6 @@ import math
 import re
 import threading
 from collections.abc import AsyncIterator
-from datetime import timezone as dt_timezone
 from contextlib import asynccontextmanager
 from typing import Awaitable, Callable, Iterator
 
@@ -24,8 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import (account_store, authentication, bookkeeping_store, changelog,
+from . import (account_store, authentication, changelog,
                 config, database, repository, settings_store, tracks_cache)
+from .bookkeeping import store as bookkeeping_store, webapp
 from . import models
 from .models import OwnBase, User
 from .schemas import (
@@ -46,14 +46,11 @@ from .schemas import (
     DriverInfo,
     DriverMark,
     DriverUpdate,
-    EntryOut,
     InvitationCreated,
     InvitationItem,
     InvitationRequest,
     MeInfo,
     RegisterCredentials,
-    SyncRequest,
-    SyncResponse,
     UserItem,
     GapFillRequest,
     GapFillResponse,
@@ -92,8 +89,6 @@ settingsapi = APIRouter(prefix="/tesla/api")
 changelogapi = APIRouter(prefix="/tesla/changelog/api")
 # 账号管理 API (页面: /tesla/accounts, 仅管理员)
 accounts = APIRouter(prefix="/tesla/accounts/api")
-# 记账 API (页面: /bookkeeping —— 离线优先, 本地编辑联网同步)
-bookkeeping = APIRouter(prefix="/bookkeeping/api")
 
 
 def _migrate_own_db() -> None:
@@ -121,8 +116,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     models.UsersBase.metadata.create_all(database.users_engine())
     with database.users_session_factory()() as users:
         account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
-    database.init_bookkeeping_engine()
-    models.BookkeepingBase.metadata.create_all(database.bookkeeping_engine())
+    bookkeeping_store.init_engine()      # 记账库 (独立文件, 独立应用)
+    bookkeeping_store.create_all()
     with database.own_session_factory()() as own:   # pylint: disable=not-callable
         url = settings_store.engine_url(own)
     database.init_engine(url)
@@ -133,7 +128,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     database.dispose_engine()
     database.dispose_own_engine()
     database.dispose_users_engine()
-    database.dispose_bookkeeping_engine()
+    bookkeeping_store.dispose_engine()
 
 
 app = FastAPI(title="My Tesla", lifespan=lifespan)
@@ -151,7 +146,8 @@ async def sqlalchemy_error_handler(
 _PUBLIC_PATHS = frozenset((
     "/tesla/login", "/tesla/register",
     "/tesla/api/login", "/tesla/api/logout",
-    "/tesla/api/register", "/tesla/api/invite-status"))
+    "/tesla/api/register", "/tesla/api/invite-status",
+    "/bookkeeping/api/logout"))
 _STATIC_PREFIXES = ("/tesla/static/", "/bookkeeping/static/")
 
 
@@ -178,7 +174,7 @@ async def auth_middleware(
     if is_api:
         # API 数据 (如 map config) 禁止缓存, 否则配置更新后浏览器仍用旧响应
         resp.headers["Cache-Control"] = "no-store"
-    elif path.startswith("/tesla/static/"):
+    elif path.startswith(_STATIC_PREFIXES):
         # JS 工具 (trackutil 等) 迭代频繁, 必须重新校验; ETag 命中时 304 很便宜。
         # 只发 Last-Modified 时浏览器走启发式缓存, 会继续用旧 JS (动画因此冻住过)。
         resp.headers["Cache-Control"] = "no-cache"
@@ -248,13 +244,8 @@ def logout() -> JSONResponse:
 
 
 def _current_user(request: Request, users: Session) -> User | None:
-    """会话 cookie → 账号 (旧版 cookie 按管理员会话处理)。"""
-    user_uuid = authentication.check_token(request.cookies.get("auth", ""))
-    if user_uuid is None:
-        return None
-    if user_uuid == authentication.LEGACY_ADMIN:
-        return account_store.admin_user(users)
-    return account_store.get_user(users, user_uuid)
+    """会话 cookie → 账号 (逻辑在账号库, 记账应用共用)。"""
+    return account_store.user_for_cookie(request.cookies.get("auth", ""), users)
 
 
 def _require_user(request: Request, users: Session) -> User:
@@ -390,33 +381,6 @@ def accounts_revoke_invitation(token: str, request: Request,
         raise HTTPException(400, "邀请不存在或已被使用")
     return OkResponse(ok=True)
 
-
-# ---------------------------------------------------------------- 记账 API
-
-@bookkeeping.post("/sync", response_model=SyncResponse)
-def bookkeeping_sync(body: SyncRequest, request: Request,
-                     users: Session = Depends(database.get_users_db),
-                     bk: Session = Depends(database.get_bookkeeping_db)) -> SyncResponse:
-    """同步: 上行本地改动 (LWW 合并) + 增量下发别人的改动。
-
-    记账人 (created_by / updated_by) 由服务端按会话落, 客户端说了不算。
-    """
-    user = _require_user(request, users)
-    try:
-        rows, server_now = bookkeeping_store.sync_entries(
-            bk, user.uuid, body.entries, body.last_sync)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    names = {u.uuid: u.name for u in account_store.list_users(users)}
-    entries = [EntryOut(
-        id=row.id, date=row.date, amount=row.amount, kind=row.kind,
-        category=row.category, note=row.note, deleted=row.deleted,
-        updated_at=row.updated_at.replace(tzinfo=dt_timezone.utc),
-        created_by_name=names.get(row.created_by, "未知"),
-        updated_by_name=names.get(row.updated_by, "未知")) for row in rows]
-    return SyncResponse(
-        server_now=server_now.replace(tzinfo=dt_timezone.utc),
-        entries=entries)
 
 
 # ---------------------------------------------------------------- 充电 API
@@ -892,12 +856,6 @@ def accounts_page() -> FileResponse:
     return _page("accounts.html")
 
 
-@app.get("/bookkeeping")
-def bookkeeping_page() -> FileResponse:
-    """记账页: 离线优先 (本地保存, 联网同步), 多人账本。"""
-    return _page("bookkeeping.html")
-
-
 @app.get("/tesla/changelog")
 def changelog_page() -> FileResponse:
     """更新日志页: 合并批次的版本条目, 用户视角文案。"""
@@ -981,7 +939,6 @@ app.include_router(live)
 app.include_router(settingsapi)
 app.include_router(changelogapi)
 app.include_router(accounts)
-app.include_router(bookkeeping)
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
-app.mount("/bookkeeping/static", StaticFiles(directory=config.STATIC_DIR),
-          name="bookkeeping-static")
+# My Money (家庭记账): 独立应用, 只共享账号体系 (会话 cookie + 账号库)
+app.mount("/bookkeeping", webapp.bk_app)

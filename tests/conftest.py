@@ -19,7 +19,9 @@ sys.path.insert(0, str(ROOT))
 
 # sys.path 注入必须先于 app 导入 (import 位置告警属预期, 按需豁免)
 from app import account_store, authentication, config, database, tracks_cache  # pylint: disable=wrong-import-position
-from app.models import (Address, Base, BookkeepingBase, Car, Charge,  # pylint: disable=wrong-import-position
+from app.bookkeeping import store as bookkeeping_store  # pylint: disable=wrong-import-position
+from app.bookkeeping.store import EntryBase  # pylint: disable=wrong-import-position
+from app.models import (Address, Base, Car, Charge,  # pylint: disable=wrong-import-position
                         ChargingProcess, Drive, OwnBase, Position, UsersBase)
 import app.main as m  # pylint: disable=wrong-import-position
 
@@ -34,8 +36,8 @@ def isolate(tmp_path, monkeypatch):
     OwnBase.metadata.create_all(database.own_engine())
     database.init_users_engine(f"sqlite:///{tmp_path / 'users.db'}")
     UsersBase.metadata.create_all(database.users_engine())
-    database.init_bookkeeping_engine(f"sqlite:///{tmp_path / 'bookkeeping.db'}")
-    BookkeepingBase.metadata.create_all(database.bookkeeping_engine())
+    bookkeeping_store.init_engine(f"sqlite:///{tmp_path / 'bookkeeping.db'}")
+    EntryBase.metadata.create_all(bookkeeping_store.engine())
     # 管理员种子 (生产在 lifespan 里做, TestClient 不触发 lifespan)
     with database.users_session_factory()() as users:  # pylint: disable=not-callable
         account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
@@ -57,7 +59,7 @@ def isolate(tmp_path, monkeypatch):
     database.dispose_engine()
     database.dispose_own_engine()
     database.dispose_users_engine()
-    database.dispose_bookkeeping_engine()
+    bookkeeping_store.dispose_engine()
 
 
 @pytest.fixture()
@@ -99,7 +101,7 @@ def usersdb():
 @pytest.fixture()
 def bkdb():
     """直连记账库的会话 (种子账目 / 回读断言)。"""
-    with database.bookkeeping_session_factory()() as session:  # pylint: disable=not-callable
+    with bookkeeping_store.session_factory()() as session:  # pylint: disable=not-callable
         yield session
 
 

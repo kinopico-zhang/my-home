@@ -262,31 +262,3 @@ class Invitation(UsersBase):
     used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     revoked: Mapped[bool] = mapped_column(default=False)
 
-
-class BookkeepingBase(DeclarativeBase):
-    """记账库基类 (data/bookkeeping.db, 独立文件)。"""
-
-
-class Entry(BookkeepingBase):
-    """一笔账: id 由客户端生成 (离线可建), 同步上来按 id 幂等合并。
-
-    created_by / updated_by 是账号 uuid (记账人: 每一笔都记是谁记的,
-    展示时由账号库解析成名称); updated_at 是客户端版本时间 (LWW 合并),
-    synced_at 是服务端接收时间 (增量下发的游标)。
-
-    deleted 是墓碑: 离线删除也要能同步给其他人, 不真删行。"""
-
-    __tablename__ = "entries"
-
-    id: Mapped[str] = mapped_column(primary_key=True)     # 客户端 uuid
-    date: Mapped[str] = mapped_column(String)             # 记账日期 YYYY-MM-DD
-    amount: Mapped[float]                                 # 元 (恒正, 收支看 kind)
-    kind: Mapped[str] = mapped_column(String)             # expense / income
-    category: Mapped[str] = mapped_column(String, default="")
-    note: Mapped[str] = mapped_column(String, default="")
-    created_by: Mapped[str]                                # 记账人 (账号 uuid)
-    created_at: Mapped[datetime]
-    updated_by: Mapped[str]
-    updated_at: Mapped[datetime]                          # 客户端版本时间
-    synced_at: Mapped[datetime]                           # 服务端接收时间
-    deleted: Mapped[bool] = mapped_column(default=False)

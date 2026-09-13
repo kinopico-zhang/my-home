@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import authentication
 from .models import Invitation, User
 
 # scrypt 参数: n=2^14 / r=8 / p=1 一次哈希 ~16MB 内存 + 几十毫秒,
@@ -115,6 +116,17 @@ def admin_user(session: Session) -> User | None:
     """管理员账号 (旧版 cookie 的虚拟身份落到它)。"""
     return session.execute(
         select(User).where(User.is_admin)).scalar_one_or_none()
+
+
+def user_for_cookie(cookie: str, users: Session) -> User | None:
+    """会话 cookie → 账号 (My Tesla 与家庭记账两个应用共用的入口;
+    旧版两段 cookie 按管理员会话处理)。"""
+    user_uuid = authentication.check_token(cookie)
+    if user_uuid is None:
+        return None
+    if user_uuid == authentication.LEGACY_ADMIN:
+        return admin_user(users)
+    return get_user(users, user_uuid)
 
 
 def authenticate(session: Session, name: str, password: str) -> User | None:

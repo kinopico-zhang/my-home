@@ -1,5 +1,6 @@
 {
-  // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / lastpage。
+  // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / lastpage /
+  // bookkeeping-merge (记账同步纯逻辑, 在记账应用自己的包里)。
   // 页面脚本 (trips.js 等) 依赖高德/echarts 宿主对象, 类型声明成本高,
   // 由 ESLint 把关; 这三个文件是坐标/轨迹核心算法, 类型收益最大。
   // types:[] — 不自动引入 node_modules/@types (共享目录里有别的包声明)
@@ -15,6 +16,7 @@
     "app/static/gcj02.js",
     "app/static/trackutil.js",
     "app/static/lastpage.js",
+    "app/bookkeeping/static/bookkeeping-merge.js",
     "frontend-globals.d.ts"
   ]
 }
