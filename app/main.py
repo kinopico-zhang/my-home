@@ -24,14 +24,15 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import (authentication, config, database, repository, settings_store,
-                tracks_cache)
+from . import (authentication, changelog, config, database, repository,
+                settings_store, tracks_cache)
 from .models import OwnBase
 from .schemas import (
     AmapConfig,
     CarInfo,
     ChargeDims,
     ChargeMapLocation,
+    ChangelogEntry,
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
@@ -75,6 +76,7 @@ trips = APIRouter(prefix="/tesla/trips/api")
 live = APIRouter(prefix="/tesla/live/api")
 # 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 驾驶员)
 settingsapi = APIRouter(prefix="/tesla/api")
+changelogapi = APIRouter(prefix="/tesla/changelog/api")
 
 
 def _migrate_own_db() -> None:
@@ -630,7 +632,7 @@ def stats_page() -> FileResponse:
 
 @app.get("/tesla/chargemap")
 def chargemap_page() -> FileResponse:
-    """充电地图页: 大地图按充电点聚合, 圆标大小可切 电量/次数/费用 三种视图。"""
+    """充电地图页: 热力图按充电点聚合, 颜色权重可切 电量/次数/费用 三种视图。"""
     return _page("chargemap.html")
 
 
@@ -662,6 +664,12 @@ def live_page() -> FileResponse:
 def settings_page() -> FileResponse:
     """设置页: TeslaMate 数据库 / 高德 Key / 驾驶员。"""
     return _page("settings.html")
+
+
+@app.get("/tesla/changelog")
+def changelog_page() -> FileResponse:
+    """更新日志页: 逐提交的版本条目 (x.y.z: x=架构重构, y=特性, z=修复)。"""
+    return _page("changelog.html")
 
 
 @settingsapi.get("/settings")
@@ -728,9 +736,16 @@ def remove_driver(driver_id: int,
     return OkResponse(ok=True)
 
 
+@changelogapi.get("/entries")
+def get_changelog_entries() -> list[ChangelogEntry]:
+    """更新日志条目 (新→老), 版本号逐提交步进。"""
+    return changelog.entries()
+
+
 app.include_router(charging)
 app.include_router(mapapi)
 app.include_router(trips)
 app.include_router(live)
 app.include_router(settingsapi)
+app.include_router(changelogapi)
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
