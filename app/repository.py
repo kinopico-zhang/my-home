@@ -30,10 +30,12 @@ from .models import (Address, Car, Charge, ChargingProcess, Drive, Driver,
 from .schemas import (
     CarInfo,
     ChargeCurve,
+    ChargeDims,
     ChargingSession,
     ChargingSessionDetail,
     ChargingSummary,
     CityCount,
+    CityStat,
     CostUpdateResult,
     GapFillRequest,
     LocationStat,
@@ -412,6 +414,44 @@ def list_charging_cities(session: Session) -> list[CityCount]:
         .group_by(Address.city)
         .order_by(func.count().desc())).all()
     return [CityCount(city=city, count=int(n)) for city, n in rows]
+
+
+def charging_dimensions(session: Session, date_range: DateRange | None) -> ChargeDims:
+    """充电统计维度聚合 (快慢/时段/起充 SOC/峰值功率/城市), 与列表同源同日期口径。"""
+    rows = _charge_rows(session, date_range, None)
+    by_hour = [0] * 24
+    by_soc = [0] * 5
+    by_power = [0] * 5
+    fast = slow = 0
+    cities: dict[str, dict[str, float]] = {}
+    for row in rows:
+        cp, agg = row.process, row.agg
+        if agg.is_fast:
+            fast += 1
+        else:
+            slow += 1
+        by_hour[to_local(cp.start_date).hour] += 1
+        soc = cp.start_battery_level
+        if soc is not None:
+            by_soc[min(int(soc) // 20, 4)] += 1     # 100% 也进 80-100 档
+        power = agg.power_max
+        if power is not None:
+            by_power[0 if power < 60 else 1 if power < 100 else
+                     2 if power < 150 else 3 if power < 200 else 4] += 1
+        city = row.address.city if row.address else None
+        if city:      # 无地址/无城市的充电不进城市维度 (与城市筛选下拉同口径)
+            c = cities.setdefault(city, {"sessions": 0, "energy": 0.0, "cost": 0.0})
+            c["sessions"] += 1
+            c["energy"] += (_fnum(cp.charge_energy_used)
+                            or _fnum(cp.charge_energy_added) or 0.0)
+            c["cost"] += _fnum(cp.cost) or 0.0
+    top = sorted(cities.items(), key=lambda kv: -kv[1]["sessions"])[:10]
+    return ChargeDims(
+        fast_sessions=fast, slow_sessions=slow, by_hour=by_hour,
+        by_soc=by_soc, by_power=by_power,
+        by_city=[CityStat(city=k, sessions=int(v["sessions"]),
+                          energy=round(v["energy"], 1), cost=round(v["cost"], 2))
+                 for k, v in top])
 
 
 def charging_summary(session: Session,

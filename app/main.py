@@ -30,6 +30,7 @@ from .models import OwnBase
 from .schemas import (
     AmapConfig,
     CarInfo,
+    ChargeDims,
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
@@ -214,6 +215,14 @@ def get_charging_summary(
         db: Session = Depends(database.get_db)) -> ChargingSummary:
     """充电汇总 (次数/电量/费用/SOC 与续航增益), 可按日期过滤。"""
     return repository.charging_summary(db, _date_range_or_400(frm, to))
+
+
+@charging.get("/dimensions")
+def get_charging_dimensions(
+        frm: str | None = Query(None, alias="from"), to: str | None = None,
+        db: Session = Depends(database.get_db)) -> ChargeDims:
+    """充电统计维度聚合: 快慢/开始时段/起充 SOC/峰值功率/城市 (统计页图表)。"""
+    return repository.charging_dimensions(db, _date_range_or_400(frm, to))
 
 
 @charging.get("/cities")
@@ -602,6 +611,12 @@ def tesla_home() -> RedirectResponse:
 def charging_page() -> FileResponse:
     """充电记录页。"""
     return _page("index.html")
+
+
+@app.get("/tesla/stats")
+def stats_page() -> FileResponse:
+    """充电统计页: 统计卡片 + 各维度图表 (记录列表留在充电记录页)。"""
+    return _page("stats.html")
 
 
 @app.get("/tesla/map")
