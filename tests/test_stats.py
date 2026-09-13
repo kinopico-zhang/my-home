@@ -7,8 +7,8 @@ from datetime import datetime
 
 from tests.conftest import seed_addresses, seed_charge, seed_charging
 
-PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/map", "/tesla/trips",
-         "/tesla/groups", "/tesla/live", "/tesla/settings"]
+PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/chargemap", "/tesla/map",
+         "/tesla/trips", "/tesla/groups", "/tesla/live", "/tesla/settings"]
 
 
 def _seed_dimensions(db):
@@ -133,6 +133,6 @@ def test_stats_link_in_all_nav_menus(auth):
         html = auth.get(path).text
         assert 'href="/tesla/stats">充电统计</a>' in html, path   # 含 on 态 (统计页自身)
     lastpage = auth.get("/tesla/static/lastpage.js?v=1").text
-    assert '"/tesla/stats", "/tesla/map"' in lastpage
+    assert '"/tesla/stats", "/tesla/chargemap"' in lastpage
     login_js = auth.get("/tesla/static/login.js?v=1").text
-    assert "charging|stats|map" in login_js
+    assert "stats|chargemap|map" in login_js

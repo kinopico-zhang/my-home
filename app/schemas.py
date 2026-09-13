@@ -162,6 +162,20 @@ class ChargeDims(BaseModel):
     by_city: list[CityStat]   # 次数降序, 最多 10 城
 
 
+class ChargeMapLocation(BaseModel):
+    """充电地图上的一个充电点 (按地址聚合)。"""
+
+    id: int                    # address id
+    name: str                  # 展示名: geofence 名优先, 否则地址名
+    city: str | None
+    lat: float                 # WGS-84 (前端转 GCJ-02 上图)
+    lng: float
+    sessions: int
+    fast_sessions: int
+    energy: float              # kWh (表计口径, 缺失回充入)
+    cost: float                # 已记录费用合计 (未记录算 0)
+
+
 class TracksResponse(BaseModel):
     """全量粗轨迹响应。"""
 

@@ -33,7 +33,7 @@ form.addEventListener("submit", async e => {
       // 回上次停留的页面 (主屏 App 里会话过期重新登录 / Safari 书签进来都适用)
       var last = null;
       try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
-      location.replace(last && /^\/tesla\/(charging|stats|map|trips|groups|live|settings)(\?|$)/.test(last)
+      location.replace(last && /^\/tesla\/(charging|stats|chargemap|map|trips|groups|live|settings)(\?|$)/.test(last)
         ? last : "/tesla/charging");
       return;
     }
