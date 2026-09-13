@@ -176,6 +176,16 @@ class ChargeMapLocation(BaseModel):
     cost: float                # 已记录费用合计 (未记录算 0)
 
 
+
+class ChangelogEntry(BaseModel):
+    """更新日志的一条版本条目 (一个提交)。"""
+    version: str               # x.y.z: x=架构重构, y=特性, z=修复
+    type: str                  # feat | fix | refactor
+    type_label: str            # 特性 | 修复 | 重构
+    date: str                  # YYYY-MM-DD
+    hash: str                  # 短哈希
+    subject: str               # 提交说明
+
 class TracksResponse(BaseModel):
     """全量粗轨迹响应。"""
 

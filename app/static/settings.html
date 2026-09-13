@@ -162,6 +162,10 @@ input::placeholder { color: var(--ink-3); }
 }
 #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.err { color: #ffb3ad; }
+.about-link { display: flex; align-items: center; justify-content: space-between;
+  text-decoration: none; color: var(--ink-1); font-size: 15px; padding: 4px 2px; }
+.about-link:active { opacity: .6; }
+.about-link .chev { color: var(--ink-3); font-size: 17px; line-height: 1; }
 </style>
 </head>
 <body>
@@ -234,6 +238,10 @@ input::placeholder { color: var(--ink-3); }
     </div>
     <div id="drv-list"></div>
     <div class="drv-empty" id="drv-empty" hidden>还没有驾驶员 — 添加后可在行程里标注谁开的</div>
+  </section>
+  <section class="card">
+    <h2>关于</h2>
+    <a class="about-link" href="/tesla/changelog">更新日志<span class="chev">›</span></a>
   </section>
 </main>
 
