@@ -160,13 +160,12 @@ main { max-width: 760px; margin: 0 auto; }
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
 .sec-head h2 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; }
 .count-badge { font-size: 12px; color: var(--ink-3); }
-#groups-btn, #toll-btn {
+#groups-btn {
   margin-left: auto; align-self: center; font-size: 12.5px; color: #7db3f0;
   padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(57,135,229,.35);
 }
-#toll-btn { margin-left: 0; }   // auto 只给第一个 (分组), 其余接着排
-#groups-btn:active, #toll-btn:active { background: rgba(57,135,229,.15); }
-body.selecting #groups-btn, body.selecting #toll-btn { display: none; }
+#groups-btn:active { background: rgba(57,135,229,.15); }
+body.selecting #groups-btn { display: none; }
 
 /* ---------- 行程列表 (单列) ---------- */
 #list { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 10px; }
@@ -335,31 +334,6 @@ body.selecting .card-t.picked .pick::after {
 #refresh-btn.busy svg { animation: refresh-spin .8s linear infinite; }
 @keyframes refresh-spin { to { transform: rotate(360deg); } }
 body.selecting #refresh-btn { display: none; }
-
-/* ---------- 高速费批量面板 ---------- */
-.tollpanel {
-  position: fixed; z-index: 93; left: 50%; top: 40%;
-  transform: translate(-50%, -50%);
-  width: min(88vw, 380px);
-  background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 18px; padding: 18px 18px 14px;
-}
-.tollpanel[hidden] { display: none; }
-.tollpanel h2 { font-size: 16px; font-weight: 650; letter-spacing: -.2px; }
-.tollpanel .hint { font-size: 12px; color: var(--ink-3); margin: 6px 0 14px; line-height: 1.5; }
-.toll-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
-.toll-bar i { display: block; height: 100%; width: 0; background: var(--blue);
-  border-radius: 3px; transition: width .3s; }
-.toll-stat { font-size: 12.5px; color: var(--ink-2); margin: 8px 0 14px;
-  font-variant-numeric: tabular-nums; }
-.toll-act { display: flex; gap: 10px; }
-.toll-act button {
-  flex: 1; font-size: 13.5px; font-weight: 600; padding: 9px 0;
-  border-radius: 999px; border: 1px solid var(--hairline); color: var(--ink-1);
-}
-.toll-act .go { background: var(--blue); border-color: var(--blue); color: #fff; }
-.toll-act button:disabled { opacity: .4; }
-.toll-act button:active { transform: scale(.97); }
 
 /* ---------- 轻提示 ---------- */
 #toast {
@@ -569,7 +543,6 @@ body.selecting #refresh-btn { display: none; }
     <h2>行程轨迹</h2>
     <span class="count-badge" id="count-badge"></span>
     <button id="groups-btn">分组</button>
-    <button id="toll-btn">高速费</button>
   </div>
   <div id="list"></div>
 
@@ -643,18 +616,6 @@ body.selecting #refresh-btn { display: none; }
   </div>
   <div class="gp-list" id="gp-list"></div>
   <div class="gp-empty" id="gp-empty" hidden>还没有分组<span>长按行程多选后点「存为分组」</span></div>
-</div>
-<div class="tollpanel" id="tollpanel" hidden>
-  <h2>批量算高速费</h2>
-  <p class="hint">沿每条轨迹的途经点用高德驾车规划估价 (¥与高速里程), 存进 app 自有库。
-  已算过的自动跳过, 中断后再点继续即可; 期间请保持本页面打开。</p>
-  <div class="toll-bar"><i id="toll-fill"></i></div>
-  <div class="toll-stat" id="toll-stat">还没有开始</div>
-  <div class="toll-act">
-    <button class="go" id="toll-go">开始</button>
-    <button id="toll-stop" disabled>暂停</button>
-    <button id="toll-close">关闭</button>
-  </div>
 </div>
 <div id="toast" hidden></div>
 

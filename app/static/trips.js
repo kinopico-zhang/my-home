@@ -62,8 +62,6 @@ async function postJSON(url, body) {
   return r.json();
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 /* ============================ 行程列表 (单列) ============================ */
 const PAGE = 24;
 /* ---------- 顶栏时间筛选: 快捷档位下拉, 编码进 ?range= (分享/刷新保留) ---------- */
@@ -1728,65 +1726,6 @@ $("#sh-drv-sel").addEventListener("change", async () => {
   } catch (err) {
     toast(`标注失败: ${err.message}`);
     sel.value = it.driver_id != null ? String(it.driver_id) : "";
-  }
-});
-
-/* ---------- 批量算高速费面板: 逐条估 + 回传, 已算过的跳过 ---------- */
-const tollBatch = { running: false, stop: false };
-
-function tollStat(txt) { $("#toll-stat").textContent = txt; }
-
-$("#toll-btn").addEventListener("click", () => { $("#tollpanel").hidden = false; });
-$("#toll-close").addEventListener("click", () => { $("#tollpanel").hidden = true; });
-$("#toll-stop").addEventListener("click", () => { tollBatch.stop = true; });
-
-$("#toll-go").addEventListener("click", async () => {
-  if (tollBatch.running) return;
-  tollBatch.running = true; tollBatch.stop = false;
-  $("#toll-go").disabled = true; $("#toll-stop").disabled = false;
-  try {
-    await ensureAMap();
-    tollStat("正在清点行程…");
-    const pending = [];                     // 还没估过的行程 id
-    let total = 0;
-    for (let off = 0; ; off += 100) {       // 分页拉全量列表 (只看 id 和 toll)
-      const d = await getJSON(`/tesla/trips/api/sessions?offset=${off}&limit=100`);
-      total = d.total;
-      for (const i of d.items) if (i.toll == null) pending.push(i.id);
-      if (off + d.items.length >= total) break;
-    }
-    if (!pending.length) { tollStat(`共 ${total} 条, 都算过啦`); return; }
-    let done = 0, fails = 0, streak = 0;
-    for (const id of pending) {
-      if (tollBatch.stop) break;
-      let est = null;
-      try {
-        const t = await getJSON(`/tesla/trips/api/${id}/track`);
-        est = await calcTripToll(t.pts);
-      } catch { /* 轨迹拉取/规划失败按失败计 */ }
-      if (est) {
-        try {
-          await postJSON(`/tesla/trips/api/${id}/toll`, est);
-          done++; streak = 0;
-          const card = items.find(x => x.id === id);
-          if (card) { card.toll = est.tolls; card.toll_km = est.toll_km; }
-        } catch { fails++; streak++; }
-      } else { fails++; streak++; }
-      $("#toll-fill").style.width = `${(done + fails) / pending.length * 100}%`;
-      tollStat(`共 ${total} 条 · 待算 ${pending.length} 中已处理 ${done + fails} · 失败 ${fails}`);
-      if (streak >= 8) {   // 连败 = 配额用尽/网络断了, 自动停免得空烧
-        toast("连续失败, 已自动暂停");
-        tollStat(`连续失败已自动暂停 · 成功 ${done} · 失败 ${fails}, 稍后再点开始`);
-        break;
-      }
-      await sleep(420);    // 温柔限速 (~2.4 次/秒, 个人配额日限内慢慢跑)
-    }
-    if (streak < 8) tollStat(tollBatch.stop
-      ? `已暂停 · 成功 ${done} · 失败 ${fails}, 再点开始继续`
-      : `完成 · 成功 ${done} · 失败 ${fails}`);
-  } finally {
-    tollBatch.running = false;
-    $("#toll-go").disabled = false; $("#toll-stop").disabled = true;
   }
 });
 

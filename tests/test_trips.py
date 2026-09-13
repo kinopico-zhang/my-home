@@ -1155,17 +1155,15 @@ def test_trip_group_validation(auth, db):
 
 
 def test_trips_page_has_toll_tools(auth):
-    """高速费: 头部批量入口 + 面板 + 弹层 chip + 估价函数都挂在页面上。"""
+    """高速费: 打开行程自动估价 + 弹层 chip (批量入口/面板已按需求撤掉)。"""
     html = auth.get("/tesla/trips").text
     html += auth.get("/tesla/static/trips.js?v=1").text
-    for frag in ['id="toll-btn"', 'id="tollpanel"', 'id="toll-go"', 'id="toll-stop"',
-                 'id="toll-fill"', 'id="toll-stat"', 'id="sh-toll"',
-                 "function calcTripToll(", "function autoCalcToll(",
+    for frag in ['id="sh-toll"', "function calcTripToll(", "function autoCalcToll(",
                  "TOLL_WAYPOINTS", "/toll`", "无高速费"]:
         assert frag in html, f"行程页缺少高速费片段 {frag}"
-    # 限速 + 连败自动停 (个人配额保护)
-    assert "await sleep(420)" in html
-    assert "streak >= 8" in html
+    # 批量入口已撤: 按钮和面板不应再出现
+    assert 'id="toll-btn"' not in html
+    assert 'id="tollpanel"' not in html
 
 
 def test_trips_page_has_driver_picker(auth):
