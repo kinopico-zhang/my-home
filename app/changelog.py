@@ -19,8 +19,11 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="新增", text="资料库四个角度逛曲库: 最近添加 / 专辑 / 艺人 / 歌曲, 专辑艺人页里点「播放」「随机」就开听"),
         ChangelogItem(kind="新增", text="随机播放 / 列表循环 / 单曲循环, 播放队列面板能看接下来放什么、跳着选"),
         ChangelogItem(kind="新增", text="关掉浏览器再打开, 会接着上次听到的那首 (进度也记得)"),
+        ChangelogItem(kind="新增", text="统计页: 曲库里有多少艺人、多少专辑、多少首歌, 各格式各多少首, 总共能听多久, 一眼看清"),
         ChangelogItem(kind="改进", text="My Home 门厅现在是三个应用并排: 听歌和车辆、记账一样, 点卡片就进"),
         ChangelogItem(kind="修复", text="极少数老格式 (TAK / DSD / APE) 浏览器播不了的会置灰标明, 点了会提示而不是没反应"),
+        ChangelogItem(kind="修复", text="迷你条上的暂停 / 下一首: 点了不该把全屏播放页弹出来"),
+        ChangelogItem(kind="修复", text="专辑页里点艺人名没反应 (跳转丢了艺人编号)"),
     ]),
     ChangelogVersion(version="2.5.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="My Money (记账): 独立小应用, 可单独加到主屏幕; 记一笔支出或收入, 按月看汇总, 每笔都记着是谁记的;"

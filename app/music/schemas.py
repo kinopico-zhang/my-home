@@ -167,6 +167,24 @@ class ArtistPageList(BaseModel):
     limit: int
 
 
+class FormatCount(BaseModel):
+    """一种音频格式的曲目数 (playable=False 浏览器播不了, 前端置灰)。"""
+
+    format: str = ""              # flac / mp3 / tak …
+    count: int = 0
+    playable: bool = False
+
+
+class LibraryStats(BaseModel):
+    """统计页: 库规模 + 各格式曲目数。"""
+
+    artist_count: int = 0
+    album_count: int = 0
+    track_count: int = 0
+    total_duration_seconds: float = 0.0
+    formats: list[FormatCount] = []
+
+
 # ---------------------------------------------------------------- 搜索
 
 class LyricHit(BaseModel):

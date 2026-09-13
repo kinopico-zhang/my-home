@@ -19,8 +19,8 @@ from . import library_media, library_queries, service
 from .library_database import (Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
-                      LyricsResponse, MusicStatusResponse, RescanResponse,
-                      SearchResult, TrackPageList)
+                      LibraryStats, LyricsResponse, MusicStatusResponse,
+                      RescanResponse, SearchResult, TrackPageList)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -91,6 +91,15 @@ def music_status(request: Request,
             select(func.count()).select_from(Album)) or 0,
         track_count=library.scalar(
             select(func.count()).select_from(Track)) or 0)
+
+
+@api.get("/stats", response_model=LibraryStats)
+def music_stats(request: Request,
+                users: Session = Depends(database.get_users_db),
+                library: Session = Depends(get_db)) -> LibraryStats:
+    """统计页: 艺人/专辑/曲目数 + 总时长 + 各格式分布。"""
+    _require_user(request, users)
+    return library_queries.library_stats(library)
 
 
 @api.post("/rescan", response_model=RescanResponse)
