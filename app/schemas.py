@@ -142,6 +142,26 @@ class MapTrack(BaseModel):
     pts: list[list[float]]
 
 
+class CityStat(BaseModel):
+    """城市聚合 (充电统计页)。"""
+
+    city: str
+    sessions: int
+    energy: float       # kWh (表计口径, 缺失回充入)
+    cost: float         # 已记录费用合计 (未记录算 0)
+
+
+class ChargeDims(BaseModel):
+    """充电统计多维聚合: 快慢充 / 开始时段 / 起充 SOC / 峰值功率 / 城市。"""
+
+    fast_sessions: int
+    slow_sessions: int
+    by_hour: list[int]        # 24 档: 0~23 点开始的充电次数 (本地时区)
+    by_soc: list[int]         # 起充 SOC 五档: 0-20/20-40/…/80-100 (未知不进档)
+    by_power: list[int]       # 峰值功率五档: <60/60-100/100-150/150-200/≥200 kW
+    by_city: list[CityStat]   # 次数降序, 最多 10 城
+
+
 class TracksResponse(BaseModel):
     """全量粗轨迹响应。"""
 

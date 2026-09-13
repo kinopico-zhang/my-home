@@ -47,7 +47,7 @@ def test_all_pages_have_standalone_meta(auth):
     登录页一旦缺 meta, 整个 App 会被弹回 Safari 露地址栏, 之后再也回不去
     全屏 (2026-09-12 用户踩坑)。任何新增页面都必须带上。
     """
-    for path in ["/tesla/login", "/tesla/charging", "/tesla/map",
+    for path in ["/tesla/login", "/tesla/charging", "/tesla/stats", "/tesla/map",
                  "/tesla/trips", "/tesla/groups", "/tesla/live", "/tesla/settings"]:
         html = auth.get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
@@ -62,7 +62,7 @@ def test_pages_remember_last_page(auth):
     iOS 主屏图标每次都从添加时定格的 start_url 启动, 不记得停在哪页 ——
     localStorage 记 path+search, 冷启动 (sessionStorage 无标记) 且 standalone
     才 replace 过去; 行程弹层开合只动 URL 不重载, 靠 visibilitychange 补记。"""
-    for path in ["/tesla/charging", "/tesla/map", "/tesla/trips",
+    for path in ["/tesla/charging", "/tesla/stats", "/tesla/map", "/tesla/trips",
                  "/tesla/groups", "/tesla/live", "/tesla/settings"]:
         html = auth.get(path).text
         tag = '<script src="/tesla/static/lastpage.js?v=1"></script>'
@@ -72,13 +72,13 @@ def test_pages_remember_last_page(auth):
     # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落充电页) —— 逻辑在 login.js
     login_html = auth.get("/tesla/static/login.js?v=1").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
-    assert "/^\\/tesla\\/(charging|map|trips|groups|live|settings)(\\?|$)/.test(last)" in login_html
+    assert "/^\\/tesla\\/(charging|stats|map|trips|groups|live|settings)(\\?|$)/.test(last)" in login_html
 
     r = auth.get("/tesla/static/lastpage.js")
     assert r.status_code == 200
     js = r.text
     for frag in [
-        '"/tesla/charging", "/tesla/map", "/tesla/trips",',   # 白名单五页
+        '"/tesla/charging", "/tesla/stats", "/tesla/map",',   # 白名单业务页
         "PAGES.indexOf(path) === -1) return",                  # login/静态不记不跳
         "sessionStorage.getItem(LAUNCH)",                      # 冷启动判据 (会话标记)
         "catch (e) { return; }",                               # 隐私模式防回弹循环
@@ -166,7 +166,7 @@ def test_logout_rotates_secret_and_revokes(client):
 
 # ---------------------------------------------------------------- 中间件
 def test_unauthed_pages_redirect_to_login(client):
-    for path in ("/tesla", "/tesla/charging", "/tesla/map", "/tesla/trips",
+    for path in ("/tesla", "/tesla/charging", "/tesla/stats", "/tesla/map", "/tesla/trips",
                  "/tesla/groups", "/tesla/live"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
@@ -250,6 +250,7 @@ def test_root_redirect_chain(auth):
 
 def test_pages_served_after_login(auth):
     for path, marker in (("/tesla/charging", "My Tesla"),
+                         ("/tesla/stats", "My Tesla"),
                          ("/tesla/map", "My Tesla"),
                          ("/tesla/trips", "My Tesla"),
                          ("/tesla/login", "My Tesla"),

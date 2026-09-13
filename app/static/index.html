@@ -166,49 +166,10 @@ header {
 
 main { max-width: 760px; margin: 0 auto; }
 
-/* ---------- 统计卡片横滑行 ---------- */
-.snap-row {
-  display: flex; gap: 10px; overflow-x: auto;
-  scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
-  padding: 12px 14px 6px; scrollbar-width: none;
-}
-.snap-row::-webkit-scrollbar { display: none; }
-.snap-row > * { scroll-snap-align: start; flex: none; }
-.stat {
-  min-width: 148px; background: var(--surface); border-radius: 16px;
-  padding: 12px 14px; border: 1px solid var(--hairline);
-}
-.stat .lb { font-size: 12px; color: var(--ink-2); }
-.stat .val { font-size: 25px; font-weight: 650; letter-spacing: -.5px; margin-top: 3px; }
-.stat .val small { font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 3px; letter-spacing: 0; }
-.stat .sub { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
-
-/* ---------- 图表卡片 ---------- */
-.charts-grid { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 14px 4px; scrollbar-width: none; }
-.charts-grid::-webkit-scrollbar { display: none; }
-@media (min-width: 900px) {
-  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: visible; }
-  .charts-grid .chart-card { width: auto; }   /* 覆盖 min(86vw,430px): 填满网格单元 */
-}
-.chart-card {
-  flex: none; width: min(86vw, 430px); scroll-snap-align: start;
-  background: var(--surface); border-radius: 16px; border: 1px solid var(--hairline);
-  padding: 13px 10px 10px 14px;
-}
-.chart-card .cc-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px 0; }
-.chart-card .cc-title { font-size: 14px; font-weight: 650; }
-.chart-card .cc-sub { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+/* 迷你分段钮 (详情弹层的 功率/电压/电流 切换; 统计图表卡已挪充电统计页) */
 .mini-seg { display: flex; background: rgba(118,118,128,.24); border-radius: 8px; padding: 2px; }
 .mini-seg button { padding: 3px 9px; border-radius: 6px; font-size: 11px; color: var(--ink-2); }
 .mini-seg button.on { background: #636366; color: #fff; }
-.chart-box { height: 232px; }
-.chart-table { font-size: 12px; max-height: 232px; overflow-y: auto; }
-.chart-table table { width: 100%; border-collapse: collapse; }
-.chart-table th, .chart-table td { text-align: right; padding: 5px 8px; font-variant-numeric: tabular-nums; }
-.chart-table th { color: var(--ink-3); font-weight: 500; position: sticky; top: 0; background: var(--surface); }
-.chart-table td:first-child, .chart-table th:first-child { text-align: left; padding-left: 4px; }
-.chart-table tbody tr + tr { border-top: 1px solid var(--grid); }
-.chart-table td { color: var(--chart-ink); }
 
 /* ---------- 瀑布流 ---------- */
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
@@ -379,8 +340,10 @@ main { max-width: 760px; margin: 0 auto; }
       <summary>My Tesla<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
         <a class="on" href="/tesla/charging">充电</a>
+        <a href="/tesla/stats">充电统计</a>
         <a href="/tesla/map">足迹</a>
         <a href="/tesla/trips">行程</a>
+        <a href="/tesla/groups">行程分组</a>
         <a href="/tesla/live">当前驾驶</a>
         <a href="/tesla/settings">设置</a>
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
@@ -437,40 +400,6 @@ main { max-width: 760px; margin: 0 auto; }
 </header>
 
 <main>
-  <div class="snap-row" id="stats-row"></div>
-
-  <div class="charts-grid" id="charts-grid">
-    <div class="chart-card">
-      <div class="cc-head">
-        <div>
-          <div class="cc-title">月度趋势</div>
-          <div class="cc-sub" id="monthly-sub">充电量与费用</div>
-        </div>
-        <div class="mini-seg" id="monthly-view">
-          <button data-v="chart" class="on">图表</button>
-          <button data-v="table">表格</button>
-        </div>
-      </div>
-      <div class="chart-box" id="chart-monthly-kwh"></div>
-      <div class="chart-box" id="chart-monthly-cost" style="height:118px"></div>
-      <div class="chart-table" id="table-monthly" hidden></div>
-    </div>
-    <div class="chart-card">
-      <div class="cc-head">
-        <div>
-          <div class="cc-title">常去充电点</div>
-          <div class="cc-sub">按充电次数</div>
-        </div>
-        <div class="mini-seg" id="loc-view">
-          <button data-v="chart" class="on">图表</button>
-          <button data-v="table">表格</button>
-        </div>
-      </div>
-      <div class="chart-box" id="chart-loc"></div>
-      <div class="chart-table" id="table-loc" hidden></div>
-    </div>
-  </div>
-
   <div class="sec-head">
     <h2>充电记录</h2>
     <span class="count-badge" id="count-badge"></span>

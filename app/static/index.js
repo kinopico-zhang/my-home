@@ -38,8 +38,6 @@ function fmtMinAxis(v) {
 }
 const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
 const money = v => v == null ? "—" : "¥" + Number(v).toFixed(2).replace(/\.?0+$/, "");
-const moneyInt = v => v == null ? "—" : "¥" + Math.round(v).toLocaleString("zh-CN");
-const thousands = v => Math.round(v).toLocaleString("zh-CN");
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -116,153 +114,12 @@ function syncURL() {   // 筛选写进地址栏 (默认值不写, 链接保持�
   history.replaceState(null, "", u);
 }
 
-/* ============================ 统计卡片 ============================ */
-async function loadSummary() {
-  const s = await getJSON("/tesla/charging/api/summary?" + sessionParams());
-  const months = s.first_date && s.last_date ?
-    (parseLocal(s.last_date + " 00:00").getFullYear() * 12 + parseLocal(s.last_date + " 00:00").getMonth()) -
-    (parseLocal(s.first_date + " 00:00").getFullYear() * 12 + parseLocal(s.first_date + " 00:00").getMonth()) + 1 : 1;
-  const fastPct = s.sessions ? Math.round(s.fast_sessions / s.sessions * 100) : 0;
-  const cards = [
-    { lb: "充电次数", val: thousands(s.sessions), sub: months > 1 ? `月均 ${Math.round(s.sessions / months)} 次` : "" },
-    { lb: "总充电量", val: thousands(s.energy_used || s.energy_added), unit: "kWh", sub: `表计口径` },
-    { lb: "总费用", val: moneyInt(s.cost), sub: s.first_date ? `${s.first_date.replace(/-/g, "/")} 起` : "" },
-    { lb: "平均电价", val: s.price_per_kwh == null ? "—" : "¥" + s.price_per_kwh.toFixed(3), unit: "/kWh", sub: "按表计电量" },
-    { lb: "快充占比", val: fastPct + "%", sub: `快充 ${s.fast_sessions} 次` },
-    { lb: "充电时长", val: num(s.duration_min / 60, 1), unit: "小时", sub: s.range_gain ? `≈ ${thousands(s.range_gain)} km 续航` : "" },
-  ];
-  $("#stats-row").innerHTML = cards.map(c => `
-    <div class="stat">
-      <div class="lb">${esc(c.lb)}</div>
-      <div class="val">${c.val}${c.unit ? `<small>${c.unit}</small>` : ""}</div>
-      ${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ""}
-    </div>`).join("");
-}
-
-/* ============================ 图表 ============================ */
+/* ============================ 详情图表样式 (统计图表卡在充电统计页) ============================ */
 const chartText = { axis: "#898781", ink: "#c3c2b7" };
 const tooltipStyle = {
   backgroundColor: "rgba(28,28,30,.95)", borderWidth: 0, padding: [7, 10],
   textStyle: { color: "#f5f5f7", fontSize: 12 },
 };
-const monthlyKwEl = $("#chart-monthly-kwh"), monthlyCostEl = $("#chart-monthly-cost"), locEl = $("#chart-loc");
-let chMonthlyKw, chMonthlyCost, chLoc;
-let monthlyData = [], locData = [];
-
-function shortMonth(ym) { return ym.slice(2).replace("-", "/"); }
-function truncateName(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
-
-function renderMonthly() {
-  if (!hasEcharts || !monthlyData.length) return;
-  const months = monthlyData.map(d => d.month);
-  const kw = monthlyData.map(d => Math.round((d.energy_used || 0) * 10) / 10);
-  const cost = monthlyData.map(d => d.cost == null ? 0 : d.cost);
-  const total = monthlyData.reduce((a, d) => a + (d.cost || 0), 0);
-  $("#monthly-sub").textContent = `共 ${months.length} 个月 · 合计 ${moneyInt(total)}`;
-
-  if (!chMonthlyKw) {
-    chMonthlyKw = echarts.init(monthlyKwEl);
-    chMonthlyCost = echarts.init(monthlyCostEl);
-    echarts.connect([chMonthlyKw, chMonthlyCost]);
-  }
-  const xBase = {
-    type: "category", data: months,
-    axisTick: { show: false },
-    axisLine: { lineStyle: { color: "#383835" } },
-  };
-  chMonthlyKw.setOption({
-    animationDuration: 250,
-    grid: { left: 6, right: 8, top: 10, bottom: 2, containLabel: true },
-    tooltip: { ...tooltipStyle, trigger: "axis", axisPointer: { type: "shadow" } },
-    xAxis: { ...xBase, axisLabel: { show: false } },
-    yAxis: { type: "value", splitLine: { lineStyle: { color: "#2c2c2a" } },
-             axisLabel: { color: chartText.axis, fontSize: 10 } },
-    series: [{ type: "bar", name: "充电量", data: kw, barMaxWidth: 16,
-               itemStyle: { color: "#3987e5", borderRadius: [4, 4, 0, 0] } }],
-  });
-  chMonthlyCost.setOption({
-    animationDuration: 250,
-    grid: { left: 6, right: 8, top: 8, bottom: 0, containLabel: true },
-    tooltip: { ...tooltipStyle, trigger: "axis",
-               axisPointer: { type: "line", lineStyle: { color: "#898781" } } },
-    xAxis: { ...xBase, axisLabel: { color: chartText.axis, fontSize: 10,
-              interval: months.length > 14 ? 1 : 0, formatter: shortMonth } },
-    yAxis: { type: "value", splitLine: { lineStyle: { color: "#2c2c2a" } },
-             axisLabel: { color: chartText.axis, fontSize: 10,
-                          formatter: v => v >= 1000 ? (v / 1000) + "k" : v } },
-    series: [{ type: "line", name: "费用", data: cost, showSymbol: false,
-               lineStyle: { color: "#c98500", width: 2 },
-               itemStyle: { color: "#c98500" } }],
-  });
-  // 表格视图 (图表的 WCAG 等价物)
-  $("#table-monthly").innerHTML = `<table>
-    <thead><tr><th>月份</th><th>kWh</th><th>费用</th><th>次数</th></tr></thead>
-    <tbody>${monthlyData.map(d => `<tr>
-      <td>${esc(d.month)}</td><td>${num(d.energy_used)}</td>
-      <td>${money(d.cost)}</td><td>${d.sessions}</td></tr>`).join("")}</tbody></table>`;
-}
-
-function renderLocations() {
-  if (!hasEcharts || !locData.length) return;
-  const top = locData.slice(0, 7);
-  const rest = locData.slice(7);
-  const rows = rest.length
-    ? [...top, { location: "其他", sessions: rest.reduce((a, d) => a + d.sessions, 0),
-                 energy_used: rest.reduce((a, d) => a + (d.energy_used || 0), 0),
-                 cost: rest.reduce((a, d) => a + (d.cost || 0), 0),
-                 fast_sessions: rest.reduce((a, d) => a + d.fast_sessions, 0) }] : top;
-  if (!chLoc) chLoc = echarts.init(locEl);
-  chLoc.setOption({
-    animationDuration: 250,
-    grid: { left: 6, right: 44, top: 6, bottom: 0, containLabel: true },
-    tooltip: { ...tooltipStyle, trigger: "axis", axisPointer: { type: "shadow" },
-      formatter: (ps) => {
-        const d = locData.find(x => x.location === ps[0].name) ||
-                  rows.find(x => x.location === ps[0].name);
-        return `<b>${esc(ps[0].name)}</b><br/>次数 ${d.sessions} · 快充 ${d.fast_sessions}` +
-               `<br/>电量 ${num(d.energy_used)} kWh<br/>费用 ${money(d.cost)}`;
-      } },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "#2c2c2a" } },
-             axisLabel: { color: chartText.axis, fontSize: 10 } },
-    yAxis: { type: "category", inverse: true,
-             data: rows.map(d => truncateName(d.location, 7)),
-             axisTick: { show: false }, axisLine: { lineStyle: { color: "#383835" } },
-             axisLabel: { color: chartText.ink, fontSize: 10.5, width: 76,
-                          overflow: "truncate" } },
-    series: [{ type: "bar", data: rows.map(d => d.sessions), barMaxWidth: 14,
-               itemStyle: { color: "#3987e5", borderRadius: [0, 4, 4, 0] },
-               label: { show: true, position: "right", color: chartText.ink,
-                        fontSize: 10.5, formatter: "{c} 次" } }],
-  });
-  $("#table-loc").innerHTML = `<table>
-    <thead><tr><th>地点</th><th>次数</th><th>kWh</th><th>费用</th></tr></thead>
-    <tbody>${locData.map(d => `<tr>
-      <td>${esc(truncateName(d.location, 10))}</td><td>${d.sessions}</td>
-      <td>${num(d.energy_used)}</td><td>${money(d.cost)}</td></tr>`).join("")}</tbody></table>`;
-}
-
-async function loadCharts() {
-  const [monthly, locations] = await Promise.all([
-    getJSON("/tesla/charging/api/monthly?" + sessionParams()),
-    getJSON("/tesla/charging/api/locations?" + sessionParams()),
-  ]);
-  monthlyData = monthly; locData = locations;
-  renderMonthly(); renderLocations();
-}
-
-/* 图表/表格切换 */
-function bindViewToggle(segId, chartEls, tableEl) {
-  $(segId).addEventListener("click", e => {
-    const b = e.target.closest("button"); if (!b) return;
-    $(segId + " .on").classList.remove("on"); b.classList.add("on");
-    const table = b.dataset.v === "table";
-    chartEls.forEach(el => el.hidden = table);
-    tableEl.hidden = !table;
-    if (!table) chartEls.forEach(el => { const c = echarts.getInstanceByDom(el); c && c.resize(); });
-  });
-}
-bindViewToggle("#monthly-view", [monthlyKwEl, monthlyCostEl], $("#table-monthly"));
-bindViewToggle("#loc-view", [locEl], $("#table-loc"));
 
 /* ============================ 瀑布流 ============================ */
 const masonryEl = $("#masonry");
@@ -345,24 +202,13 @@ new IntersectionObserver(es => {
   if (es[0].isIntersecting) loadMore(false);
 }, { rootMargin: PRELOAD_PX + "px" }).observe(tailEl);
 
-/* 窗口尺寸变化: 图表重绘 (列表已单列, 无需重排) */
-let resizeTimer;
-new ResizeObserver(() => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    [chMonthlyKw, chMonthlyCost, chLoc].forEach(c => c && c.resize());
-  }, 120);
-}).observe(document.body);
-
 /* ============================ 筛选 ============================ */
 async function refetch() {
   state.offset = 0; state.total = 0; state.done = false; state.err = null;
   masonryEl.classList.add("dim");
-  await Promise.allSettled([loadSummary().catch(showErr), loadCharts().catch(showErr)]);
   await loadMore(true);
   masonryEl.classList.remove("dim");
 }
-function showErr(e) { $("#errmsg").textContent = "数据加载失败: " + e.message; $("#errbox").hidden = false; }
 
 const TYPE_LABELS = { all: "类型: 全部", fast: "类型: 快充", slow: "类型: 慢充" };
 $("#type-opts").addEventListener("click", e => {   // 快充/慢充下拉 (与城市筛选同款, 替代占地方的分段钮)
@@ -744,8 +590,6 @@ function applyCostUpdate(id, cost, ppk) {
     }
     if (pv) pv.textContent = ppk != null ? "¥" + ppk.toFixed(3) : "—";
   }
-  loadSummary().catch(() => {});   // 统计与图表静默刷新
-  loadCharts().catch(() => {});
 }
 
 $("#al-cancel").addEventListener("click", closeAlert);
@@ -771,6 +615,5 @@ $("#logout").addEventListener("click", async () => {
     const cars = await getJSON("/tesla/charging/api/car");
     if (cars[0]) $("#car-pill").textContent = `${cars[0].model} · ${cars[0].name}`;
   } catch (e) { /* 车辆信息失败不阻塞 */ }
-  if (!hasEcharts) $("#charts-grid").style.display = "none";
   await refetch();
 })();
