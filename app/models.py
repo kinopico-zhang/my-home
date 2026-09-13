@@ -33,13 +33,16 @@ class Car(Base):
 
 
 class Address(Base):
-    """充电/行程起终点地址 (反向地理编码结果)。"""
+    """充电/行程起终点地址 (反向地理编码结果)。latitude/longitude 是
+    GPS 原始坐标 (WGS-84), 充电地图用它定位充电点圆标。"""
 
     __tablename__ = "addresses"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str | None]
     city: Mapped[str | None]
     display_name: Mapped[str | None]
+    latitude: Mapped[float | None]
+    longitude: Mapped[float | None]
 
 
 class Geofence(Base):

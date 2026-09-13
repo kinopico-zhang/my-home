@@ -31,6 +31,7 @@ from .schemas import (
     AmapConfig,
     CarInfo,
     ChargeDims,
+    ChargeMapLocation,
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
@@ -223,6 +224,14 @@ def get_charging_dimensions(
         db: Session = Depends(database.get_db)) -> ChargeDims:
     """充电统计维度聚合: 快慢/开始时段/起充 SOC/峰值功率/城市 (统计页图表)。"""
     return repository.charging_dimensions(db, _date_range_or_400(frm, to))
+
+
+@charging.get("/map-locations")
+def get_charging_map_locations(
+        frm: str | None = Query(None, alias="from"), to: str | None = None,
+        db: Session = Depends(database.get_db)) -> list[ChargeMapLocation]:
+    """充电地图充电点聚合 (按地址, 次数降序; 无坐标的地址不上图)。"""
+    return repository.charging_map_locations(db, _date_range_or_400(frm, to))
 
 
 @charging.get("/cities")
@@ -617,6 +626,12 @@ def charging_page() -> FileResponse:
 def stats_page() -> FileResponse:
     """充电统计页: 统计卡片 + 各维度图表 (记录列表留在充电记录页)。"""
     return _page("stats.html")
+
+
+@app.get("/tesla/chargemap")
+def chargemap_page() -> FileResponse:
+    """充电地图页: 大地图按充电点聚合, 圆标大小可切 电量/次数/费用 三种视图。"""
+    return _page("chargemap.html")
 
 
 @app.get("/tesla/map")

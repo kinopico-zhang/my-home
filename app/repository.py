@@ -31,6 +31,7 @@ from .schemas import (
     CarInfo,
     ChargeCurve,
     ChargeDims,
+    ChargeMapLocation,
     ChargingSession,
     ChargingSessionDetail,
     ChargingSummary,
@@ -452,6 +453,45 @@ def charging_dimensions(session: Session, date_range: DateRange | None) -> Charg
         by_city=[CityStat(city=k, sessions=int(v["sessions"]),
                           energy=round(v["energy"], 1), cost=round(v["cost"], 2))
                  for k, v in top])
+
+
+def charging_map_locations(session: Session,
+                           date_range: DateRange | None) -> list[ChargeMapLocation]:
+    """充电地图聚合: 按地址聚充电点 (次数降序), 无坐标的地址不上图。
+
+    展示名与列表口径一致 —— geofence 名 (家/公司) 优先于地址名;
+    同一地址多次充电挂不同 geofence 时, 取最近一次充电的名字。"""
+    rows = _charge_rows(session, date_range, None)
+    points: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        addr = row.address
+        if addr is None or addr.latitude is None or addr.longitude is None:
+            continue    # 没反向地理编码过的地址没有坐标, 圆标无处可放
+        cp = row.process
+        p = points.get(addr.id)
+        if p is None:
+            p = points[addr.id] = {
+                "id": addr.id, "city": addr.city,
+                "lat": float(addr.latitude), "lng": float(addr.longitude),
+                "sessions": 0, "fast_sessions": 0, "energy": 0.0, "cost": 0.0,
+                "name": "", "latest": cp.start_date,
+            }
+        p["sessions"] += 1
+        if row.agg.is_fast:
+            p["fast_sessions"] += 1
+        p["energy"] += _fnum(cp.charge_energy_used) or _fnum(cp.charge_energy_added) or 0.0
+        p["cost"] += _fnum(cp.cost) or 0.0
+        if cp.start_date >= p["latest"]:     # ≥: 首行也会填名字
+            p["latest"] = cp.start_date
+            p["name"] = (row.geofence.name
+                         if row.geofence is not None and row.geofence.name
+                         else addr.name or addr.display_name or "未知位置")
+    return [ChargeMapLocation(
+                id=p["id"], name=p["name"], city=p["city"],
+                lat=p["lat"], lng=p["lng"],
+                sessions=p["sessions"], fast_sessions=p["fast_sessions"],
+                energy=round(p["energy"], 1), cost=round(p["cost"], 2))
+            for p in sorted(points.values(), key=lambda p: (-p["sessions"], p["id"]))]
 
 
 def charging_summary(session: Session,
