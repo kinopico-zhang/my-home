@@ -217,30 +217,39 @@ def test_categories_api_requires_login(usersdb):
 
 
 def test_bookkeeping_page_has_amount_keyboard():
-    """金额键盘: 纯文本输入 (不弹系统键盘) + 计算器按键 + 子类胶囊行 + 纯逻辑脚本。"""
+    """金额键盘 (挖财布局): 保存并进键盘 (再记/完成), 无独立保存按钮;
+    大类是图标格子; 纯文本输入不弹系统键盘; 纯逻辑脚本单独成文件。"""
     from pathlib import Path  # pylint: disable=import-outside-toplevel
     html = (Path(__file__).parent.parent / "app" / "bookkeeping" / "static"
             / "bookkeeping.html").read_text(encoding="utf-8")
     assert 'id="f-amount" type="text" inputmode="none"' in html
     assert 'id="amt-pad"' in html and 'id="amt-eq"' in html
     assert '<div class="cat-sub" id="cat-sub" hidden></div>' in html
-    keys = [k for k in ("clear", "back", "7", "8", "9", "/", "4", "5", "6",
-                        "*", "1", "2", "3", "-", "0", ".", "+")]
+    assert 'class="cat-tiles" id="cat-tiles"' in html
+    keys = [k for k in ("again", "back", "done", "7", "8", "9", "/", "4", "5",
+                        "6", "*", "1", "2", "3", "-", "0", ".", "+")]
     for k in keys:
         assert f'data-k="{k}"' in html, f"键盘缺键 {k}"
+    assert 'data-k="clear"' not in html          # 清空改长按 ⌫
+    assert 'id="sheet-save"' not in html         # 保存并进键盘 (完成)
+    assert 'id="sheet-close"' in html and 'id="sheet-del"' in html
+    assert 'position: sticky; bottom: 0' in html   # 键盘吸底常驻
     assert 'src="/bookkeeping/static/amount-calculator.js?v=1"' in html
 
 
 def test_bookkeeping_js_wires_calculator_and_categories():
-    """接线: 保存用 evaluateAmount (不再 parseFloat), 键盘按键走 applyAmountKey,
-    类别树从服务器拿 + 缓存本地, 两级胶囊各自有委托。"""
+    """接线: 完成/再记共用 saveEntry (evaluateAmount 求值, 不再 parseFloat),
+    ⌫ 走 pointerdown (长按清空), 类别树服务器拿 + 缓存本地, 两级各自有委托。"""
     from pathlib import Path  # pylint: disable=import-outside-toplevel
     js = (Path(__file__).parent.parent / "app" / "bookkeeping" / "static"
           / "bookkeeping.js").read_text(encoding="utf-8")
     assert "evaluateAmount($(\"#f-amount\").value)" in js
     assert "applyAmountKey(input.value, btn.dataset.k)" in js
     assert "parseFloat($(\"#f-amount\").value)" not in js
+    assert 'btn.dataset.k === "done"' in js and 'btn.dataset.k === "again"' in js
+    assert "function saveEntry()" in js and '"已记 ✓"' in js
+    assert '"pointerdown"' in js and '"clear"' in js   # 长按 ⌫ 清空
     assert '"/bookkeeping/api/categories"' in js
     assert 'saveLS("bk-categories"' in js and 'loadLS("bk-categories"' in js
-    assert '#cat-sub' in js and "treeFor(sheetKind)" in js
+    assert '#cat-sub' in js and "#cat-tiles" in js and "treeFor(sheetKind)" in js
     assert "CATEGORY_ICONS" in js and "CATEGORIES" not in js
