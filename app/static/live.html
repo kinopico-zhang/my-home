@@ -180,6 +180,7 @@ main {
   background: var(--surface);
 }
 #map { position: absolute; inset: 0; touch-action: none; }
+#map .amap-copyright { display: none !important; }   /* "©…auto navi" 版权文字按需求去掉 */
 .map-fallback {   /* 高德不可用: 统计照常, 只在地图位放提示 */
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 8px;
