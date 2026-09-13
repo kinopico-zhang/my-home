@@ -235,12 +235,12 @@ def get_sessions(
         raise HTTPException(400, f"不支持的排序: {sort}")
     if offset < 0 or limit < 0:
         raise HTTPException(400, "分页参数非法")
-    if cost not in (None, "recorded", "missing"):
+    if cost not in (None, "all", "recorded", "missing"):
         raise HTTPException(400, "不支持的费用筛选")
     flt = repository.SessionFilter(
         date_range=_date_range_or_400(frm, to), charge_type=type_,
         city=city or None, query=q, sort=sort, offset=offset, limit=limit,
-        cost=cost)
+        cost=None if cost == "all" else cost)
     total, items = repository.list_charging_sessions(db, flt)
     return ChargingSessionsPage(total=total, items=items)
 
