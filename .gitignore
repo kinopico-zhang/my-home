@@ -11,3 +11,7 @@ uv.lock
 node_modules
 coverage/
 .pytest-tmp/
+
+# 用户私有数据 / 参考截图 (不进仓库)
+wacai.db
+IMG_*.PNG

@@ -13,6 +13,8 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="新增", text="多账号: 管理员生成邀请链接发给家人, 注册后各有各的账号; 除账号管理外的功能都能用"),
         ChangelogItem(kind="新增", text="账号管理页 (仅管理员): 看账号列表, 生成 / 撤销注册邀请, 一键复制邀请链接"),
         ChangelogItem(kind="新增", text="设置页可以改自己的名称和密码"),
+        ChangelogItem(kind="新增", text="记账的金额输入换成自带计算器键盘: 0-9 加加减乘除, 顺手就能算 (买菜 3.5×2 这种), 边打边出结果, 回删 / 清除都有, 系统键盘不再弹出来"),
+        ChangelogItem(kind="新增", text="记账类别换成完整两级类别: 大类挑好出子类 (餐饮 → 早餐 / 午餐…, 交通 → 充电 / 地铁…), 收入支出各一套, 类别是从挖财账本导过来的 160 多个"),
         ChangelogItem(kind="改进", text="服务定名 My Home: 登录后是家门厅, My Tesla (车辆) 和 My Money (记账) 两个应用都从这里进"),
         ChangelogItem(kind="改进", text="门厅搬到了根路径: 打开就是两个应用的大卡片, 点一下就进; 门厅自己也有主屏图标 (黑底白房子)"),
         ChangelogItem(kind="改进", text="账号管理从 My Tesla 搬进门厅: 账号是全家共用的, 不属于任何一个应用; 旧地址和老邀请链接自动跳转, 不会失效"),

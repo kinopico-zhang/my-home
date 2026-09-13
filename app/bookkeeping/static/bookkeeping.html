@@ -209,6 +209,7 @@ main {
   border-top: 1px solid var(--hairline);
   z-index: 71; transform: translateY(102%); transition: transform .25s;
   max-width: 560px; margin: 0 auto; padding-left: 18px; padding-right: 18px; padding-top: 8px;
+  max-height: calc(100dvh - 24px); overflow-y: auto;   /* 键盘展开后小屏可滚 */
 }
 #sheet.on { transform: translateY(0); }
 .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--hairline); margin: 2px auto 12px; }
@@ -218,6 +219,15 @@ main {
 .seg button.on.exp { background: #48484a; color: var(--ink-1); }
 .seg button.on.inc { background: rgba(48,209,88,.22); color: var(--green); }
 .amt-line { display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px; }
+.amt-line .amt-eq {           /* 四则表达式的实时结果 (= 20.5) */
+  flex: none; font-size: 14px; font-weight: 600; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.amt-line.shake { animation: amt-shake .3s; }
+@keyframes amt-shake {
+  20% { transform: translateX(-5px); } 40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); } 80% { transform: translateX(2px); }
+}
 .amt-line .cur { font-size: 26px; font-weight: 700; color: var(--ink-2); }
 .amt-line input {
   flex: 1; border: 0; background: none; outline: 0; color: var(--ink-1);
@@ -231,6 +241,12 @@ main {
   background: var(--surface-2); color: var(--ink-2); border: 1px solid transparent;
 }
 .cat-chips button.on { color: #7db3f0; border-color: rgba(57,135,229,.5); }
+.cat-sub { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
+.cat-sub button {
+  font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-3); border: 1px solid transparent;
+}
+.cat-sub button.on { color: #7db3f0; border-color: rgba(57,135,229,.5); }
 .row2 { display: flex; gap: 10px; margin-bottom: 6px; }
 .field { flex: 1; display: flex; align-items: center; gap: 8px;
   background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
@@ -251,6 +267,23 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   border: 1px solid rgba(229,105,95,.35);
 }
 .sheet-acts .danger:active { background: rgba(229,105,95,.12); }
+
+/* ---------- 金额键盘 (iOS 计算器风格, 紧凑竖屏) ----------
+   不常驻: 金额聚焦时展开, 备注/日期要弹系统输入法时让位收起。 */
+.amt-pad {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  margin: 0 1px; max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .22s ease, opacity .16s ease, margin-top .22s ease;
+}
+.amt-pad.on { max-height: 246px; opacity: 1; margin-top: 10px; }
+.amt-pad .k {
+  height: 40px; border-radius: 10px; font-size: 19px; color: var(--ink-1);
+  background: var(--surface-3); font-variant-numeric: tabular-nums;
+}
+.amt-pad .k:active { filter: brightness(.72); }       /* 按下变暗 (iOS 键感) */
+.amt-pad .k.op { background: #ff9f0a; }               /* 运算符 = 计算器橙 */
+.amt-pad .k.util { background: #a5a5a5; color: #141416; font-size: 15px; font-weight: 600; }
+.amt-pad .k.wide { grid-column: span 2; }
 </style>
 </head>
 <body>
@@ -296,8 +329,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
     <button data-kind="expense" class="exp on">支出</button>
     <button data-kind="income" class="inc">收入</button>
   </div>
-  <div class="amt-line"><span class="cur">¥</span><input id="f-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0.00" autocomplete="off"></div>
+  <div class="amt-line" id="amt-line"><span class="cur">¥</span><input id="f-amount" type="text" inputmode="none" placeholder="0.00" autocomplete="off"><span class="amt-eq" id="amt-eq"></span></div>
   <div class="cat-chips" id="cat-chips"></div>
+  <div class="cat-sub" id="cat-sub" hidden></div>
   <div class="row2">
     <div class="field"><span>日期</span><input id="f-date" type="date"></div>
     <div class="field"><span>备注</span><input id="f-note" maxlength="200" placeholder="选填" autocomplete="off"></div>
@@ -306,9 +340,18 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
     <button class="primary" id="sheet-save">保存</button>
     <button class="danger" id="sheet-del" hidden>删除</button>
   </div>
+  <div class="amt-pad" id="amt-pad" aria-label="金额键盘">
+    <button class="k util wide" data-k="clear">清除</button>
+    <button class="k util wide" data-k="back">⌫</button>
+    <button class="k" data-k="7">7</button><button class="k" data-k="8">8</button><button class="k" data-k="9">9</button><button class="k op" data-k="/">÷</button>
+    <button class="k" data-k="4">4</button><button class="k" data-k="5">5</button><button class="k" data-k="6">6</button><button class="k op" data-k="*">×</button>
+    <button class="k" data-k="1">1</button><button class="k" data-k="2">2</button><button class="k" data-k="3">3</button><button class="k op" data-k="-">−</button>
+    <button class="k wide" data-k="0">0</button><button class="k" data-k=".">.</button><button class="k op" data-k="+">＋</button>
+  </div>
 </div>
 
 <script src="/bookkeeping/static/bookkeeping-merge.js?v=1"></script>
+<script src="/bookkeeping/static/amount-calculator.js?v=1"></script>
 <script src="/bookkeeping/static/bookkeeping.js?v=1"></script>
 </body>
 </html>
