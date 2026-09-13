@@ -70,6 +70,34 @@ def test_all_pages_disable_double_tap_zoom_on_controls(auth):
         assert "button, a, summary { touch-action: manipulation; }" in html, path
 
 
+def test_all_pages_have_refresh_button(auth):
+    """每页顶栏都有刷新按钮 (2026-09-13 用户反馈: 不是每个页面都有)。
+
+    行程页首倡的胶囊刷新按钮 (busy 时图标旋转) 铺到全部业务页; 每页接
+    自己的重载入口 —— 列表页重拉后回顶, 地图页不带首载遮罩 (refresh(false)),
+    设置页拉完设置再补司机列表。
+    """
+    # 页面路径 -> (该页 JS 文件, 点击后接的重载调用)
+    wiring = {
+        "/tesla/charging": ("index.js", "await refetch();"),
+        "/tesla/stats": ("stats.js", "await refetch();"),
+        "/tesla/chargemap": ("chargemap.js", "await refresh(false);"),
+        "/tesla/map": ("map.js", "await refresh(false);"),
+        "/tesla/trips": ("trips.js", "await refreshList();"),
+        "/tesla/groups": ("groups.js", "await load();"),
+        "/tesla/live": ("live.js", "await poll();"),
+        "/tesla/settings": ("settings.js", "await loadSettings();"),
+        "/tesla/changelog": ("changelog.js", "await load();"),
+    }
+    for path, (js_file, call) in wiring.items():
+        html = auth.get(path).text
+        assert '<button id="refresh-btn"' in html, path        # 按钮在顶栏
+        assert "refresh-spin" in html, path                    # busy 旋转动画
+        js = auth.get(f"/tesla/static/{js_file}?v=1").text
+        assert '$("#refresh-btn").addEventListener' in js, path
+        assert call in js, f"{path} 刷新按钮没接上 {call}"
+
+
 def test_pages_remember_last_page(auth):
     """上次停留页: 五个业务页 head 挂 lastpage.js (冷启动在任何渲染前跳转,
     不闪启动页), 登录页不挂 (它不是停留目标); 登录成功回上次页而非写死充电页。

@@ -159,6 +159,17 @@ $("#drv-list").addEventListener("click", async e => {
   }
 });
 
+/* 顶栏刷新: 重拉设置与司机列表 */
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  try {
+    await loadSettings();
+  } catch (err) { toast(`设置加载失败: ${err.message}`, true); }
+  await loadDrivers().catch(() => {});
+  btn.classList.remove("busy");
+});
+
 $("#logout").addEventListener("click", async () => {
   await fetch("/tesla/api/logout", { method: "POST" });
   location.replace("/tesla/login");

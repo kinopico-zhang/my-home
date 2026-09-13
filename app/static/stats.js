@@ -529,6 +529,14 @@ $("#time-menu").addEventListener("toggle", () => {   // 重开菜单回到已应
 });
 $("#retry").addEventListener("click", () => { $("#errbox").hidden = true; refetch(); });
 
+/* 顶栏刷新: 重拉当前页数据 */
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  await refetch();
+  btn.classList.remove("busy");
+});
+
 $("#logout").addEventListener("click", async () => {
   try { await fetch("/tesla/api/logout", { method: "POST" }); } catch (e) {}
   location.href = "/tesla/login";

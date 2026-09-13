@@ -617,6 +617,15 @@ sheetBody.addEventListener("click", e => {
 });
 
 
+/* 顶栏刷新: 重拉当前页数据 */
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  await refetch();
+  window.scrollTo({ top: 0 });
+  btn.classList.remove("busy");
+});
+
 $("#logout").addEventListener("click", async () => {
   try { await fetch("/tesla/api/logout", { method: "POST" }); } catch (e) {}
   location.href = "/tesla/login";
