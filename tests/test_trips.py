@@ -8,7 +8,7 @@ from app import repository
 from app.models import (Address, Drive, Driver, Position, TrackFill,
                         TripDriver, TripToll)
 from tests.conftest import (seed_addresses, seed_charging, seed_drive,
-                            seed_position)
+                            seed_position, seed_positions)
 
 
 # ---------------------------------------------------------------- 列表
@@ -399,9 +399,9 @@ def test_trip_track_downsamples_beyond_5000(auth, db):
     seed_drive(db, id=7, start_date=datetime(2026, 9, 10, 0, 32),
                end_date=datetime(2026, 9, 10, 3, 0))
     t0 = datetime(2026, 9, 10, 0, 32)
-    for i in range(10001):
-        seed_position(db, 7, id=None, date=t0 + timedelta(seconds=i),
-                      longitude=114.0 + i * 1e-5, latitude=22.5)
+    seed_positions(db, 7, [{"date": t0 + timedelta(seconds=i),
+                            "longitude": 114.0 + i * 1e-5, "latitude": 22.5}
+                           for i in range(10001)])
     d = auth.get("/tesla/trips/api/7/track").json()
     assert 5000 <= len(d["pts"]) <= 5002     # stride=2 → ~5001 点
     assert d["pts"][0][0] == 114.0
@@ -472,10 +472,10 @@ def test_merged_track_downsamples_each_segment(auth, db):
         seed_drive(db, id=drive_id, distance=5.0, duration_min=5, speed_max=50,
                    start_date=t + timedelta(hours=drive_id * 3),
                    end_date=t + timedelta(hours=drive_id * 3, minutes=10))
-        for i in range(400):
-            seed_position(db, drive_id, id=None,
-                          date=t + timedelta(hours=drive_id * 3, seconds=i),
-                          longitude=114.0 + i * 1e-5, latitude=22.5)
+        seed_positions(db, drive_id,
+                       [{"date": t + timedelta(hours=drive_id * 3, seconds=i),
+                         "longitude": 114.0 + i * 1e-5, "latitude": 22.5}
+                        for i in range(400)])
     d = auth.get("/tesla/trips/api/merged?ids=11,12").json()
     # 4000/2 = 2000/段 → stride=1 → 全保留
     assert len(d["pts"]) == 800
