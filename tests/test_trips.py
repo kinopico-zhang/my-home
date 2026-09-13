@@ -1047,8 +1047,13 @@ def test_trips_page_preloads_tiles(auth):
                  "tripMap.setFitView(allLines, false, FIT_AVOID);",
                  "tripMap.setFitView([whole], true, FIT_AVOID);",
                  "VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,",
-                 "const zt = speedZoom(vSum / ZOOM_SAMPLES);",
+                 "VECTOR_PRELOAD_STEP_FRAC = 0.85, VECTOR_PRELOAD_BRACKET_MS = 150;",
+                 "return speedZoom(vSum / ZOOM_SAMPLES);",
                  "if (Math.abs(zt - hystZoom) > 0.6) hystZoom = Math.round(zt);",
+                 # 跨界预取: 档位边界过渡步把曲线档也扫一眼 (变焦跨档那刻
+                 # 新档瓦片已在手, 地名不再等取数)
+                 "const zTarget = Math.round(curveZoomAt(idx));",
+                 "if (zTarget !== hystZoom) await visitBracket(zTarget, toGcj(pts[idx]));",
                  "if (zoomUserLock) return Math.round(zoomUserZoom || tripMap.getZoom());",
                  "else await preloadVectorTrack(c.pts, c.ts || [], zoom,"]:
         assert frag in html, f"行程页缺少瓦片预载片段 {frag}"
