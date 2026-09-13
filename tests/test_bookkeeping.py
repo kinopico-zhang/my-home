@@ -47,7 +47,7 @@ def test_sync_stamps_identity_and_resolves_names(usersdb, bkdb):
     assert out["created_by_name"] == "记账人甲"
     assert out["updated_by_name"] == "记账人甲"
     # 库里落的是甲的 uuid (跨库解析), 金额取两位
-    from app.models import Entry  # pylint: disable=import-outside-toplevel
+    from app.bookkeeping.store import Entry  # pylint: disable=import-outside-toplevel
     row = bkdb.get(Entry, "aaaa1111")
     assert row.created_by == jia_user.uuid
     assert row.amount == 25.5
@@ -76,7 +76,7 @@ def test_sync_tombstone_not_hard_delete(usersdb, bkdb):
     jia, _ = _user(usersdb, "记账人甲")
     _sync(jia, [_entry("aaaa1111", "2026-09-13T08:00:00Z")])
     _sync(jia, [_entry("aaaa1111", "2026-09-13T09:00:00Z", deleted=True)])
-    from app.models import Entry  # pylint: disable=import-outside-toplevel
+    from app.bookkeeping.store import Entry  # pylint: disable=import-outside-toplevel
     assert bkdb.get(Entry, "aaaa1111") is not None      # 没被物理删
     data = _sync(jia)
     assert data["entries"][0]["deleted"] is True

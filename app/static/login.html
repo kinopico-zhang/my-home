@@ -23,6 +23,7 @@
   --hairline: rgba(255,255,255,.09);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
 /* 触屏双击控件不再触发整页放大 (manipulation 保留平移/捏合, 只去掉双击缩放) */
 button, a, summary { touch-action: manipulation; }
 html, body { height: 100%; }
@@ -74,6 +75,29 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .err {
   font-size: 13px; color: #ff6961; margin-top: 12px; min-height: 18px;
 }
+/* 已登录的门厅: 两个应用的入口 + 换账号 */
+.apps { text-align: left; }
+.app {
+  display: flex; align-items: center; gap: 13px;
+  background: var(--surface-2); border-radius: 14px;
+  padding: 13px 14px; margin-bottom: 10px; text-decoration: none;
+  color: var(--ink-1); transition: opacity .15s;
+}
+.app:active { opacity: .8; }
+.app .app-ico { flex: none; width: 40px; height: 40px; border-radius: 11px;
+  background: var(--surface-3); display: flex; align-items: center;
+  justify-content: center; font-size: 21px; }
+.app .app-txt { flex: 1; min-width: 0; }
+.app .app-txt b { display: block; font-size: 15.5px; letter-spacing: -.2px; }
+.app .app-txt small { display: block; font-size: 12px; color: var(--ink-2);
+  margin-top: 2px; }
+.app .chev { flex: none; color: var(--ink-3); font-size: 18px; }
+.switch {
+  display: block; width: 100%; padding: 11px; margin-top: 4px;
+  background: none; border: 0; color: var(--ink-2); font: inherit;
+  font-size: 13.5px; cursor: pointer;
+}
+.switch:active { color: var(--ink-1); }
 .shake { animation: shake .35s; }
 @keyframes shake {
   20% { transform: translateX(-8px); } 40% { transform: translateX(7px); }
@@ -83,9 +107,22 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 </head>
 <body>
 <div class="card" id="card">
-  <div class="icon">⚡</div>
+  <div class="icon">🏠</div>
   <h1>My Home</h1>
-  <div class="sub">请登录后查看</div>
+  <div class="sub" id="sub">请登录后查看</div>
+  <div class="apps" id="apps" hidden>
+    <a class="app" href="/tesla/charging">
+      <span class="app-ico">🚗</span>
+      <span class="app-txt"><b>My Tesla</b><small>充电 · 足迹 · 行程</small></span>
+      <span class="chev">›</span>
+    </a>
+    <a class="app" href="/bookkeeping">
+      <span class="app-ico">💰</span>
+      <span class="app-txt"><b>My Money</b><small>家庭记账 · 多人同步</small></span>
+      <span class="chev">›</span>
+    </a>
+    <button class="switch" id="switch-account" type="button">退出登录</button>
+  </div>
   <form id="form" autocomplete="on">
     <div class="field">
       <label for="user">账号</label>

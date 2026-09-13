@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   var PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/chargemap", "/tesla/map", "/tesla/trips",
-               "/tesla/groups", "/tesla/live", "/tesla/settings", "/tesla/changelog", "/bookkeeping"];
+               "/tesla/groups", "/tesla/live", "/tesla/settings", "/tesla/changelog"];
   var path = location.pathname;
   if (PAGES.indexOf(path) === -1) return;
   var KEY = "mytesla-last-page", LAUNCH = "mytesla-launch-marked";

@@ -1,4 +1,4 @@
-// bookkeeping.js — 家庭记账: 离线优先 (localStorage 先落, 联网增量同步)。
+// bookkeeping.js — My Money (家庭记账): 离线优先 (localStorage 先落, 联网增量同步)。
 // 同步纯逻辑在 bookkeeping-merge.js (先于此脚本加载, 全局可用)。
 "use strict";
 const $ = s => document.querySelector(s);
@@ -317,7 +317,7 @@ $("#entry-list").addEventListener("click", e => {
 });
 
 $("#logout").addEventListener("click", async () => {
-  await fetch("/tesla/api/logout", { method: "POST" });
+  await fetch("/bookkeeping/api/logout", { method: "POST" });
   location.replace("/tesla/login");
 });
 

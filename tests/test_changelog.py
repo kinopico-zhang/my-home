@@ -79,6 +79,6 @@ def test_changelog_link_in_all_nav_menus(auth):
 def test_changelog_in_lastpage_and_login_whitelist(auth):
     """上次停留页/登录回跳白名单收录 (子页可停留, 直链可回跳)。"""
     lastpage = auth.get("/tesla/static/lastpage.js?v=1").text
-    assert '"/tesla/settings", "/tesla/changelog", "/bookkeeping"]' in lastpage
+    assert '"/tesla/settings", "/tesla/changelog"]' in lastpage
     login_js = auth.get("/tesla/static/login.js?v=1").text
     assert "live|settings|changelog)" in login_js

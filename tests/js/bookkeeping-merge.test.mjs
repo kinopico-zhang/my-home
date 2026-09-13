@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/static");
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/bookkeeping/static");
 const { mergeEntries, entriesToUpload, remoteWins,
         visibleEntries, monthTotals } = require(path.join(dir, "bookkeeping-merge.js"));
 
@@ -61,7 +61,7 @@ test("mergeEntries: 墓碑 (删除) 也走 LWW 同步", () => {
   assert.equal(merged.length, 1);      // 墓碑留在账本里, 展示层过滤
 });
 
-test("entriesToUpload: 只带脏名单里的, 且只挑协议字段 (不带记账人名)", () => {
+test("entriesToUpload: 只带脏名单里的, 且只挑协议字段 (snake_case, 不带记账人名)", () => {
   const entries = [
     e("a", "2026-09-01T00:00:01Z"),
     e("b", "2026-09-01T00:00:02Z", { note: "改过" }),
@@ -72,7 +72,7 @@ test("entriesToUpload: 只带脏名单里的, 且只挑协议字段 (不带记�
   assert.deepEqual(up[0], {
     id: "b", date: "2026-09-01", amount: 10, kind: "expense",
     category: "餐饮", note: "改过", deleted: false,
-    updatedAt: "2026-09-01T00:00:02Z",
+    updated_at: "2026-09-01T00:00:02Z",
   });
   assert.equal(up[1].deleted, true);
 });

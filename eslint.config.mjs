@@ -19,13 +19,29 @@ export default [
         AMap: "readonly",          // 高德 JS API 全局命名空间
         _AMapSecurityConfig: "writable",  // 高德安全密钥配置 (HTML 内联或页面赋值)
         echarts: "readonly",       // echarts.min.js 先于页面脚本加载
+      },
+    },
+    rules: {
+      // 页面脚本按事件驱动自然组织, 场景函数间互相调用是常态
+      "no-use-before-define": ["error", { functions: false, classes: false }],
+    },
+  },
+
+  // 记账应用 (app/bookkeeping/static): 独立应用的页面脚本, 与主应用同规则
+  {
+    files: ["app/bookkeeping/static/*.js"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: {
+        ...globals.browser,
         // bookkeeping-merge.js 先于 bookkeeping.js 以经典脚本加载 (函数声明进全局)
         mergeEntries: "readonly", entriesToUpload: "readonly",
         remoteWins: "readonly", visibleEntries: "readonly", monthTotals: "readonly",
       },
     },
     rules: {
-      // 页面脚本按事件驱动自然组织, 场景函数间互相调用是常态
       "no-use-before-define": ["error", { functions: false, classes: false }],
     },
   },

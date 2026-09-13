@@ -29,12 +29,13 @@ function mergeEntries(localEntries, remoteEntries) {
 // 本地要上行的条目: 脏名单里的 (上次同步成功后有本地改动的 id)。
 // 不用时间戳比较挑上行 —— 客户端时钟若慢于服务器, 新建条目的
 // updatedAt 会早于上次同步游标, 按时间挑就永远漏传。
+// 返回值是协议形状 (snake_case 的 updated_at), 与本地形状 (updatedAt) 区分。
 function entriesToUpload(localEntries, dirtyIds) {
   const dirty = new Set(dirtyIds);
   return localEntries
     .filter(e => dirty.has(e.id))
     .map(({ id, date, amount, kind, category, note, deleted, updatedAt }) =>
-      ({ id, date, amount, kind, category, note, deleted, updatedAt }));
+      ({ id, date, amount, kind, category, note, deleted, updated_at: updatedAt }));
 }
 
 // 从完整条目里挑出该展示的 (按月份 + 记账人 + 未删除)
