@@ -170,6 +170,8 @@ def test_sessions_cost_filter(auth, db):
     assert auth.get(base, params={"cost": "recorded"}).json()["total"] == 2
     assert auth.get(base, params={"cost": "missing"}).json()["total"] == 1
     assert auth.get(base).json()["total"] == 3               # 不带 = 全部
+    # 前端默认就发 cost=all (首屏), 必须当"全部"收下 —— 曾因不认 all 首屏 400
+    assert auth.get(base, params={"cost": "all"}).json()["total"] == 3
     r = auth.get(base, params={"cost": "hack"})
     assert r.status_code == 400 and r.json()["detail"] == "不支持的费用筛选"
 
