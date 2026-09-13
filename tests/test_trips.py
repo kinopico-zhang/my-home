@@ -1240,10 +1240,15 @@ def test_trips_page_export_video(auth):
                  "preserveDrawingBuffer: true", "patchGLKeepBuffer();",
                  "此浏览器不支持录制视频", "录制失败 (没有内容)"]:
         assert frag in html, f"行程页缺少导出视频片段 {frag}"
-    # 存到相册按钮的放行条件: Safari 没实现 canShare 但 share({files}) 可用,
-    # 只按 navigator.share 存在性放行 (canShare 存在时才作附加校验)
-    assert '$("#rec-save").hidden = !(navigator.share &&\n' \
-        '    (!navigator.canShare || navigator.canShare({ files: [recFile] })));' in html
+    # 存储按钮录完一定给 (按 share 存在性门控在 HTTP 部署藏了按钮: share 是
+    # secure context 限定, NAS 常年 HTTP, iPhone Safari 里压根不存在);
+    # 有 share 走分享单, 没有 (或分享失败) 退化为 <a download> 存「文件」
+    assert '$("#rec-save").hidden = false;' in html
+    assert '$("#rec-save").textContent = shareOK ? "存到相册" : "保存视频";' in html
+    assert 'const shareOK = typeof navigator.share === "function";' in html
+    assert 'function saveVideoFile()' in html
+    assert "a.download = recFile.name;" in html
+    assert 'id="rec-hint"' in html
     # WebGL 缓冲补丁必须装在高德脚本加载之前 (上下文属性建时即定,
     # 晚了就是黑帧); 补丁本体定义在 loader 前面
     assert html.index("function patchGLKeepBuffer()") < html.index("function loadAMapScript(")

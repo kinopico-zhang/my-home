@@ -1855,8 +1855,10 @@ pbSpeed.addEventListener("click", () => {        // 倍速循环 1×→2×→4×
 /* ---------- 导出视频: 播放地图录成视频存相册 ---------- */
 /* 链路: 逐帧把地图各画布与可视区的相交子矩形合成到录制画布 →
    captureStream(30) + MediaRecorder (mp4 优先) → 从头整段重播, 播完自动
-   收片 → 预览弹层 → navigator.share({files}) 拉起系统分享单, 选「存储
-   视频」入相册 (网页拿不到相册直写权限, 这已是 iOS 最短路径)。播放条
+   收片 → 预览弹层 → 有系统分享 (secure context 限定, 即 HTTPS) 走
+   navigator.share({files}) 拉起分享单选「存储视频」入相册; 没有 (NAS 常
+   是 HTTP, iPhone 的 Safari 里 share 压根不存在) 退化为 <a download>
+   存「文件」App, 用户在文件里长按 → 共享 → 存储视频 也能入相册。播放条
    等覆盖层是 DOM, 不入镜 —— 视频里只有地图本体。 */
 let recFile = null, recURL = null;   // 上次成片 (分享用 / 预览 src 用)
 
@@ -1935,11 +1937,16 @@ function recShowResult(r) {
   if (recURL) URL.revokeObjectURL(recURL);
   recURL = URL.createObjectURL(blob);
   $("#rec-video").src = recURL;
-  // 存到相册按钮: Safari (iOS) 没实现 canShare 但 share({files}) 可用 —— 只按
-  // navigator.share 的存在性放行, canShare 仅在实现时作附加校验 (没有 share 的
-  // 老桌面内核才整颗藏掉, 留长按视频存储的路)
-  $("#rec-save").hidden = !(navigator.share &&
-    (!navigator.canShare || navigator.canShare({ files: [recFile] })));
+  // 存储按钮: 录完一定给 (2026-09-13 二连修: 先按 canShare 门控藏了按钮 ——
+  // iOS Safari 没实现 canShare; 改按 share 存在性仍藏 —— share 是 secure
+  // context 限定, HTTP 部署里同样不存在)。有 share = 分享单存相册; 没有 =
+  // 下载存「文件」, 按钮和提示随路径换文案。
+  const shareOK = typeof navigator.share === "function";
+  $("#rec-save").hidden = false;
+  $("#rec-save").textContent = shareOK ? "存到相册" : "保存视频";
+  $("#rec-hint").textContent = shareOK
+    ? "点「存到相册」拉起系统分享单, 选「存储视频」即入相册。"
+    : "当前连接不支持系统分享 (需 HTTPS), 视频会存到「文件」App; 在文件里长按视频 → 共享 → 存储视频 也能入相册。";
   $("#rec-modal").hidden = false;
 }
 
@@ -1955,10 +1962,17 @@ pbRec.addEventListener("click", () => {
   if (rec) { stopRecExport(true); toast("已取消录制"); }
   else startRecExport();
 });
+function saveVideoFile() {   // 下载兜底: iOS 存「文件」App (经共享再入相册), 桌面浏览器直接落盘
+  const a = document.createElement("a");
+  a.href = recURL; a.download = recFile.name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
 $("#rec-save").addEventListener("click", async () => {
   if (!recFile) return;
+  if (typeof navigator.share !== "function") { saveVideoFile(); return; }
   try { await navigator.share({ files: [recFile], title: recFile.name }); }
-  catch (e) { if (e.name !== "AbortError") toast("分享失败: " + e.message); }
+  catch (e) { if (e.name !== "AbortError") saveVideoFile(); }   // 分享失败 (如不支持文件) 也别让视频白录
 });
 $("#rec-close").addEventListener("click", recCloseModal);
 $("#rec-modal").addEventListener("click", e => { if (e.target.id === "rec-modal") recCloseModal(); });
