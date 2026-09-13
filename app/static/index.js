@@ -274,8 +274,15 @@ function renderCard(it) {
     ? `<button class="cs-cost" data-cost>${money(it.cost)}${it.price_per_kwh != null
         ? `<span class="pp">¥${it.price_per_kwh.toFixed(2)}/kWh</span>` : ""}<span class="edit-ic">✎</span></button>`
     : `<button class="cs-cost none" data-cost>＋ 添加费用</button>`;
-  const lblStart = `left:${Math.min(it.start_soc, 93)}%`;  // 93 上限防极高起点溢出
-  const lblEnd = `right:${100 - it.end_soc}%`;
+  /* 短充电 (起止差 < 15%) 两个标签钉在真实百分比会叠字: 并成一个 "起 → 终"
+     标签居中钉在轨迹中点 (中点钳 15~85%, 标签再宽也不出卡) */
+  const wide = it.end_soc - it.start_soc >= 15;
+  const mid = Math.min(Math.max((it.start_soc + it.end_soc) / 2, 15), 85);
+  const socLabels = wide
+    ? `<span class="sa-lb" style="left:${Math.min(it.start_soc, 93)}%">${it.start_soc}%</span>` +
+      `<span class="sa-lb" style="right:${100 - it.end_soc}%">${it.end_soc}%</span>`
+    : `<span class="sa-lb" style="left:${mid}%;transform:translateX(-50%)">` +
+      `${it.start_soc} → ${it.end_soc}%</span>`;
   el.innerHTML = `
     <div class="cs-top">
       <span class="cs-date">${esc(fmtCardDate(it.start))}</span>
@@ -283,8 +290,7 @@ function renderCard(it) {
     </div>
     <h3 class="cs-loc">${esc(it.location)}</h3>
     <div class="soc-axis">
-      <span class="sa-lb" style="${lblStart}">${it.start_soc}%</span>
-      <span class="sa-lb" style="${lblEnd}">${it.end_soc}%</span>
+      ${socLabels}
       <span class="trk"><i style="left:${it.start_soc}%;width:${Math.max(it.end_soc - it.start_soc, 2)}%"></i></span>
     </div>
     <div class="cs-main">

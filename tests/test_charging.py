@@ -322,6 +322,17 @@ def test_charging_page_soc_axis_fixed_and_dense(auth):
     assert 'class="cs-main"' in html             # 电量 + 费用同行
 
 
+def test_charging_page_soc_labels_merge_on_short_charges(auth):
+    """短充电 (起止差 < 15%) 两端标签钉真实百分比会叠字: 并成一个 "起 → 终"
+    标签居中钉在轨迹中点, 中点钳 15~85% (标签再宽也不出卡)。"""
+    html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
+    assert "it.end_soc - it.start_soc >= 15" in html   # 阈值: 起止差 ≥15% 仍钉两端
+    assert "Math.min(Math.max((it.start_soc + it.end_soc) / 2, 15), 85)" in html
+    assert "transform:translateX(-50%)" in html        # 合并标签按中心定位
+    assert "${it.start_soc} → ${it.end_soc}%" in html
+
+
 # ---------------------------------------------------------------- 城市筛选
 def test_charging_cities_endpoint(auth, db):
     """充电城市列表 (次数降序); 无城市信息的地址不参与筛选。"""
