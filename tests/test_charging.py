@@ -368,13 +368,19 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
                  'id="tm-ym"', 'id="tm-sel"', 'id="tm-apply"', 'function calRender()',
                  '再点结束日期',
                  'id="city-menu"', 'id="city-opts"', "/tesla/charging/api/cities",
+                 # 快充/慢充筛选改下拉 (与城市筛选同款, 分段钮太占地方)
+                 'id="type-menu"', 'id="type-opts"', 'id="type-lb"',
+                 'data-v="fast"', "⚡ 快充", "🔌 慢充", "TYPE_LABELS",
+                 '$("#type-opts").addEventListener',
                  "function syncURL()", 'u.searchParams.set("city", state.city)',
                  # 手机: 下拉面板锚全宽 header (日历行 ~300px, 挂胶囊右缘必出屏)
                  '@media (max-width: 479px)', '.nav-menu { position: static; }']:
         assert frag in html, f"充电页缺少 {frag}"
     assert "chips-range" not in html and 'id="tm-from"' not in html
+    assert 'id="seg-type"' not in html and ".seg {" not in html   # 分段钮样式不许回来
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
-              'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout', 'city-opts'):
+              'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout', 'city-opts',
+              'type-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
     # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)
     assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
