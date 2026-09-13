@@ -222,6 +222,45 @@ def test_session_detail(auth, db):
     assert d["end_rated_range"] == 330.0
 
 
+def test_session_detail_nav_coords(auth, db):
+    """详情带充电站坐标 (WGS-84) —— 前端导航换算的原料; 没坐标的地址给 None。"""
+    db.add(Address(id=1, name="华为立体车库", city="深圳市",
+                   display_name="深圳市华为立体车库",
+                   latitude=22.55, longitude=114.05))
+    db.commit()
+    seed_charging(db)
+    d = auth.get("/tesla/charging/api/sessions/1").json()
+    assert d["lat"] == 22.55 and d["lng"] == 114.05
+
+
+def test_session_detail_no_coords(auth, db):
+    """没反向地理编码过的地址: 坐标字段是 None (前端不渲染导航按钮)。"""
+    seed_addresses(db)                     # 默认地址没有坐标
+    seed_charging(db)
+    d = auth.get("/tesla/charging/api/sessions/1").json()
+    assert d["lat"] is None and d["lng"] is None
+
+
+def test_charging_detail_nav_button(auth):
+    """详情「导航到充电站」: 检测手机里装了的地图 App 逐个拉起, 全没有兜底网页版。"""
+    html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
+    for frag in [
+        'id="nav-go"', "🧭 导航到充电站",
+        "GCJ02.wgs84ToGcj02",                  # WGS-84 → GCJ-02, 不转偏几百米
+        "iosamap://navi", "androidamap://navi",    # 高德 (iOS / 安卓 scheme)
+        "baidumap", "://map/direction", "coord_type=gcj02",   # 百度 (iOS/安卓 scheme 前缀不同)
+        "qqmap://map/routeplan", "fromcoord=CurrentLocation",   # 腾讯
+        "maps.apple.com/?daddr",                   # 苹果地图
+        "uri.amap.com/navigation", "coordinate=gaode",  # 网页版兜底
+        "visibilitychange", "NAV_PROBE_MS",       # 没装 = 探测窗口内没切后台
+    ]:
+        assert frag in html, f"充电详情导航缺少 {frag}"
+    # 坐标换算库要先于页面脚本加载
+    page = auth.get("/tesla/charging").text
+    assert page.index("gcj02.js") < page.index("index.js")
+
+
 def test_session_detail_404(auth):
     assert auth.get("/tesla/charging/api/sessions/99999").status_code == 404
 

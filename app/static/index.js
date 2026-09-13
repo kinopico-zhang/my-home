@@ -438,6 +438,8 @@ async function loadDetail(id) {
     <span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.cable || "—")}</span>
     ${d.charger_type ? `<span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.charger_type)}</span>` : ""}`;
   sheetBody.innerHTML = `
+    ${d.lat != null && d.lng != null
+      ? `<button class="nav-go" id="nav-go">🧭 导航到充电站</button>` : ""}
     <div class="st-grid">
       <div class="st"><div class="lb">充入电量</div><div class="val">${num(d.energy_added)}<small> kWh</small></div></div>
       <div class="st"><div class="lb">表计电量</div><div class="val">${num(d.energy_used)}<small> kWh</small></div></div>
@@ -497,6 +499,53 @@ async function loadDetail(id) {
     });
     renderPwChart(d);
   });
+}
+
+/* ---------- 导航到充电站 ----------
+   网页没法直接问手机装了哪些 App —— 逐个拉起候选地图 (高德 / 百度 /
+   腾讯 / 苹果), scheme 打开会把本页切到后台: 探测窗口内没被切走 = 没装,
+   试下一个; 一个都没有兜底高德网页版 (任何浏览器都能开)。各图商都用
+   国测局 GCJ-02 坐标, TeslaMate 存的是 WGS-84, 直接用会偏几百米。 */
+const NAV_PROBE_MS = 700;   // 拉起 App 的探测窗口: 切后台是立即的, 700ms 足够
+
+function navOpenApp(url) {
+  return new Promise(resolve => {
+    let opened = false;
+    const onHide = () => { if (document.hidden) opened = true; };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    location.href = url;
+    setTimeout(() => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+      resolve(opened);
+    }, NAV_PROBE_MS);
+  });
+}
+
+async function navigateToStation(d) {
+  const [lng, lat] = GCJ02.wgs84ToGcj02(d.lng, d.lat);
+  const name = encodeURIComponent(d.location);
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const apps = [
+    // 高德 (dev=0: 传入坐标已是 GCJ-02)
+    (ios ? "iosamap://navi?sourceApplication=mytesla&backScheme=mytesla"
+         : "androidamap://navi?sourceApplication=mytesla")
+      + `&poiname=${name}&lat=${lat}&lon=${lng}&dev=0&style=0`,
+    // 百度 (coord_type=gcj02: 免转 BD-09)
+    `${ios ? "baidumap" : "bdapp"}://map/direction`
+      + `?origin=${encodeURIComponent("我的位置")}&destination=${name}|${lat},${lng}`
+      + `&coord_type=gcj02&mode=driving&src=mytesla`,
+    // 腾讯 (fromcoord=CurrentLocation: 出发点用当前定位)
+    `qqmap://map/routeplan?type=drive&from=${encodeURIComponent("我的位置")}`
+      + `&fromcoord=CurrentLocation&to=${name}&tocoord=${lat},${lng}&policy=1&referer=mytesla`,
+  ];
+  if (ios) apps.push(`https://maps.apple.com/?daddr=${lat},${lng}&q=${name}&dirflg=d`);
+  for (const url of apps) {
+    if (await navOpenApp(url)) return;   // 打开了 (本页已被切走), 收工
+  }
+  location.href = `https://uri.amap.com/navigation?to=${lng},${lat},${name}`
+                + `&mode=car&src=mytesla&coordinate=gaode`;
 }
 
 function renderPwChart(d) {
@@ -614,6 +663,8 @@ alInput.addEventListener("keydown", e => {
 sheetBody.addEventListener("click", e => {
   if (e.target.closest("#st-cost-tile") && currentDetailId != null)
     editCost(detailCache.get(currentDetailId));
+  if (e.target.closest("#nav-go") && currentDetailId != null)
+    navigateToStation(detailCache.get(currentDetailId));
 });
 
 
