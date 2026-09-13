@@ -56,6 +56,20 @@ def test_all_pages_have_standalone_meta(auth):
         assert '<link rel="manifest" href="/tesla/static/manifest.json">' in html, path
 
 
+def test_all_pages_disable_double_tap_zoom_on_controls(auth):
+    """触屏双击控件不再整页放大 (2026-09-13 用户踩坑)。
+
+    iOS 忽略 user-scalable=no, 双击按钮/链接/菜单会被 Safari 当双击缩放;
+    touch-action: manipulation 只去掉双击缩放, 平移和捏合缩放保留
+    (地图手势区是 div, 不受影响)。全站统一, 登录页也要有。
+    """
+    for path in ["/tesla/login", "/tesla/charging", "/tesla/stats",
+                 "/tesla/chargemap", "/tesla/map", "/tesla/changelog",
+                 "/tesla/trips", "/tesla/groups", "/tesla/live", "/tesla/settings"]:
+        html = auth.get(path).text
+        assert "button, a, summary { touch-action: manipulation; }" in html, path
+
+
 def test_pages_remember_last_page(auth):
     """上次停留页: 五个业务页 head 挂 lastpage.js (冷启动在任何渲染前跳转,
     不闪启动页), 登录页不挂 (它不是停留目标); 登录成功回上次页而非写死充电页。
