@@ -13,7 +13,8 @@ from .library_database import (BROWSER_PLAYABLE_FORMATS, Album, Artist,
                                Track)
 from .library_languages import language_for_script, scripts_for_language
 from .schemas import (AlbumCard, AlbumPage, AlbumPageList, ArtistBrief,
-                      ArtistPage, ArtistPageList, LyricHit, LyricsResponse,
+                      ArtistPage, ArtistPageList, FormatCount, LibraryStats,
+                      LyricHit, LyricsResponse,
                       SearchResult, TrackBrief, TrackPageList)
 
 # 搜索结果的板块容量 (一次全给, 前端分块展示)
@@ -197,6 +198,26 @@ def _matching_lyric_line(lyrics: str, query: str) -> str:
             text = _LRC_TAG_PATTERN.sub("", line).strip()
             return text[:_LYRIC_LINE_MAX_LENGTH]
     return ""
+
+
+def library_stats(session: Session) -> LibraryStats:
+    """统计页: 艺人/专辑/曲目数 + 总时长 + 各格式分布 (多的在前, 同数按名)。"""
+    formats = [FormatCount(format=name, count=count,
+                           playable=name in BROWSER_PLAYABLE_FORMATS)
+               for name, count in session.execute(
+                   select(Track.file_format, func.count())
+                   .group_by(Track.file_format)
+                   .order_by(func.count().desc(), Track.file_format))]
+    return LibraryStats(
+        artist_count=session.scalar(
+            select(func.count()).select_from(Artist)) or 0,
+        album_count=session.scalar(
+            select(func.count()).select_from(Album)) or 0,
+        track_count=session.scalar(
+            select(func.count()).select_from(Track)) or 0,
+        total_duration_seconds=session.scalar(
+            select(func.sum(Track.duration_seconds))) or 0.0,
+        formats=formats)
 
 
 def search_library(session: Session, query: str,

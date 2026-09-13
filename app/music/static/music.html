@@ -133,6 +133,43 @@ main {
 .chip.on { background: var(--ink-1); color: #000; font-weight: 600; }
 .chip:active { opacity: .7; }
 
+/* ---------- 统计页 ---------- */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 22px;
+}
+.stat-card { background: var(--surface-2); border-radius: 12px; padding: 15px 14px; }
+.stat-card b {
+  display: block; font-size: 25px; font-weight: 700;
+  letter-spacing: -.5px; line-height: 1.2; font-variant-numeric: tabular-nums;
+}
+.stat-card b small { font-size: 13px; font-weight: 600; margin-left: 2px; }
+.stat-card > small {
+  display: block; color: var(--ink-3); font-size: 12px; margin-top: 3px;
+}
+.stats-title { font-size: 14px; font-weight: 600; margin: 2px 0 6px; }
+.format-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; font-size: 13px; color: var(--ink-1);
+}
+.format-row.disabled { color: var(--ink-3); }
+.format-name {
+  width: 88px; flex-shrink: 0; font-weight: 600;
+  text-transform: uppercase; font-variant-numeric: tabular-nums;
+}
+.format-name i { font-style: normal; font-weight: 400; font-size: 11px; }
+.format-bar {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: var(--surface-2); overflow: hidden;
+}
+.format-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.format-row.disabled .format-bar i { background: var(--ink-3); }
+.format-count {
+  width: 56px; flex-shrink: 0; text-align: right;
+  color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+.stat-empty { color: var(--ink-3); padding: 18px 2px; font-size: 13px; }
+
 /* ---------- 专辑网格 ---------- */
 .album-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -518,6 +555,10 @@ main {
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     搜索
   </button>
+  <button data-tab="stats">
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M5 20v-7M12 20V5M19 20v-10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    统计
+  </button>
 </nav>
 
 <div id="toast" hidden></div>
@@ -526,6 +567,6 @@ main {
 <script src="/music/static/player-queue.js?v=1"></script>
 <script src="/music/static/music-common.js?v=1"></script>
 <script src="/music/static/music-player.js?v=1"></script>
-<script src="/music/static/music.js?v=1"></script>
+<script src="/music/static/music.js?v=2"></script>
 </body>
 </html>

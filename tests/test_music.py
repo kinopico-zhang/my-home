@@ -592,6 +592,7 @@ def test_music_page_requires_login(auth):
     assert anonymous.get("/music",
                          follow_redirects=False).status_code == 302
     assert anonymous.get("/music/api/status").status_code == 401
+    assert anonymous.get("/music/api/stats").status_code == 401
     assert anonymous.get("/music/api/albums").status_code == 401
     assert auth.get("/music").status_code == 200   # 307 /music/ 跟一步到页面
 
@@ -599,6 +600,9 @@ def test_music_page_requires_login(auth):
 def test_music_browse_and_search_endpoints(auth):
     """空库: 各接口空结果 + 404 + 参数校验 422。"""
     assert auth.get("/music/api/status").json()["track_count"] == 0
+    assert auth.get("/music/api/stats").json() == {
+        "artist_count": 0, "album_count": 0, "track_count": 0,
+        "total_duration_seconds": 0.0, "formats": []}
     assert auth.get("/music/api/albums").json() == {
         "albums": [], "total_count": 0, "offset": 0, "limit": 60}
     assert auth.get("/music/api/artists").json()["artists"] == []
@@ -616,6 +620,32 @@ def test_music_browse_and_search_endpoints(auth):
         "/music/api/albums", params={"sort": "乱写"}).status_code == 422
     assert auth.get(
         "/music/api/tracks", params={"limit": 0}).status_code == 422
+
+
+def test_music_stats_endpoint(auth):
+    """统计页: 库规模 + 总时长 + 格式分布 (多的在前, 同数按名, 播不了标记)。"""
+    _seed_library()
+    data = auth.get("/music/api/stats").json()
+    assert data["artist_count"] == 2 and data["album_count"] == 3
+    assert data["track_count"] == 5
+    assert data["total_duration_seconds"] == 10.0      # 五曲各 2 秒
+    assert data["formats"] == [
+        {"format": "flac", "count": 3, "playable": True},
+        {"format": "mp3", "count": 1, "playable": True},
+        {"format": "tak", "count": 1, "playable": False}]
+
+
+def test_music_stats_page_wiring():
+    """统计页接线: 标签栏第三格 + hash 路由 + 渲染函数 (E2E 再验真数据)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    assert 'data-tab="stats"' in html
+    assert "stat-grid" in html and "format-bar" in html   # 统计卡片 + 比例条
+    js = (static / "music.js").read_text(encoding="utf-8")
+    assert 'if (name === "stats") return { view: "stats" };' in js
+    assert "function renderStatsView()" in js
+    assert '"/music/api/stats"' in js
+    assert 'navigate(tab.dataset.tab)' in js              # 标签栏直通各视图
 
 
 def test_music_rescan_full_flow(auth, tmp_path):
