@@ -1,4 +1,4 @@
-// changelog.js — 更新日志页: 逐提交版本条目 (x.y.z: x=架构重构, y=特性, z=修复)
+// changelog.js — 更新日志页: 合并批次的版本条目 (新增/改进/修复, 用户视角文案)
 "use strict";
 /* 页签菜单: 点空白处收起。 */
 document.addEventListener("click", e => {
@@ -20,15 +20,18 @@ async function getJSON(url) {
   return r.json();
 }
 
+const KIND_CLS = { "新增": "add", "改进": "imp", "修复": "fix" };
+
 function render(list) {   // 行写进内层 #list, 加载/错误节点不被顶掉
-  $("#list").innerHTML = list.map(e => `
+  $("#list").innerHTML = list.map(v => `
     <div class="ver">
-      <span class="v-badge">${esc(e.version)}</span>
-      <span class="v-chip ${esc(e.type)}">${esc(e.type_label)}</span>
-      <div class="v-body">
-        <div class="v-subj">${esc(e.subject)}</div>
-        <div class="v-meta">${esc(e.date)} · ${esc(e.hash)}</div>
+      <div class="v-head">
+        <span class="v-badge">${esc(v.version)}</span>
+        <span class="v-date">${esc(v.date)}</span>
       </div>
+      <ul class="v-items">${v.items.map(it => `
+        <li><span class="k k-${KIND_CLS[it.kind] || "imp"}">${esc(it.kind)}</span><span class="t">${esc(it.text)}</span></li>`).join("")}
+      </ul>
     </div>`).join("");
 }
 
@@ -38,7 +41,7 @@ async function load() {
   try {
     const list = await getJSON("/tesla/changelog/api/entries");
     if (list.length) render(list);
-    else showError("没有版本历史 (服务目录不是 git 仓库)");
+    else showError("还没有版本记录");
   } catch (e) {
     showError(e.message);
   }

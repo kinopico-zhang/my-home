@@ -177,14 +177,17 @@ class ChargeMapLocation(BaseModel):
 
 
 
-class ChangelogEntry(BaseModel):
-    """更新日志的一条版本条目 (一个提交)。"""
-    version: str               # x.y.z: x=架构重构, y=特性, z=修复
-    type: str                  # feat | fix | refactor
-    type_label: str            # 特性 | 修复 | 重构
-    date: str                  # YYYY-MM-DD
-    hash: str                  # 短哈希
-    subject: str               # 提交说明
+class ChangelogItem(BaseModel):
+    """更新日志的一条改动 (用户视角的一句话)。"""
+    kind: str                  # 新增 | 改进 | 修复
+    text: str
+
+
+class ChangelogVersion(BaseModel):
+    """更新日志的一个版本: 一批改动的合并。"""
+    version: str               # x.y.z: x 大改版, y 新功能, z 问题修复
+    date: str                  # 批次日期 YYYY-MM-DD
+    items: list[ChangelogItem]
 
 class TracksResponse(BaseModel):
     """全量粗轨迹响应。"""
