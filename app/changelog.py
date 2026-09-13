@@ -8,6 +8,14 @@ from typing import Final
 from .schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="2.5.0", date="2026-09-13", items=[
+        ChangelogItem(kind="新增", text="家庭记账: 记一笔支出或收入, 按月看汇总, 每笔都记着是谁记的; 断网也能记, 联网自动同步"),
+        ChangelogItem(kind="新增", text="多账号: 管理员生成邀请链接发给家人, 注册后各有各的账号; 除账号管理外的功能都能用"),
+        ChangelogItem(kind="新增", text="账号管理页 (仅管理员): 看账号列表, 生成 / 撤销注册邀请, 一键复制邀请链接"),
+        ChangelogItem(kind="新增", text="设置页可以改自己的名称和密码"),
+        ChangelogItem(kind="改进", text="登录页更名 My Home, 家里的服务都从这里进"),
+        ChangelogItem(kind="修复", text="登录页显示 / 隐藏密码的两个图标并排显示"),
+    ]),
     ChangelogVersion(version="2.4.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="充电详情可以导航到充电站, 自己挑手机里的地图 App (高德 / 百度 / 腾讯 / 苹果地图), 没装的地图长按就能隐藏"),
         ChangelogItem(kind="新增", text="每个页面的顶栏都有刷新按钮了"),

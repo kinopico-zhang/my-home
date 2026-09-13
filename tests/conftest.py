@@ -18,19 +18,27 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 # sys.path 注入必须先于 app 导入 (import 位置告警属预期, 按需豁免)
-from app import authentication, config, database, tracks_cache  # pylint: disable=wrong-import-position
-from app.models import (Address, Base, Car, Charge, ChargingProcess,  # pylint: disable=wrong-import-position
-                        Drive, OwnBase, Position)
+from app import account_store, authentication, config, database, tracks_cache  # pylint: disable=wrong-import-position
+from app.models import (Address, Base, BookkeepingBase, Car, Charge,  # pylint: disable=wrong-import-position
+                        ChargingProcess, Drive, OwnBase, Position, UsersBase)
 import app.main as m  # pylint: disable=wrong-import-position
 
 
 @pytest.fixture(autouse=True)
 def isolate(tmp_path, monkeypatch):
-    """每个用例独立: SQLite 库 / 自有库 / 会话密钥 / 登录限速 / 轨迹缓存互不串扰。"""
+    """每个用例独立: SQLite 库 / 自有库 / 账号库 / 记账库 / 会话密钥 /
+    登录限速 / 轨迹缓存互不串扰。"""
     database.init_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(database.engine())
     database.init_own_engine(f"sqlite:///{tmp_path / 'mytesla.db'}")
     OwnBase.metadata.create_all(database.own_engine())
+    database.init_users_engine(f"sqlite:///{tmp_path / 'users.db'}")
+    UsersBase.metadata.create_all(database.users_engine())
+    database.init_bookkeeping_engine(f"sqlite:///{tmp_path / 'bookkeeping.db'}")
+    BookkeepingBase.metadata.create_all(database.bookkeeping_engine())
+    # 管理员种子 (生产在 lifespan 里做, TestClient 不触发 lifespan)
+    with database.users_session_factory()() as users:  # pylint: disable=not-callable
+        account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
     secret = b"unit-test-secret-0123456789abcdef"
     secret_file = tmp_path / "secret"
     secret_file.write_bytes(secret)
@@ -38,14 +46,18 @@ def isolate(tmp_path, monkeypatch):
     # 测试直接替换内部密钥持有者 (与生产同构, 走真实签名路径)
     monkeypatch.setattr(authentication, "_secret",  # pylint: disable=protected-access
                         authentication._SecretHolder(  # pylint: disable=protected-access
-                            hashlib.sha256(secret + b"|" + config.AUTH_USER.encode() + b"|"
-                                           + config.AUTH_PASS.encode()).digest()))
+                            hashlib.sha256(secret).digest()))
+    monkeypatch.setattr(authentication, "_legacy_secret",  # pylint: disable=protected-access
+                        authentication._SecretHolder(  # pylint: disable=protected-access
+                            authentication._compute_legacy_secret(secret)))  # pylint: disable=protected-access
     monkeypatch.setattr(authentication, "_login_fails", {})
     tracks_cache.reset()
     monkeypatch.setenv("MAP_CACHE_FILE", str(tmp_path / "tracks_cache.json"))
     yield
     database.dispose_engine()
     database.dispose_own_engine()
+    database.dispose_users_engine()
+    database.dispose_bookkeeping_engine()
 
 
 @pytest.fixture()
@@ -74,6 +86,20 @@ def db():
 def owndb():
     """直连自有库的会话 (断档补路种子 / 回读断言)。"""
     with database.own_session_factory()() as session:  # pylint: disable=not-callable
+        yield session
+
+
+@pytest.fixture()
+def usersdb():
+    """直连账号库的会话 (种子用户 / 邀请 / 回读断言)。"""
+    with database.users_session_factory()() as session:  # pylint: disable=not-callable
+        yield session
+
+
+@pytest.fixture()
+def bkdb():
+    """直连记账库的会话 (种子账目 / 回读断言)。"""
+    with database.bookkeeping_session_factory()() as session:  # pylint: disable=not-callable
         yield session
 
 

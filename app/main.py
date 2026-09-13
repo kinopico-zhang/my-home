@@ -6,12 +6,12 @@ repository 层 (SQLAlchemy, 方言中立); 测试通过 database.init_engine()
 时间处理: 库内为 UTC 裸时间戳, 对外输出本地时间 (默认 Asia/Shanghai)。
 鉴权: 登录后签发 HMAC 签名的会话 cookie (默认 90 天), 未登录跳转 /tesla/login。
 """
-import hmac
 import json
 import math
 import re
 import threading
 from collections.abc import AsyncIterator
+from datetime import timezone as dt_timezone
 from contextlib import asynccontextmanager
 from typing import Awaitable, Callable, Iterator
 
@@ -24,9 +24,10 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import (authentication, changelog, config, database, repository,
-                settings_store, tracks_cache)
-from .models import OwnBase
+from . import (account_store, authentication, bookkeeping_store, changelog,
+                config, database, repository, settings_store, tracks_cache)
+from . import models
+from .models import OwnBase, User
 from .schemas import (
     AmapConfig,
     CarInfo,
@@ -37,12 +38,23 @@ from .schemas import (
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
+    AccountNameUpdate,
+    AccountPasswordUpdate,
     CostUpdateRequest,
     CostUpdateResult,
     DriverIn,
     DriverInfo,
     DriverMark,
     DriverUpdate,
+    EntryOut,
+    InvitationCreated,
+    InvitationItem,
+    InvitationRequest,
+    MeInfo,
+    RegisterCredentials,
+    SyncRequest,
+    SyncResponse,
+    UserItem,
     GapFillRequest,
     GapFillResponse,
     LocationStat,
@@ -78,6 +90,10 @@ live = APIRouter(prefix="/tesla/live/api")
 # 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 驾驶员)
 settingsapi = APIRouter(prefix="/tesla/api")
 changelogapi = APIRouter(prefix="/tesla/changelog/api")
+# 账号管理 API (页面: /tesla/accounts, 仅管理员)
+accounts = APIRouter(prefix="/tesla/accounts/api")
+# 记账 API (页面: /bookkeeping —— 离线优先, 本地编辑联网同步)
+bookkeeping = APIRouter(prefix="/bookkeeping/api")
 
 
 def _migrate_own_db() -> None:
@@ -99,6 +115,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     database.init_own_engine()
     OwnBase.metadata.create_all(database.own_engine())
     _migrate_own_db()
+    # 账号库 (独立文件): 首启种管理员 (env 账密, 之后走界面改);
+    # 记账库 (独立文件) 只建表
+    database.init_users_engine()
+    models.UsersBase.metadata.create_all(database.users_engine())
+    with database.users_session_factory()() as users:
+        account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
+    database.init_bookkeeping_engine()
+    models.BookkeepingBase.metadata.create_all(database.bookkeeping_engine())
     with database.own_session_factory()() as own:   # pylint: disable=not-callable
         url = settings_store.engine_url(own)
     database.init_engine(url)
@@ -108,6 +132,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
     database.dispose_engine()
     database.dispose_own_engine()
+    database.dispose_users_engine()
+    database.dispose_bookkeeping_engine()
 
 
 app = FastAPI(title="My Tesla", lifespan=lifespan)
@@ -121,21 +147,30 @@ async def sqlalchemy_error_handler(
     return JSONResponse({"detail": f"数据库查询失败: {exc}"}, status_code=503)
 
 
+# 无需登录即可访问的路径: 登录/注册页及其接口 (邀请令牌本身就是凭证)
+_PUBLIC_PATHS = frozenset((
+    "/tesla/login", "/tesla/register",
+    "/tesla/api/login", "/tesla/api/logout",
+    "/tesla/api/register", "/tesla/api/invite-status"))
+_STATIC_PREFIXES = ("/tesla/static/", "/bookkeeping/static/")
+
+
 @app.middleware("http")
 async def auth_middleware(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    """页面未登录跳登录页, API 未登录 401; 静态放行 + 缓存策略。"""
+    """页面未登录跳登录页, API 未登录 401; 静态放行 + 缓存策略。
+
+    /tesla 与 /bookkeeping 两个应用同一套会话 cookie (path=/)。"""
     path = request.url.path
-    is_api = path.startswith("/tesla/") and "/api/" in path
-    # 放行: 登录页 / 登录登出接口 / 静态资源
-    if path in ("/tesla/login", "/tesla/api/login", "/tesla/api/logout") \
-            or path.startswith("/tesla/static/"):
+    protected = path.startswith(("/tesla", "/bookkeeping"))
+    is_api = protected and "/api/" in path
+    if path in _PUBLIC_PATHS or path.startswith(_STATIC_PREFIXES):
         resp = await call_next(request)
     elif is_api and not authentication.check_token(
             request.cookies.get("auth", "")):
         resp = JSONResponse({"detail": "未登录"}, status_code=401)
-    elif path.startswith("/tesla") and not is_api and not authentication.check_token(
+    elif protected and not is_api and not authentication.check_token(
             request.cookies.get("auth", "")):
         resp = RedirectResponse("/tesla/login", status_code=302)
     else:
@@ -174,35 +209,214 @@ def login_page() -> FileResponse:
     return _page("login.html")
 
 
+def _set_session_cookie(resp: JSONResponse, user_uuid: str) -> None:
+    """会话 cookie 签到 path=/ (Tesla + 记账两个应用都带)。
+
+    单用户时代的旧 cookie path 限定 /tesla, 同名残留会让浏览器在 /tesla
+    下优先送旧值 —— 设置新 cookie 前先删掉它。"""
+    resp.delete_cookie("auth", path="/tesla")
+    resp.set_cookie("auth", authentication.make_token(user_uuid),
+                    max_age=config.SESSION_DAYS * 86400, httponly=True,
+                    samesite="lax", path="/")
+
+
 @app.post("/tesla/api/login")
-def login(creds: LoginCredentials, request: Request) -> JSONResponse:
-    """校验账密 (带单 IP 限速), 签发会话 cookie。"""
+def login(creds: LoginCredentials, request: Request,
+          users: Session = Depends(database.get_users_db)) -> JSONResponse:
+    """校验账密 (账号库, 带单 IP 限速), 签发会话 cookie。"""
     ip = request.client.host if request.client else "?"
     if authentication.ip_locked(ip):
         raise HTTPException(
             429, f"尝试次数过多, 请 {config.LOGIN_LOCK_S} 秒后再试")
-    ok_user = hmac.compare_digest(creds.user.encode(), config.AUTH_USER.encode())
-    ok_pass = hmac.compare_digest(
-        creds.password.encode(), config.AUTH_PASS.encode())
-    if not (ok_user and ok_pass):
+    user = account_store.authenticate(users, creds.user, creds.password)
+    if user is None:
         authentication.record_fail(ip)
         raise HTTPException(401, "账号或密码错误")
     authentication.clear_fails(ip)
     resp = JSONResponse(OkResponse(ok=True).model_dump())
-    resp.set_cookie("auth", authentication.make_token(),
-                    max_age=config.SESSION_DAYS * 86400, httponly=True,
-                    samesite="lax", path="/tesla")
+    _set_session_cookie(resp, user.uuid)
     return resp
 
 
 @app.post("/tesla/api/logout")
 def logout() -> JSONResponse:
-    """登出 (并吊销所有已签发会话)。"""
-    # 轮换密钥: 登出即吊销所有已签发的会话 (单用户, 等同「所有设备退出」)
-    authentication.rotate_secret()
+    """登出 (清本设备的 cookie; 其他设备/其他人不受影响)。"""
     resp = JSONResponse(OkResponse(ok=True).model_dump())
-    resp.delete_cookie("auth", path="/tesla")
+    resp.delete_cookie("auth", path="/tesla")   # 单用户时代的旧 path cookie
+    resp.delete_cookie("auth", path="/")
     return resp
+
+
+def _current_user(request: Request, users: Session) -> User | None:
+    """会话 cookie → 账号 (旧版 cookie 按管理员会话处理)。"""
+    user_uuid = authentication.check_token(request.cookies.get("auth", ""))
+    if user_uuid is None:
+        return None
+    if user_uuid == authentication.LEGACY_ADMIN:
+        return account_store.admin_user(users)
+    return account_store.get_user(users, user_uuid)
+
+
+def _require_user(request: Request, users: Session) -> User:
+    """已登录账号, 否则 401。"""
+    user = _current_user(request, users)
+    if user is None:
+        raise HTTPException(401, "未登录")
+    return user
+
+
+def _require_admin(request: Request, users: Session) -> User:
+    """管理员账号, 否则 401/403 (账号管理只有管理员能碰)。"""
+    user = _require_user(request, users)
+    if not user.is_admin:
+        raise HTTPException(403, "仅管理员可管理账号")
+    return user
+
+
+@app.get("/tesla/register")
+def register_page() -> FileResponse:
+    """注册页 (凭邀请令牌进入, 无需登录)。"""
+    return _page("register.html")
+
+
+@app.get("/tesla/api/invite-status")
+def invite_status(invite: str,
+                  users: Session = Depends(database.get_users_db)) -> OkResponse:
+    """邀请令牌是否可用 (注册页进页即查, 坏链接直接说原因)。"""
+    try:
+        account_store.invitation_usable(users, invite)
+    except account_store.InvitationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return OkResponse(ok=True)
+
+
+@app.post("/tesla/api/register")
+def register(creds: RegisterCredentials, request: Request,
+             users: Session = Depends(database.get_users_db)) -> JSONResponse:
+    """凭邀请注册账号 (一次一用), 注册即登录。"""
+    ip = request.client.host if request.client else "?"
+    if authentication.ip_locked(ip):
+        raise HTTPException(
+            429, f"尝试次数过多, 请 {config.LOGIN_LOCK_S} 秒后再试")
+    try:
+        account_store.invitation_usable(users, creds.invite)
+        user = account_store.create_user(users, creds.name, creds.password)
+        account_store.consume_invitation(users, creds.invite)
+    except (account_store.NameError_, account_store.PasswordError,
+            account_store.InvitationError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    authentication.clear_fails(ip)
+    resp = JSONResponse(OkResponse(ok=True).model_dump())
+    _set_session_cookie(resp, user.uuid)
+    return resp
+
+
+@app.get("/tesla/api/me", response_model=MeInfo)
+def me(request: Request,
+       users: Session = Depends(database.get_users_db)) -> MeInfo:
+    """当前会话账号 (名称 + 是否管理员; uuid 不出接口)。"""
+    user = _require_user(request, users)
+    return MeInfo(name=user.name, is_admin=user.is_admin)
+
+
+@settingsapi.post("/account/name", response_model=MeInfo)
+def account_change_name(body: AccountNameUpdate, request: Request,
+                        users: Session = Depends(database.get_users_db)) -> MeInfo:
+    """自助改登录名 (uuid 不变, 会话不掉线)。"""
+    user = _require_user(request, users)
+    try:
+        account_store.rename_user(users, user, body.name)
+    except account_store.NameError_ as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return MeInfo(name=user.name, is_admin=user.is_admin)
+
+
+@settingsapi.post("/account/password", response_model=OkResponse)
+def account_change_password(body: AccountPasswordUpdate, request: Request,
+                            users: Session = Depends(database.get_users_db)) -> OkResponse:
+    """自助改密码 (先验旧密码; 会话不受影响)。"""
+    user = _require_user(request, users)
+    try:
+        account_store.set_password(users, user,
+                                   body.old_password, body.new_password)
+    except account_store.PasswordError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return OkResponse(ok=True)
+
+
+# ---------------------------------------------------------------- 账号管理 API
+
+@accounts.get("/users", response_model=list[UserItem])
+def accounts_list_users(request: Request,
+                        users: Session = Depends(database.get_users_db)) -> list[UserItem]:
+    """账号列表 (仅管理员; uuid 不出接口)。"""
+    _require_admin(request, users)
+    return [UserItem(name=u.name, is_admin=u.is_admin,
+                     created_at=repository.to_local(u.created_at))
+            for u in account_store.list_users(users)]
+
+
+@accounts.post("/invitations", response_model=InvitationCreated)
+def accounts_create_invitation(body: InvitationRequest, request: Request,
+                               users: Session = Depends(database.get_users_db)) -> InvitationCreated:
+    """签发注册邀请 (仅管理员; 前端拼 /tesla/register?invite= 链接分享)。"""
+    _require_admin(request, users)
+    try:
+        invitation = account_store.create_invitation(users, body.days)
+    except account_store.InvitationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return InvitationCreated(token=invitation.token,
+                             expires_at=repository.to_local(invitation.expires_at))
+
+
+@accounts.get("/invitations", response_model=list[InvitationItem])
+def accounts_list_invitations(request: Request,
+                              users: Session = Depends(database.get_users_db)) -> list[InvitationItem]:
+    """邀请列表 (仅管理员, 签发时间倒序)。"""
+    _require_admin(request, users)
+    return [InvitationItem(token=i.token, created_at=repository.to_local(i.created_at),
+                           expires_at=repository.to_local(i.expires_at),
+                           used_at=repository.to_local(i.used_at) if i.used_at else None,
+                           revoked=i.revoked)
+            for i in account_store.list_invitations(users)]
+
+
+@accounts.delete("/invitations/{token}", response_model=OkResponse)
+def accounts_revoke_invitation(token: str, request: Request,
+                               users: Session = Depends(database.get_users_db)) -> OkResponse:
+    """撤销未使用的邀请 (仅管理员)。"""
+    _require_admin(request, users)
+    if not account_store.revoke_invitation(users, token):
+        raise HTTPException(400, "邀请不存在或已被使用")
+    return OkResponse(ok=True)
+
+
+# ---------------------------------------------------------------- 记账 API
+
+@bookkeeping.post("/sync", response_model=SyncResponse)
+def bookkeeping_sync(body: SyncRequest, request: Request,
+                     users: Session = Depends(database.get_users_db),
+                     bk: Session = Depends(database.get_bookkeeping_db)) -> SyncResponse:
+    """同步: 上行本地改动 (LWW 合并) + 增量下发别人的改动。
+
+    记账人 (created_by / updated_by) 由服务端按会话落, 客户端说了不算。
+    """
+    user = _require_user(request, users)
+    try:
+        rows, server_now = bookkeeping_store.sync_entries(
+            bk, user.uuid, body.entries, body.last_sync)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    names = {u.uuid: u.name for u in account_store.list_users(users)}
+    entries = [EntryOut(
+        id=row.id, date=row.date, amount=row.amount, kind=row.kind,
+        category=row.category, note=row.note, deleted=row.deleted,
+        updated_at=row.updated_at.replace(tzinfo=dt_timezone.utc),
+        created_by_name=names.get(row.created_by, "未知"),
+        updated_by_name=names.get(row.updated_by, "未知")) for row in rows]
+    return SyncResponse(
+        server_now=server_now.replace(tzinfo=dt_timezone.utc),
+        entries=entries)
 
 
 # ---------------------------------------------------------------- 充电 API
@@ -668,8 +882,20 @@ def live_page() -> FileResponse:
 
 @app.get("/tesla/settings")
 def settings_page() -> FileResponse:
-    """设置页: TeslaMate 数据库 / 高德 Key / 驾驶员。"""
+    """设置页: TeslaMate 数据库 / 高德 Key / 驾驶员 / 账号。"""
     return _page("settings.html")
+
+
+@app.get("/tesla/accounts")
+def accounts_page() -> FileResponse:
+    """账号管理页 (仅管理员; 非管理员进来只见提示)。"""
+    return _page("accounts.html")
+
+
+@app.get("/bookkeeping")
+def bookkeeping_page() -> FileResponse:
+    """记账页: 离线优先 (本地保存, 联网同步), 多人账本。"""
+    return _page("bookkeeping.html")
 
 
 @app.get("/tesla/changelog")
@@ -754,4 +980,8 @@ app.include_router(trips)
 app.include_router(live)
 app.include_router(settingsapi)
 app.include_router(changelogapi)
+app.include_router(accounts)
+app.include_router(bookkeeping)
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
+app.mount("/bookkeeping/static", StaticFiles(directory=config.STATIC_DIR),
+          name="bookkeeping-static")

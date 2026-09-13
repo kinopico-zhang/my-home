@@ -25,10 +25,10 @@ if ! $DOCKER exec mytesla-debug sh -c \
   rc=1
 fi
 
-# 单元测试 + 覆盖率门禁: 只统计三个纯逻辑模块 (页面脚本由 E2E 覆盖)
+# 单元测试 + 覆盖率门禁: 只统计四个纯逻辑模块 (页面脚本由 E2E 覆盖)
 node node_modules/c8/bin/c8.js \
   --include 'app/static/gcj02.js' --include 'app/static/trackutil.js' \
-  --include 'app/static/lastpage.js' \
+  --include 'app/static/lastpage.js' --include 'app/static/bookkeeping-merge.js' \
   --check-coverage --lines 95 --branches 95 --functions 95 \
   --reporter text node --test tests/js/ || rc=1
 
