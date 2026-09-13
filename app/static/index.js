@@ -737,9 +737,9 @@ alInput.addEventListener("keydown", e => {
   const appsEl = $("#nav-apps");
   let timer = 0, sx = 0, sy = 0;
   appsEl.addEventListener("pointerdown", e => {
+    navLongFired = false;   // 任何新按压都解除吞 click 旗标 (含 ＋ 恢复胶囊)
     const b = e.target.closest("button[data-app]");
     if (!b) return;
-    navLongFired = false;
     sx = e.clientX; sy = e.clientY;
     timer = setTimeout(() => {
       navLongFired = true;
