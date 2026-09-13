@@ -242,20 +242,28 @@ def test_session_detail_no_coords(auth, db):
 
 
 def test_charging_detail_nav_button(auth):
-    """详情「导航到充电站」: 检测手机里装了的地图 App 逐个拉起, 全没有兜底网页版。"""
+    """详情「导航到充电站」: 先弹选单让用户挑地图 App, 点一个只拉一个。"""
     html = auth.get("/tesla/charging").text
     html += auth.get("/tesla/static/index.js?v=1").text
     for frag in [
         'id="nav-go"', "🧭 导航到充电站",
-        "GCJ02.wgs84ToGcj02",                  # WGS-84 → GCJ-02, 不转偏几百米
+        'id="nav-bd"', 'id="nav-apps"', 'id="nav-cancel"',     # 选单
+        'data-app="amap"', 'data-app="baidu"',
+        'data-app="tencent"', 'data-app="apple"',
+        "openNavChooser",                     # 点按钮先弹选单
+        "function navAppUrl(",                # 一个 App 一个 URL
+        "GCJ02.wgs84ToGcj02",                 # WGS-84 → GCJ-02, 不转偏几百米
         "iosamap://navi", "androidamap://navi",    # 高德 (iOS / 安卓 scheme)
         "baidumap", "://map/direction", "coord_type=gcj02",   # 百度 (iOS/安卓 scheme 前缀不同)
         "qqmap://map/routeplan", "fromcoord=CurrentLocation",   # 腾讯
         "maps.apple.com/?daddr",                   # 苹果地图
-        "uri.amap.com/navigation", "coordinate=gaode",  # 网页版兜底
-        "visibilitychange", "NAV_PROBE_MS",       # 没装 = 探测窗口内没切后台
     ]:
         assert frag in html, f"充电详情导航缺少 {frag}"
+    # 不自动探测连环拉起: iOS 拉 scheme 前先弹「在 xx 中打开」确认框,
+    # 确认前页面不切后台, 探测窗口一过就把装了的 App 连环拉起 (用户实测)
+    js = auth.get("/tesla/static/index.js?v=1").text
+    for gone in ["NAV_PROBE_MS", "visibilitychange", "uri.amap.com/navigation"]:
+        assert gone not in js, f"自动探测链残留: {gone}"
     # 坐标换算库要先于页面脚本加载
     page = auth.get("/tesla/charging").text
     assert page.index("gcj02.js") < page.index("index.js")
