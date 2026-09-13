@@ -8,6 +8,13 @@ from typing import Final
 from .schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="2.4.0", date="2026-09-13", items=[
+        ChangelogItem(kind="新增", text="充电详情可以一键导航到充电站, 自动挑手机里装了的地图 App (高德 / 百度 / 腾讯 / 苹果地图)"),
+        ChangelogItem(kind="新增", text="每个页面的顶栏都有刷新按钮了"),
+        ChangelogItem(kind="改进", text="更新日志页和录制弹层的说明文字更简洁了"),
+        ChangelogItem(kind="修复", text="iPhone 上充电详情顶部把手拉不动、点一下也没反应"),
+        ChangelogItem(kind="修复", text="手机上录完视频一定有保存按钮, 不支持系统分享时存到「文件」再转存相册"),
+    ]),
     ChangelogVersion(version="2.3.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="充电统计页: 快慢充占比、充电时段、常去充电点、城市分布等图表"),
         ChangelogItem(kind="新增", text="充电地图页: 常去充电点的热力图, 按电量 / 次数 / 费用三种视角着色, 点一下看明细"),

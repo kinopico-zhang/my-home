@@ -379,6 +379,8 @@ def charging_session_detail(session: Session,
         start_rated_range=_fnum(cp.start_rated_range_km),
         end_rated_range=_fnum(cp.end_rated_range_km),
         cable=cable, charger_brand=brand, charger_type=charger_type,
+        lat=_fnum(row.address.latitude) if row.address is not None else None,
+        lng=_fnum(row.address.longitude) if row.address is not None else None,
         curve=ChargeCurve(
             minutes=[round((c.date - cp.start_date).total_seconds() / 60, 1)
                      for c in samples],

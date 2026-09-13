@@ -51,7 +51,10 @@ class ChargeCurve(BaseModel):
 
 
 class ChargingSessionDetail(ChargingSession):
-    """充电详情: 卡片字段 + 曲线 / 线缆 / 快充品牌。"""
+    """充电详情: 卡片字段 + 曲线 / 线缆 / 快充品牌 + 充电站坐标。
+
+    lat / lng 是地址表的 WGS-84 原始 GPS 坐标 (与充电地图同源),
+    前端导航前自行换算 GC-02; 没反向地理编码过的地址为 None。"""
 
     start_rated_range: float | None
     end_rated_range: float | None
@@ -59,6 +62,8 @@ class ChargingSessionDetail(ChargingSession):
     charger_brand: str | None
     charger_type: str | None
     curve: ChargeCurve
+    lat: float | None
+    lng: float | None
 
 
 class ChargingSummary(BaseModel):
