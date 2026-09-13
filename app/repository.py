@@ -1238,7 +1238,7 @@ def live_status(session: Session) -> LiveStatus:
         .order_by(func.max(Position.date).desc())).first()
     if cand is None or _utc_seconds(cand.last) < _utc_seconds(_db_now()) \
             - LIVE_STALE_AFTER_S:
-        return LiveStatus(driving=False)
+        return LiveStatus(driving=False, now_utc=int(_utc_seconds(_db_now())))
     drive_id, start_date, _ = cand
 
     last_pos = session.scalars(
@@ -1280,7 +1280,8 @@ def live_status(session: Session) -> LiveStatus:
         km=km, kwh=kwh, wh_per_km=wh_per_km,
         lng=round(float(last_pos.longitude), 6),
         lat=round(float(last_pos.latitude), 6),
-        pos_utc=int(_utc_seconds(last_pos.date)))
+        pos_utc=int(_utc_seconds(last_pos.date)),
+        now_utc=int(_utc_seconds(_db_now())))
 
 
 # ---------------------------------------------------------------- 地图

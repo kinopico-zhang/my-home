@@ -129,15 +129,19 @@ main {
 .hero-speed .num {
   font-size: 54px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;
   font-variant-numeric: tabular-nums; margin-top: 2px;
+  display: flex; align-items: baseline; white-space: nowrap;
+  /* flex 不换行: 窄屏/系统页缩放挤压时单位绝不下坠到第二行 (用户真机踩坑) */
 }
 .hero-speed .num small { font-size: 15px; font-weight: 500; color: var(--ink-2);
   letter-spacing: 0; margin-left: 4px; }
-.hero-side { flex-shrink: 0; text-align: right; display: grid; gap: 4px; }
+/* 右列可收缩 (出发行时一行省略号), 不再死宽抢速度区的空间 */
+.hero-side { flex-shrink: 1; min-width: 0; text-align: right; display: grid; gap: 4px; }
 .hero-side .lb { font-size: 11px; color: var(--ink-2); }
 .hero-side .elapsed { font-size: 24px; font-weight: 650; letter-spacing: -.5px;
   font-variant-numeric: tabular-nums; }
 .hero-side .sub { font-size: 12px; color: var(--ink-2);
-  font-variant-numeric: tabular-nums; }
+  font-variant-numeric: tabular-nums; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 实时数字位数变化 (9→62→105 / 59:59→1:00:00 / 9%→100%) 不许推动布局:
    tabular 数字 + 定宽盒 (ch = 一个数字宽), 数字在盒内右对齐, 变长只向左长 */
 #lv-speed { display: inline-block; min-width: 3ch; text-align: right; }
@@ -164,10 +168,11 @@ main {
 .batt-card .batt-range { font-size: 13px; color: var(--ink-2); }
 .batt-card .batt-range b { font-size: 13px; color: var(--ink-1); font-weight: 600; }
 
-.tiles { display: flex; gap: 10px; }
-.tile {
-  flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 14px; padding: 9px 8px; text-align: center;
+.tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.tile {   /* 2×2: 四格一行在窄屏/页缩放下放不下会溢出圆角框 (用户真机踩坑) */
+  flex: 1 1 calc(50% - 5px); min-width: 0; background: var(--surface);
+  border: 1px solid var(--hairline); border-radius: 14px; padding: 9px 8px;
+  text-align: center;
 }
 .tile .lb { font-size: 11px; color: var(--ink-2); white-space: nowrap; }
 .tile .val { font-size: 17px; font-weight: 650; letter-spacing: -.3px; margin-top: 2px;
@@ -302,6 +307,7 @@ main {
 </main>
 
 <script src="/tesla/static/gcj02.js?v=1"></script>
+<script src="/tesla/static/trackutil.js?v=1"></script>
 <script src="/tesla/static/live.js?v=1"></script>
 </body>
 </html>

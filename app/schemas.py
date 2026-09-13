@@ -182,6 +182,8 @@ class LiveStatus(BaseModel):
     lng: float | None = None          # 最新位置 (WGS-84)
     lat: float | None = None
     pos_utc: int | None = None        # 最新位置点 epoch 秒 (前端判数据新鲜度)
+    now_utc: int | None = None        # 服务器当前 epoch 秒 (前端据此算手机时钟偏差,
+                                      # 已行驶时长不被不准的手机时钟带偏成 0)
 
 
 # ---------------------------------------------------------------- 行程
