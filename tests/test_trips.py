@@ -1212,3 +1212,29 @@ def test_trips_page_has_group_panel(auth):
     assert "!t.isConnected" in html
     # 存分组按钮与查看连续轨迹同一上限联动
     assert '$("#gp-btn").disabled = n < 2 || n > MERGE_MAX' in html
+
+
+def test_trips_page_export_video(auth):
+    """导出视频: 播放条录制钮 + 成片预览弹层 + 分享存相册链路都挂在页面上。"""
+    html = auth.get("/tesla/trips").text
+    html += auth.get("/tesla/static/trips.js?v=1").text
+    for frag in ['id="pb-rec"', 'aria-label="导出视频"', 'id="rec-modal"',
+                 'id="rec-video"', 'id="rec-save"', 'id="rec-close"',
+                 "playsinline", "存到相册", "function recMime(",
+                 "function recCompose(", "function startRecExport(",
+                 "function stopRecExport(", "function recShowResult(",
+                 "function recCloseModal(", "out.captureStream(30)",
+                 "new MediaRecorder(", "videoBitsPerSecond: 6e6",
+                 "navigator.share({ files: [recFile]", "anim.restart();",
+                 "preserveDrawingBuffer: true", "patchGLKeepBuffer();",
+                 "此浏览器不支持录制视频", "录制失败 (没有内容)"]:
+        assert frag in html, f"行程页缺少导出视频片段 {frag}"
+    # WebGL 缓冲补丁必须装在高德脚本加载之前 (上下文属性建时即定,
+    # 晚了就是黑帧); 补丁本体定义在 loader 前面
+    assert html.index("function patchGLKeepBuffer()") < html.index("function loadAMapScript(")
+    # 关弹层/换行程取消录制; 播完 1.2s (拉远定格入镜) 自动收片,
+    # 且只收当次录制 (期间重开的不误杀)
+    assert "if (rec) stopRecExport(true);" in html
+    assert "if (rec === r) stopRecExport(false);" in html
+    # 合成目的坐标先减可视区原点 (dbg90 裁切数学教训)
+    assert "(sx0 - wx0) / (wr.width * kx) * out.width" in html
