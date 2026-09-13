@@ -1,0 +1,228 @@
+"""单个音频文件的元数据读取 (mutagen) → ScannedTrack。
+
+标签缺失时的兜底: 标题用文件名 (剥掉 01 / 1-01 这类音轨前缀), 专辑用目录名
+(剥掉年份前缀和刮削器的 [hex] 尾巴), 艺人用目录名。歌词优先同名 .lrc
+(同步歌词), 其次内嵌 lyrics 标签。只读, 不写任何标签。
+"""
+import re
+from pathlib import Path
+
+from mutagen import File as load_audio_file, MutagenError
+from mutagen.flac import FLAC
+
+from .library_database import AUDIO_EXTENSION_FORMATS
+from .library_languages import detect_script
+from .schemas import ScannedTrack
+
+# 刮削器的目录命名: "2015 25 [2b4c1e9c]" → 标题 "25"
+_YEAR_PREFIX_PATTERN = re.compile(r"^\d{4}\s+")
+_SCRAPER_SUFFIX_PATTERN = re.compile(r"\s*\[[0-9a-f]{8}\]$")
+# 文件名音轨前缀: "01 Hello" / "1-01 Get my way!" → 标题
+_TRACK_PREFIX_PATTERN = re.compile(r"^\d{1,2}-?\d{0,3}[\s._-]+")
+# lrc 的时间轴行: [01:53.54]Get my way!
+_LRC_TIMECODE_PATTERN = re.compile(r"^\[\d{1,3}:\d{2}([.:]\d{1,3})?]")
+# 逻辑标签 → (vorbis/ape 键, ID3 帧, MP4 键)。
+# FLAC/OGG/APE 是字典键 (大小写不敏感), mp3/dsf 是 ID3 帧, m4a 是 \xa9 开头的键。
+_TAG_SOURCES: dict[str, tuple[tuple[str, ...], tuple[str, ...], str | None]] = {
+    "title":          (("title",), ("TIT2",), "©nam"),
+    "artist":         (("artist", "artists"), ("TPE1",), "©ART"),
+    "album":          (("album",), ("TALB",), "©alb"),
+    "albumartist":    (("albumartist",), ("TPE2",), "aART"),
+    "albumartistsort": (("albumartistsort",), ("TSO2",), None),
+    "artistsort":     (("artistsort",), ("TSOP",), None),
+    "tracknumber":    (("tracknumber",), ("TRCK",), "trkn"),
+    "discnumber":     (("discnumber",), ("TPOS",), "disk"),
+    "date":           (("originaldate", "originalyear", "date", "year"),
+                       ("TDOR", "TDRC", "TYER"), "©day"),
+    "script":         (("script",), ("TXXX:SCRIPT",), None),
+    "lyrics":         (("lyrics", "unsyncedlyrics"), ("USLT",), "©lyr"),
+}
+
+
+def _first_text(value: object) -> str:
+    """标签值 → 文本: 列表取第一个非空, MP4 的 trkn 元组取第 0 位。"""
+    items = value if isinstance(value, list) else [value]
+    for item in items:
+        if isinstance(item, tuple) and item:
+            item = item[0]
+        if item is None:                 # 缺的标签不能变成 "None"
+            continue
+        text = str(item).strip()
+        if text:
+            return text
+    return ""
+
+
+def _read_tag(tags: object, name: str) -> str:
+    """按逻辑名读标签 (vorbis 键 → ID3 帧 → MP4 键, 先到先得)。"""
+    if tags is None:
+        return ""
+    vorbis_keys, id3_frames, mp4_key = _TAG_SOURCES[name]
+    if hasattr(tags, "get"):
+        for key in vorbis_keys:
+            text = _first_text(tags.get(key))
+            if text:
+                return text
+    getall = getattr(tags, "getall", None)
+    if getall is not None:
+        for frame_name in id3_frames:
+            for frame in getall(frame_name):
+                text = _first_text(getattr(frame, "text", None))
+                if text:
+                    return text
+    if mp4_key is not None and hasattr(tags, "get"):
+        try:
+            return _first_text(tags.get(mp4_key))
+        except ValueError:
+            return ""      # vorbis 字典对非 ASCII 键抛 ValueError (m4a 键)
+    return ""
+_SUFFIX_REPLACEMENTS = {"_": " ", ".": " "}
+
+
+def _number_prefix(value: str) -> int:
+    """"10" / "3/12" → 10 / 3 (取 / 前面的整数)。"""
+    head = value.split("/")[0].strip()
+    return int(head) if head.isdigit() else 0
+
+
+def _year_from_date(value: str) -> int:
+    """"2015-07-29" → 2015 (前四位不是年份就当 0)。"""
+    head = value[:4]
+    return int(head) if head.isdigit() else 0
+
+
+def title_from_filename(file_name: str) -> str:
+    """文件名 → 歌名兜底 (剥音轨前缀和扩展名)。"""
+    stem = Path(file_name).stem
+    stem = _TRACK_PREFIX_PATTERN.sub("", stem, count=1)
+    return stem.strip()
+
+
+def album_title_from_directory(directory_name: str) -> str:
+    """专辑目录名 → 标题兜底 (剥年份前缀和 [hex] 尾巴)。"""
+    title = _YEAR_PREFIX_PATTERN.sub("", directory_name, count=1)
+    title = _SCRAPER_SUFFIX_PATTERN.sub("", title)
+    return title.strip()
+
+
+def looks_like_synced_lyrics(text: str) -> bool:
+    """有没有 lrc 时间轴 (决定前端按行滚动还是整页显示)。"""
+    for line in text.splitlines():
+        if _LRC_TIMECODE_PATTERN.match(line.strip()):
+            return True
+    return False
+
+
+def _read_sidecar_lyrics(audio_path: Path) -> str:
+    """同名 .lrc (utf-8, 坏编码也不炸)。"""
+    lyric_path = audio_path.with_suffix(".lrc")
+    try:
+        return lyric_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _has_embedded_artwork(audio: object) -> bool:
+    """内嵌封面探测 (flac 有 pictures; mp3/dsf 走 APIC; m4a 走 covr; ape 走 Cover Art 键)。"""
+    if getattr(audio, "pictures", None):
+        return True
+    tags = getattr(audio, "tags", None)
+    if tags is None:
+        return False
+    if hasattr(tags, "getall") and tags.getall("APIC"):    # ID3 (mp3 / dsf)
+        return True
+    if hasattr(tags, "get"):
+        try:
+            if tags.get("covr") or tags.get("\xa9covr"):    # MP4
+                return True
+        except ValueError:               # vorbis 字典拒绝非 ASCII 键
+            pass
+        if any(str(key).startswith("Cover Art")
+               for key in getattr(tags, "keys", lambda: ())()):   # APE
+            return True
+    return False
+
+
+def read_track_metadata(audio_path: Path, relative_path: str,
+                        file_size: int, file_mtime: float) -> ScannedTrack | None:
+    """读一个音频文件 → ScannedTrack (读不出来返回 None, 调用方跳过)。
+
+    mutagen 不认识的格式 (tak) 也建条目: 目录/文件名兜底 + 时长 0,
+    前端按格式置灰不能播。"""
+    file_format = AUDIO_EXTENSION_FORMATS.get(audio_path.suffix.lower(), "")
+    if not file_format:
+        return None
+
+    title = artist = album_title = album_artist = ""
+    album_artist_sort = date_text = script = embedded_lyrics = ""
+    track_number = disc_number = 0
+    duration_seconds = 0.0
+    has_artwork = False
+    audio = load_audio_file(audio_path)
+    if audio is not None:
+        tags = audio.tags
+        title = _read_tag(tags, "title")
+        artist = _read_tag(tags, "artist")
+        album_title = _read_tag(tags, "album")
+        album_artist = _read_tag(tags, "albumartist")
+        album_artist_sort = _read_tag(tags, "albumartistsort") \
+            or _read_tag(tags, "artistsort")
+        date_text = _read_tag(tags, "date")
+        script = _read_tag(tags, "script")
+        track_number = _number_prefix(_read_tag(tags, "tracknumber"))
+        disc_number = _number_prefix(_read_tag(tags, "discnumber"))
+        if disc_number == 0:
+            disc_number = 1
+        embedded_lyrics = _read_tag(tags, "lyrics")
+        duration_seconds = float(getattr(audio.info, "length", 0.0) or 0.0)
+        has_artwork = _has_embedded_artwork(audio)
+
+    parts = relative_path.split("/")
+    artist_directory = parts[0]
+    album_directory = parts[1] if len(parts) > 2 else artist_directory
+    if not title:
+        title = title_from_filename(audio_path.name)
+    if not album_title:
+        album_title = album_title_from_directory(album_directory)
+    if not album_artist:
+        album_artist = artist or artist_directory
+    if not script:
+        script = detect_script(title, artist, album_artist)
+
+    lyrics = _read_sidecar_lyrics(audio_path)
+    if not lyrics:
+        lyrics = embedded_lyrics.strip()
+
+    return ScannedTrack(
+        relative_path=relative_path,
+        file_size=file_size,
+        file_mtime=file_mtime,
+        file_format=file_format,
+        title=title[:300],
+        artist=artist[:200] or album_artist[:200],
+        album_title=album_title[:300],
+        album_artist=album_artist[:200],
+        album_artist_sort=album_artist_sort[:200],
+        year=_year_from_date(date_text),
+        track_number=track_number,
+        disc_number=disc_number,
+        duration_seconds=duration_seconds,
+        script=script,
+        lyrics=lyrics[:20000],
+        lyrics_synced=looks_like_synced_lyrics(lyrics),
+        has_artwork=has_artwork,
+    )
+
+
+def extract_album_artwork(audio_path: Path) -> bytes | None:
+    """抽内嵌封面 (flac 的 pictures 属性; 其他格式先不管, 曲库 99% 是 flac)。"""
+    try:
+        audio = load_audio_file(audio_path)
+    except (OSError, MutagenError):
+        return None        # 文件没了/打不开: 当作没有封面
+    if not isinstance(audio, FLAC):
+        return None
+    for picture in audio.pictures:
+        if picture.data:
+            return bytes(picture.data)
+    return None
