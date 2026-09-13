@@ -92,6 +92,8 @@ if (range0 === "all") {
   if (DATE_RE.test(f || "") && DATE_RE.test(t || "") && f <= t) { range0 = "custom"; cFrom0 = f; cTo0 = t; }
 }
 const timeSel = { v: range0, from: cFrom0, to: cTo0 };
+let drvId = /^\d+$/.test(qs0.get("driver_id") || "") ? +qs0.get("driver_id") : null;
+                                             // 驾驶员筛选 (null = 全部), URL 深链可带
 let tracks = [];                  // 当前筛选后的粗轨迹对象
 let tracksById = new Map();       // id → 粗轨迹对象 (点击信息用)
 let coarseById = new Map();       // id → 粗线 Polyline
@@ -115,6 +117,10 @@ function rangeParams() {
     return `?from=${timeSel.from}&to=${timeSel.to}`;
   const from = timeFrom(timeSel.v);
   return from ? "?from=" + from : "";
+}
+function trackParams() {        // 时间 + 驾驶员一起拼 (tracks/summary 同口径)
+  const p = rangeParams();
+  return drvId == null ? p : p + (p ? "&" : "?") + "driver_id=" + drvId;
 }
 
 function loadAMap(key, securityCode) {
@@ -414,7 +420,7 @@ async function refresh(first) {
   $("#error").hidden = true;
   showLoading(true, first ? "正在加载轨迹…" : "正在更新…");
   try {
-    const p = rangeParams();
+    const p = trackParams();
     const [t, s] = await Promise.all([
       getJSON("/tesla/map/api/tracks" + p),
       getJSON("/tesla/map/api/summary" + p),
@@ -574,6 +580,43 @@ $("#time-menu").addEventListener("toggle", () => {   // 重开菜单回到已应
   if ($("#time-menu").open && !$("#tm-dates").hidden) calOpen();
 });
 setTimeRange(timeSel.v, true);
+/* 驾驶员筛选: 选项来自设置页的驾驶员表 (没配驾驶员整颗筛选藏掉); 口径与
+   行程页一致 —— 选默认驾驶员 = 标注它的 + 未标注的 (后端合并处理) */
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+(async () => {
+  let drivers = [];
+  try { drivers = await getJSON("/tesla/api/drivers"); } catch (_e) { /* keep 空 */ }
+  if (!drivers.length) return;               // 没配驾驶员, 筛选不出现
+  const opts = $("#drv-opts");
+  opts.innerHTML = `<button data-id=""${drvId == null ? ' class="on"' : ""}>全部</button>` +
+    drivers.map(d =>
+      `<button data-id="${d.id}"${drvId === d.id ? ' class="on"' : ""}>${esc(d.name)}</button>`).join("");
+  if (drvId != null) {                       // URL 深链带入的驾驶员要存在才算数
+    const hit = drivers.find(d => d.id === drvId);
+    if (hit) $("#drv-lb").textContent = "驾驶员: " + hit.name;
+    else {
+      drvId = null;
+      opts.querySelector('button[data-id=""]').classList.add("on");
+    }
+  }
+  $("#drv-menu").hidden = false;
+})();
+$("#drv-opts").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const v = b.dataset.id === "" ? null : +b.dataset.id;
+  if (v === drvId) return;
+  $("#drv-menu").removeAttribute("open");
+  drvId = v;
+  $("#drv-opts .on").classList.remove("on"); b.classList.add("on");
+  $("#drv-lb").textContent = "驾驶员: " + b.textContent;
+  const u = new URL(location.href);          // 筛选写进地址栏 (默认值不写)
+  if (drvId == null) u.searchParams.delete("driver_id");
+  else u.searchParams.set("driver_id", drvId);
+  history.replaceState(null, "", u);
+  refresh(false);
+});
 $("#retry").addEventListener("click", () => refresh(false));
 $("#recheck").addEventListener("click", () => location.reload());
 $("#backdrop").addEventListener("click", closeSheet);
