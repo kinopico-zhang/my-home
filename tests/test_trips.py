@@ -1017,6 +1017,8 @@ def test_trips_page_has_url_deeplink(auth):
                  # 坏合并深链: 关弹层 + 抹参回列表 (单条卡片打开的错留在弹层里)
                  "hideSheet(); throw e"]:
         assert frag in html, f"行程页缺少深链片段 {frag}"
+    # ids= 逗号经分享渠道常被再编码 (%2C): 深链解析先解码再配, 不许截断
+    assert "decodeURIComponent(m[1])" in html
 
 
 def test_trips_page_preloads_tiles(auth):
@@ -1187,33 +1189,24 @@ def test_trips_page_has_driver_picker(auth):
     assert "function metaRowSync()" in html
 
 
-def test_trips_page_has_group_panel(auth):
-    """轨迹分组: 头部入口 + 全屏面板 + 存分组命名模式 + 轻提示都挂在页面上。"""
+def test_trips_page_group_create_and_groups_page_link(auth):
+    """分组管理已搬去独立分组页 (/tesla/groups), 行程页只留创建入口:
+    多选 → 存为分组; 分组面板 (入口按钮/CSS/DOM) 不许回来。"""
     html = auth.get("/tesla/trips").text
     html += auth.get("/tesla/static/trips.js?v=1").text
-    for frag in ['id="groups-btn"', 'id="gpanel"', '轨迹分组', 'id="gp-list"',
-                 'id="gp-btn"', "存为分组", 'id="gp-name"', 'id="gp-save"',
-                 'id="gp-close"', "api/groups", "function toast(", 'id="toast"',
-                 "openMerged(item.dataset.ids)"]:
+    for frag in ['id="gp-btn"', "存为分组", 'id="gp-name"', 'id="gp-save"',
+                 "api/groups", "function toast(", 'id="toast"',
+                 "$(\"#sel-go\").addEventListener"]:
         assert frag in html, f"行程页缺少分组片段 {frag}"
-    # 面板不再全屏盖顶: 上边留给 My Tesla 顶栏 (顶栏含安全区 padding,
-    # 高度只能 JS 现量); 全屏写法不许回来。z-index 89 压在 backdrop(90)/
-    # 弹层(91) 之下: 点分组播合并时面板留在原地被弹层盖住, 关弹层回到
-    # 分组页 (不回行程列表); 点分组先关面板的旧路子也不许回来
-    assert 'position: fixed; left: 0; right: 0; bottom: 0; z-index: 89;' in html
-    assert 'panel.style.top = $("header").offsetHeight' in html
-    assert "z-index: 92" not in html
-    assert 'closeGroups();\n    openMerged(' not in html
-    # 弹层开着时 Esc 不连下面的分组面板一起关 (面板要留在原地)
-    assert '!$("#sheet").classList.contains("show")) closeGroups();' in html
-    # 面板条目渲染 + 改名/删除两段式委托 (isConnected 防脱链)
-    assert "function gpRowHTML(" in html
-    assert 'gp-list").addEventListener("click"' in html
-    assert "!t.isConnected" in html
-    # 存分组按钮与查看连续轨迹同一上限联动
-    assert '$("#gp-btn").disabled = n < 2 || n > MERGE_MAX' in html
-
-
+    # 分组页跳来 = ?ids= 逗号深链 → openMerged (openByKey 转发)
+    assert "/[-,]/.test(key)" in html
+    # 旧分组面板的三件套 (头部按钮 / 面板样式 / 面板 DOM) 全删
+    assert 'id="groups-btn"' not in html
+    assert 'id="gpanel"' not in html and ".gpanel" not in html
+    assert 'id="gp-close"' not in html and "closeGroups" not in html
+    # 关弹层: 分组页跳来的深链回分组页, 分享直开只抹行程参数
+    assert 'document.referrer.endsWith("/tesla/groups")' in html
+    assert "if (cameFromGroups) { history.back(); return; }" in html
 def test_trips_page_export_video(auth):
     """导出视频: 播放条录制钮 + 成片预览弹层 + 分享存相册链路都挂在页面上。"""
     html = auth.get("/tesla/trips").text

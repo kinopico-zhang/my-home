@@ -48,7 +48,7 @@ def test_all_pages_have_standalone_meta(auth):
     全屏 (2026-09-12 用户踩坑)。任何新增页面都必须带上。
     """
     for path in ["/tesla/login", "/tesla/charging", "/tesla/map",
-                 "/tesla/trips", "/tesla/live", "/tesla/settings"]:
+                 "/tesla/trips", "/tesla/groups", "/tesla/live", "/tesla/settings"]:
         html = auth.get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
         assert 'content="black-translucent"' in html, path
@@ -63,7 +63,7 @@ def test_pages_remember_last_page(auth):
     localStorage 记 path+search, 冷启动 (sessionStorage 无标记) 且 standalone
     才 replace 过去; 行程弹层开合只动 URL 不重载, 靠 visibilitychange 补记。"""
     for path in ["/tesla/charging", "/tesla/map", "/tesla/trips",
-                 "/tesla/live", "/tesla/settings"]:
+                 "/tesla/groups", "/tesla/live", "/tesla/settings"]:
         html = auth.get(path).text
         tag = '<script src="/tesla/static/lastpage.js?v=1"></script>'
         assert tag in html, path
@@ -72,7 +72,7 @@ def test_pages_remember_last_page(auth):
     # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落充电页) —— 逻辑在 login.js
     login_html = auth.get("/tesla/static/login.js?v=1").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
-    assert "/^\\/tesla\\/(charging|map|trips|live|settings)(\\?|$)/.test(last)" in login_html
+    assert "/^\\/tesla\\/(charging|map|trips|groups|live|settings)(\\?|$)/.test(last)" in login_html
 
     r = auth.get("/tesla/static/lastpage.js")
     assert r.status_code == 200
@@ -167,7 +167,7 @@ def test_logout_rotates_secret_and_revokes(client):
 # ---------------------------------------------------------------- 中间件
 def test_unauthed_pages_redirect_to_login(client):
     for path in ("/tesla", "/tesla/charging", "/tesla/map", "/tesla/trips",
-                 "/tesla/live"):
+                 "/tesla/groups", "/tesla/live"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
         assert r.headers["location"] == "/tesla/login", path
@@ -253,6 +253,7 @@ def test_pages_served_after_login(auth):
                          ("/tesla/map", "My Tesla"),
                          ("/tesla/trips", "My Tesla"),
                          ("/tesla/login", "My Tesla"),
+                         ("/tesla/groups", "My Tesla"),
                          ("/tesla/live", "My Tesla")):
         r = auth.get(path)
         assert r.status_code == 200, path
