@@ -1197,10 +1197,15 @@ def test_trips_page_has_group_panel(auth):
                  "openMerged(item.dataset.ids)"]:
         assert frag in html, f"行程页缺少分组片段 {frag}"
     # 面板不再全屏盖顶: 上边留给 My Tesla 顶栏 (顶栏含安全区 padding,
-    # 高度只能 JS 现量); 全屏写法不许回来
-    assert 'position: fixed; left: 0; right: 0; bottom: 0; z-index: 92;' in html
+    # 高度只能 JS 现量); 全屏写法不许回来。z-index 89 压在 backdrop(90)/
+    # 弹层(91) 之下: 点分组播合并时面板留在原地被弹层盖住, 关弹层回到
+    # 分组页 (不回行程列表); 点分组先关面板的旧路子也不许回来
+    assert 'position: fixed; left: 0; right: 0; bottom: 0; z-index: 89;' in html
     assert 'panel.style.top = $("header").offsetHeight' in html
-    assert "inset: 0; z-index: 92" not in html
+    assert "z-index: 92" not in html
+    assert 'closeGroups();\n    openMerged(' not in html
+    # 弹层开着时 Esc 不连下面的分组面板一起关 (面板要留在原地)
+    assert '!$("#sheet").classList.contains("show")) closeGroups();' in html
     # 面板条目渲染 + 改名/删除两段式委托 (isConnected 防脱链)
     assert "function gpRowHTML(" in html
     assert 'gp-list").addEventListener("click"' in html

@@ -290,8 +290,10 @@ body.selecting .card-t.picked .pick::after {
 }
 
 /* ---------- 轨迹分组面板 ---------- */
-.gpanel {   /* 不盖 My Tesla 顶栏: top 由 JS 按顶栏实际高度 (含安全区) 下发 */
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 92; background: var(--bg);
+.gpanel {   /* 不盖 My Tesla 顶栏: top 由 JS 按顶栏实际高度 (含安全区) 下发。
+  z-index 89 压在 backdrop(90)/弹层(91) 之下: 点分组播合并轨迹时面板留在
+  原地被弹层盖住, 关弹层直接回到分组页 (不回行程列表) */
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 89; background: var(--bg);
   display: flex; flex-direction: column;
   transform: translateX(100%); transition: transform .28s cubic-bezier(.32,.72,.33,1);
 }
