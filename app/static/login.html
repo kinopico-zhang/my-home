@@ -23,6 +23,8 @@
   --hairline: rgba(255,255,255,.09);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+/* 触屏双击控件不再触发整页放大 (manipulation 保留平移/捏合, 只去掉双击缩放) */
+button, a, summary { touch-action: manipulation; }
 html, body { height: 100%; }
 body {
   background: var(--bg); color: var(--ink-1);

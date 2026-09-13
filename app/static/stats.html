@@ -39,6 +39,8 @@ body {
   min-height: 100vh; min-height: 100dvh;
 }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+/* 触屏双击控件不再触发整页放大 (manipulation 保留平移/捏合, 只去掉双击缩放) */
+button, a, summary { touch-action: manipulation; }
 
 /* ---------- 顶部导航 (毛玻璃, 与其他页一致) ---------- */
 header {
