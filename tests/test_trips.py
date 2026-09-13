@@ -1248,7 +1248,7 @@ def test_trips_page_export_video(auth):
     assert 'const shareOK = typeof navigator.share === "function";' in html
     assert 'function saveVideoFile()' in html
     assert "a.download = recFile.name;" in html
-    assert 'id="rec-hint"' in html
+    assert "rec-hint" not in html   # 提示行已按用户要求撤掉, 别回潮
     # WebGL 缓冲补丁必须装在高德脚本加载之前 (上下文属性建时即定,
     # 晚了就是黑帧); 补丁本体定义在 loader 前面
     assert html.index("function patchGLKeepBuffer()") < html.index("function loadAMapScript(")

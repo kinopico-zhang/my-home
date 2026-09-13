@@ -1940,13 +1940,10 @@ function recShowResult(r) {
   // 存储按钮: 录完一定给 (2026-09-13 二连修: 先按 canShare 门控藏了按钮 ——
   // iOS Safari 没实现 canShare; 改按 share 存在性仍藏 —— share 是 secure
   // context 限定, HTTP 部署里同样不存在)。有 share = 分享单存相册; 没有 =
-  // 下载存「文件」, 按钮和提示随路径换文案。
+  // 下载存「文件」, 按钮文案随路径切换 (提示行按用户要求撤掉)。
   const shareOK = typeof navigator.share === "function";
   $("#rec-save").hidden = false;
   $("#rec-save").textContent = shareOK ? "存到相册" : "保存视频";
-  $("#rec-hint").textContent = shareOK
-    ? "点「存到相册」拉起系统分享单, 选「存储视频」即入相册。"
-    : "当前连接不支持系统分享 (需 HTTPS), 视频会存到「文件」App; 在文件里长按视频 → 共享 → 存储视频 也能入相册。";
   $("#rec-modal").hidden = false;
 }
 
