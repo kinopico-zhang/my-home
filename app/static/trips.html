@@ -469,6 +469,32 @@ body.selecting #refresh-btn { display: none; }
 .pb-seek::-moz-range-track { height: 4px; border-radius: 2px; background: var(--surface-3); }
 .pb-seek::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--blue); }
 .pb-seek::-moz-range-thumb { width: 15px; height: 15px; border: 0; border-radius: 50%; background: #fff; }
+/* ---------- 导出视频 ---------- */
+#pb-rec .rec-dot {   /* 录制点: 平时灰, 录制中红 + 呼吸 */
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--ink-3); transition: background .2s;
+}
+#pb-rec.rec .rec-dot { background: #ff453a; animation: rec-pulse 1.2s ease-in-out infinite; }
+@keyframes rec-pulse { 50% { opacity: .35; } }
+.rec-modal {   /* 成片预览: 压过弹层 (91), 在 toast (99) 之下 */
+  position: fixed; inset: 0; z-index: 95;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.55); padding: 24px;
+}
+.rec-modal[hidden] { display: none; }
+.rec-card {
+  width: min(92vw, 420px); background: var(--surface-2);
+  border-radius: 16px; padding: 14px; border: 1px solid var(--hairline);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.rec-card video { width: 100%; max-height: 52vh; border-radius: 10px; background: #000; }
+.rec-acts { display: flex; gap: 10px; }
+.rec-acts button {
+  flex: 1; padding: 10px 0; border-radius: 12px; font-size: 14px; font-weight: 600;
+  border: 1px solid var(--hairline); color: var(--ink-1); background: var(--surface-3);
+}
+.rec-acts .rec-main { background: var(--blue); border-color: transparent; color: #fff; }
+.rec-hint { font-size: 12px; color: var(--ink-3); line-height: 1.5; margin: 0; }
 </style>
 </head>
 <body>
@@ -600,6 +626,7 @@ body.selecting #refresh-btn { display: none; }
       <span id="pb-zval">0</span>
       <button id="pb-zin" class="pb-zb" aria-label="视角拉近">+</button>
     </div>
+    <button id="pb-rec" class="pb-btn" aria-label="导出视频"><span class="rec-dot"></span></button>
   </div>
   <div class="trip-map-wrap">
     <div id="trip-map"></div>
@@ -617,6 +644,16 @@ body.selecting #refresh-btn { display: none; }
   </div>
   <div class="gp-list" id="gp-list"></div>
   <div class="gp-empty" id="gp-empty" hidden>还没有分组<span>长按行程多选后点「存为分组」</span></div>
+</div>
+<div class="rec-modal" id="rec-modal" hidden>
+  <div class="rec-card">
+    <video id="rec-video" playsinline controls></video>
+    <div class="rec-acts">
+      <button id="rec-save" class="rec-main">存到相册</button>
+      <button id="rec-close">关闭</button>
+    </div>
+    <p class="rec-hint">存到相册会拉起系统分享单, 选「存储视频」即入相册; 不支持时长按视频存储</p>
+  </div>
 </div>
 <div id="toast" hidden></div>
 

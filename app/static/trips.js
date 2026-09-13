@@ -748,8 +748,24 @@ function openMerged(ids, fromUrl) {
   return openTrip({ id: "m:" + key, merged: true, mergeKey: key }, fromUrl);   // promise 传回 (深链失败抹参靠它)
 }
 
+/* WebGL 保留绘图缓冲: 导出视频要 drawImage 地图画布拿内容, 高德默认建的
+   上下文没开 preserveDrawingBuffer —— 合成器取走画面后缓冲即清空,
+   drawImage 只能拿到黑帧 (dbg90 实测: 无补丁全画布直画 0 像素, 有补丁
+   有内容)。上下文属性建时即定, 必须在高德脚本加载前装好。 */
+function patchGLKeepBuffer() {
+  if (patchGLKeepBuffer.done) return;
+  patchGLKeepBuffer.done = true;
+  const orig = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    if (type === "webgl" || type === "webgl2" || type === "experimental-webgl")
+      attrs = Object.assign({ antialias: true }, attrs, { preserveDrawingBuffer: true });
+    return orig.call(this, type, attrs);
+  };
+}
+
 function loadAMapScript(key, securityCode) {
   return new Promise((resolve, reject) => {
+    patchGLKeepBuffer();
     if (securityCode) window._AMapSecurityConfig = { securityJsCode: securityCode };
     const s = document.createElement("script");
     s.src = "https://webapi.amap.com/maps?v=2.0&key=" + encodeURIComponent(key);
@@ -785,6 +801,7 @@ function tripMsg(text, spin) {
 let animRaf = 0;
 let anim = null;            // 当前播放会话 (playTrack 创建, 控制条/收尾引用)
 let curSess = null;         // 当前轨迹会话: 播放结束后仍存活, 供异步路径回调判定
+let rec = null;             // 录制中的导出状态 (弹层关/播完的钩子在前面就要读, 见导出视频段)
 
 /* ---------- 播放动画期间保持亮屏 ----------
    iPhone 全屏 App 看几十秒到几分钟的回放, 中途自动锁屏/变暗很烦。双保险:
@@ -836,6 +853,7 @@ function stopAnim() {
   if (animRaf) cancelAnimationFrame(animRaf);
   animRaf = 0;
   anim = null;
+  if (rec) stopRecExport(true);   // 关弹层/换行程: 录制中的导出一并取消
   releaseScreenAwake();     // 关弹层/换行程都走这, 一并允许熄屏
   $("#playbar").hidden = true;
 }
@@ -1042,7 +1060,8 @@ const VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,
 const MAP_RING_X = 160, MAP_RING_Y = 320;
 const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y, 46 + MAP_RING_X, 46 + MAP_RING_X];
 
-const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed");
+const pbToggle = $("#pb-toggle"), pbSeek = $("#pb-seek"), pbSpeed = $("#pb-speed"),
+      pbRec = $("#pb-rec");
 const PB_SPEEDS = [0.5, 1, 2, 4, 8];
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M7.5 4.6v14.8L20 12z" fill="currentColor"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13"><path d="M6.6 4.8h4.1v14.4H6.6zM13.3 4.8h4.1v14.4h-4.1z" fill="currentColor"/></svg>';
@@ -1296,6 +1315,10 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       pbToggle.setAttribute("aria-label", "重播");
       pbSeek.value = 1000;
       pbSeek.style.setProperty("--pb", "100%");
+      if (rec) {   // 导出中: 拉远定格入镜后自动收片 (期间重开录制则别误杀)
+        const r = rec;
+        setTimeout(() => { if (rec === r) stopRecExport(false); }, 1200);
+      }
     },
     replay() {                   // 重播: 从头再放 (播完点按钮 / 播完拖进度都会走这)
       if (!s.finished) return;
@@ -1314,6 +1337,14 @@ function playTrack(pts, ts, it, zoom = 14, more = false) {
       resetPlaybar();
       holdScreenAwake();                  // 重播继续保活
       frameLoop();
+    },
+    restart() {             // 导出视频要整段: 播放中/暂停中也从头重放
+      if (!s.finished) {    // replay 只认播完 —— 强过门槛, 且跳过 finish 的拉远定格
+        if (animRaf) cancelAnimationFrame(animRaf);   // 停旧帧循环 (replay 再起新的, 别双跑)
+        animRaf = 0;
+        s.finished = true;
+      }
+      s.replay();
     },
   };
   anim = s;
@@ -1923,6 +1954,114 @@ pbSpeed.addEventListener("click", () => {        // 倍速循环 1×→2×→4×
   anim.speed = PB_SPEEDS[(PB_SPEEDS.indexOf(anim.speed) + 1) % PB_SPEEDS.length];
   pbSpeed.textContent = anim.speed + "×";
 });
+
+/* ---------- 导出视频: 播放地图录成视频存相册 ---------- */
+/* 链路: 逐帧把地图各画布与可视区的相交子矩形合成到录制画布 →
+   captureStream(30) + MediaRecorder (mp4 优先) → 从头整段重播, 播完自动
+   收片 → 预览弹层 → navigator.share({files}) 拉起系统分享单, 选「存储
+   视频」入相册 (网页拿不到相册直写权限, 这已是 iOS 最短路径)。播放条
+   等覆盖层是 DOM, 不入镜 —— 视频里只有地图本体。 */
+let recFile = null, recURL = null;   // 上次成片 (分享用 / 预览 src 用)
+
+function recMime() {    // Safari 与新版 Chrome 都能直出 mp4, 老内核退 webm
+  for (const t of ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+  return "";
+}
+
+function recCompose() {    // 每帧合成: 环形容器比可视区大, 各画布取相交子
+  const wrap = document.querySelector(".trip-map-wrap");   // 矩形映射过来 (dbg90 教训: 目的原点要先减可视区原点)
+  if (!wrap || !rec) return;
+  const wr = wrap.getBoundingClientRect();
+  const { ctx, out } = rec;
+  ctx.fillStyle = "#0b0d10";
+  ctx.fillRect(0, 0, out.width, out.height);
+  for (const c of wrap.querySelectorAll("canvas")) {
+    if (!c.width || !c.height) continue;
+    const r = c.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    const kx = c.width / r.width, ky = c.height / r.height;
+    const wx0 = (wr.left - r.left) * kx, wy0 = (wr.top - r.top) * ky;   // 可视区原点 (画布坐标)
+    const sx0 = Math.max(0, wx0), sy0 = Math.max(0, wy0);
+    const sx1 = Math.min(c.width, wx0 + wr.width * kx);
+    const sy1 = Math.min(c.height, wy0 + wr.height * ky);
+    if (sx1 <= sx0 || sy1 <= sy0) continue;
+    ctx.drawImage(c, sx0, sy0, sx1 - sx0, sy1 - sy0,
+      (sx0 - wx0) / (wr.width * kx) * out.width,
+      (sy0 - wy0) / (wr.height * ky) * out.height,
+      (sx1 - sx0) / (wr.width * kx) * out.width,
+      (sy1 - sy0) / (wr.height * ky) * out.height);
+  }
+  rec.raf = requestAnimationFrame(recCompose);
+}
+
+function startRecExport() {
+  if (!anim) { toast("轨迹还没开始播放"); return; }
+  const mime = recMime();
+  if (!mime || !HTMLCanvasElement.prototype.captureStream) { toast("此浏览器不支持录制视频"); return; }
+  const wr = document.querySelector(".trip-map-wrap").getBoundingClientRect();
+  const k = Math.min(devicePixelRatio || 1, 2);   // dpr 3 的手机也只录 2 倍: 够清晰省码率
+  const out = document.createElement("canvas");
+  out.width = Math.round(wr.width * k); out.height = Math.round(wr.height * k);
+  rec = { out, ctx: out.getContext("2d"), chunks: [], mime, raf: 0, mr: null,
+          name: "MyTesla轨迹-" + $("#sh-date").textContent.trim() };
+  try {
+    rec.mr = new MediaRecorder(out.captureStream(30), { mimeType: mime, videoBitsPerSecond: 6e6 });
+  } catch {
+    rec = null; toast("此浏览器不支持录制视频"); return;
+  }
+  const r = rec;   // ondataavailable 回调里 rec 可能已被清空, 捕获本体
+  r.mr.ondataavailable = e => { if (e.data && e.data.size) r.chunks.push(e.data); };
+  r.mr.start(500);
+  pbRec.classList.add("rec");
+  recCompose();
+  toast("开始录制, 播完自动生成");
+  anim.restart();     // 整段从头重播 (倍速沿用当前档)
+}
+
+function stopRecExport(cancel) {
+  const r = rec;
+  if (!r) return;
+  rec = null;
+  cancelAnimationFrame(r.raf);
+  pbRec.classList.remove("rec");
+  if (!r.mr || r.mr.state === "inactive") return;
+  r.mr.onstop = () => { if (!cancel) recShowResult(r); };
+  r.mr.stop();
+}
+
+function recShowResult(r) {
+  const blob = new Blob(r.chunks, { type: r.mime });
+  if (blob.size < 8192) { toast("录制失败 (没有内容)"); return; }   // 全黑/没帧
+  const ext = r.mime.includes("mp4") ? "mp4" : "webm";
+  recFile = new File([blob], r.name + "." + ext, { type: r.mime });
+  if (recURL) URL.revokeObjectURL(recURL);
+  recURL = URL.createObjectURL(blob);
+  $("#rec-video").src = recURL;
+  $("#rec-save").hidden = !(navigator.canShare &&   // 不支持文件分享: 留长按视频存储的路
+    navigator.canShare({ files: [recFile] }));
+  $("#rec-modal").hidden = false;
+}
+
+function recCloseModal() {
+  $("#rec-modal").hidden = true;
+  $("#rec-video").removeAttribute("src");
+  $("#rec-video").load();    // 释放解码资源 (iOS 上 blob 视频挂着会占内存)
+  if (recURL) { URL.revokeObjectURL(recURL); recURL = null; }
+  recFile = null;
+}
+
+pbRec.addEventListener("click", () => {
+  if (rec) { stopRecExport(true); toast("已取消录制"); }
+  else startRecExport();
+});
+$("#rec-save").addEventListener("click", async () => {
+  if (!recFile) return;
+  try { await navigator.share({ files: [recFile], title: recFile.name }); }
+  catch (e) { if (e.name !== "AbortError") toast("分享失败: " + e.message); }
+});
+$("#rec-close").addEventListener("click", recCloseModal);
+$("#rec-modal").addEventListener("click", e => { if (e.target.id === "rec-modal") recCloseModal(); });
 
 $("#backdrop").addEventListener("click", closeTrip);
 $("#grab").addEventListener("click", closeTrip);
