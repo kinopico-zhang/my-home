@@ -104,13 +104,6 @@ header {
 /* ---------- 正文 ---------- */
 main { flex: 1; padding: 14px 14px calc(env(safe-area-inset-bottom) + 24px);
        max-width: 640px; width: 100%; margin: 0 auto; }
-.rule {
-  font-size: 12.5px; color: var(--ink-2); background: var(--surface);
-  border: 1px solid var(--hairline); border-radius: 14px;
-  padding: 10px 14px; margin-bottom: 12px;
-}
-.rule b { color: var(--ink-1); font-variant-numeric: tabular-nums; }
-
 #entries { background: var(--surface); border: 1px solid var(--hairline);
            border-radius: 14px; overflow: hidden; }
 .ver { padding: 12px 14px; }
@@ -173,8 +166,7 @@ main { flex: 1; padding: 14px 14px calc(env(safe-area-inset-bottom) + 24px);
 </header>
 
 <main>
-  <div class="rule">一批改动记一个版本 (新功能和修复合在一起)。版本号 <b>x.y.z</b> —— x 大改版 · y 新功能 · z 问题修复; <b>1.0.0</b> 为首版。</div>
-  <div id="entries">
+    <div id="entries">
     <div id="list"></div>
     <div class="state" id="loading"><div class="spin"></div>正在读取版本历史…</div>
     <div class="state" id="error" hidden>

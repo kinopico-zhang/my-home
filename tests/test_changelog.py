@@ -44,14 +44,13 @@ def test_changelog_entries_endpoint(auth):
 
 # ---------------------------------------------------------------- 页面
 def test_changelog_page_skeleton(auth):
-    """更新日志页: 规则说明 + 版本块 (徽标/日期 + 逐条改动行, 类型胶囊)。"""
+    """更新日志页: 版本块 (徽标/日期 + 逐条改动行, 类型胶囊)。"""
     html = auth.get("/tesla/changelog").text
     html += auth.get("/tesla/static/changelog.js?v=1").text
     for frag in [
         "<title>更新日志 · My Tesla</title>",
         '<a class="on" href="/tesla/changelog">更新日志</a>',   # 菜单 (自身亮)
         'id="brand-menu"', 'id="logout"',
-        "一批改动记一个版本", "1.0.0</b> 为首版",                # x.y.z 规则说明
         'id="entries"', 'id="list"', 'id="loading"', 'id="error"', 'id="retry"',
         '"/tesla/changelog/api/entries"',                       # 数据源
         'class="v-badge"', 'class="v-head"', 'class="v-date"',  # 版本头
@@ -61,6 +60,7 @@ def test_changelog_page_skeleton(auth):
         "更新日志 · My Tesla",
     ]:
         assert frag in html, f"更新日志页缺少 {frag}"
+    assert 'class="rule"' not in html   # 版本号规则说明行已按用户要求撤掉
 
 
 def test_changelog_link_in_settings(auth):
