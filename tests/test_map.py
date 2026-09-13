@@ -9,7 +9,8 @@ from sqlalchemy.dialects import postgresql
 import app.main as m
 from app import database, repository, tracks_cache
 from app.schemas import MapTrack
-from tests.conftest import seed_addresses, seed_drive, seed_position
+from tests.conftest import (seed_addresses, seed_drive, seed_position,
+                            seed_positions)
 
 
 # ---------------------------------------------------------------- config
@@ -159,9 +160,9 @@ def test_tracks_downsamples_to_40_per_drive(auth, db):
     start = datetime(2026, 9, 1, 2, 0)
     seed_drive(db, id=9, start_date=start, end_date=start + timedelta(hours=2),
                distance=50.0, duration_min=120)
-    for i in range(400):
-        seed_position(db, 9, id=None, date=start + timedelta(seconds=18 * i),
-                      longitude=114.0 + i * 0.0001, latitude=22.5)
+    seed_positions(db, 9, [{"date": start + timedelta(seconds=18 * i),
+                            "longitude": 114.0 + i * 0.0001, "latitude": 22.5}
+                           for i in range(400)])
     d = auth.get("/tesla/map/api/tracks").json()
     assert d["count"] == 1
     assert len(d["tracks"][0]["pts"]) == 41       # 400/40=10 → i%10 + 首末
@@ -348,9 +349,9 @@ def test_tracks_detail_downsampling(db):
     start = datetime(2026, 9, 1, 2, 0)
     seed_drive(db, id=7, start_date=start, end_date=start + timedelta(hours=2),
                distance=20.0, duration_min=120)
-    for i in range(100):
-        seed_position(db, 7, id=None, date=start + timedelta(seconds=72 * i),
-                      longitude=114.0 + i * 0.0001, latitude=22.5)
+    seed_positions(db, 7, [{"date": start + timedelta(seconds=72 * i),
+                            "longitude": 114.0 + i * 0.0001, "latitude": 22.5}
+                           for i in range(100)])
     d = repository.query_detail(
         db, [7], 20, repository.BBox(113, 22, 115, 24))[0]
     assert len(d.pts) == 21          # stride=5 → i%5 + 首末
@@ -363,9 +364,9 @@ def test_tracks_detail_gzipped_when_large(auth, db):
     start = datetime(2026, 9, 1, 2, 0)
     seed_drive(db, id=7, start_date=start, end_date=start + timedelta(hours=5),
                distance=30.0, duration_min=300)
-    for i in range(300):
-        seed_position(db, 7, id=None, date=start + timedelta(seconds=60 * i),
-                      longitude=114.0 + i * 0.00001, latitude=22.5)
+    seed_positions(db, 7, [{"date": start + timedelta(seconds=60 * i),
+                            "longitude": 114.0 + i * 0.00001, "latitude": 22.5}
+                           for i in range(300)])
     r = auth.get("/tesla/map/api/tracks/detail",
                  params={"ids": "7", "zoom": 15, **BOX},
                  headers={"Accept-Encoding": "gzip"})

@@ -146,6 +146,20 @@ def seed_position(session: Session, drive_id: int, **kw: Any) -> Position:
     return position
 
 
+def seed_positions(session: Session, drive_id: int,
+                   rows: list[dict[str, Any]]) -> list[Position]:
+    """一批轨迹点一次入库 (add_all + 单次 commit)。
+
+    seed_position 每点一次 commit, NAS 磁盘高压下一次 fsync ~100ms,
+    大轨迹种子 (降采样用例 10001 点) 光播种就能拖十几分钟;
+    上百点的批量一律走这里, rows 内字段同 seed_position 的覆盖参数。
+    """
+    positions = [Position(drive_id=drive_id, **r) for r in rows]
+    session.add_all(positions)
+    session.commit()
+    return positions
+
+
 def seed_addresses(session: Session) -> None:
     """默认地址: 1=深圳南山 (起), 2=东莞长安 (终)。"""
     session.add(Address(id=1, name="华为立体车库", city="深圳市",
