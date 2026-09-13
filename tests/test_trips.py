@@ -870,6 +870,8 @@ def test_trips_page_time_menu_and_filter_row(auth):
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
                  'id="tm-ym"', 'id="tm-sel"', 'id="tm-apply"', 'function calRender()',
                  '再点结束日期', 'id="fc-menu"', 'id="tc-menu"', 'id="km-menu"',
+                 # 时间菜单在顶栏 nav-row (全站统一位置)
+                 '</details>\n    <details class="nav-menu time-menu" id="time-menu">',
                  'data-k="0-20"', 'data-k="20-100"', 'data-k="100-300"',
                  'data-k="300+"', "/tesla/trips/api/regions",
                  "function filterQS()", "function listURL(", "function syncURL()",
@@ -1238,6 +1240,10 @@ def test_trips_page_export_video(auth):
                  "preserveDrawingBuffer: true", "patchGLKeepBuffer();",
                  "此浏览器不支持录制视频", "录制失败 (没有内容)"]:
         assert frag in html, f"行程页缺少导出视频片段 {frag}"
+    # 存到相册按钮的放行条件: Safari 没实现 canShare 但 share({files}) 可用,
+    # 只按 navigator.share 存在性放行 (canShare 存在时才作附加校验)
+    assert '$("#rec-save").hidden = !(navigator.share &&\n' \
+        '    (!navigator.canShare || navigator.canShare({ files: [recFile] })));' in html
     # WebGL 缓冲补丁必须装在高德脚本加载之前 (上下文属性建时即定,
     # 晚了就是黑帧); 补丁本体定义在 loader 前面
     assert html.index("function patchGLKeepBuffer()") < html.index("function loadAMapScript(")
