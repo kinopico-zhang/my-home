@@ -4,6 +4,7 @@ uuid 由后端生成且全程不出接口 (用户不可见也不变); 普通账�
 功能但没有账号管理权限。
 """
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -187,3 +188,33 @@ def test_password_change(usersdb):
 
 def test_me_requires_login(client):
     assert client.get("/api/me").status_code == 401
+
+
+# ---------------------------------------------------------------- 邀请链接分发
+def test_invite_copy_ios_safari_fallbacks():
+    """iOS Safari 在 HTTP 站点没有异步剪贴板 API (isSecureContext=false),
+    execCommand 退化路必须先 focus 再选中再同步拷贝 (2026-09-13 用户实测
+    复制落空: 旧版对 textarea 用 Range 选 —— 它没有 DOM 子节点选不中,
+    还没 focus、元素移出视口); 拷贝整条路被拒时拉系统分享面板兜底,
+    链接一定送得出去。"""
+    js = (Path(m.__file__).parent / "home" / "static" / "accounts.js").read_text()
+    assert "navigator.clipboard && window.isSecureContext" in js
+    assert "ta.focus({ preventScroll: true })" in js   # iOS: 聚焦后选区才建立
+    assert "ta.setSelectionRange(0, text.length)" in js
+    assert "ta.readOnly = true" in js                  # 只读聚焦不弹键盘
+    assert "navigator.share" in js                     # 兜底: 分享面板 (含「拷贝」)
+    # 不许再犯: textarea 没有 DOM 子节点, Range 选不中它
+    assert "selectNodeContents(ta)" not in js
+
+
+def test_admin_badge_outside_name_cell():
+    """管理员徽章是 .usr-row 的 flex 子元素, 不能在 .usr-name 里 —— 那格有
+    overflow:hidden (长名省略号), inline 徽章的下半 (含下边框) 会伸出行盒
+    被裁掉 (2026-09-13 用户抓到「椭圆框只有上半」)。"""
+    base = Path(m.__file__).parent / "home" / "static"
+    js = (base / "accounts.js").read_text()
+    assert '<div class="usr-name">${esc(u.name)}</div>' in js   # 名字格先闭合
+    assert 'usr-badge">管理员</span>` : "")' in js              # 徽章是行级片段
+    assert "${esc(u.name)}<span" not in js                      # 不许塞回名字格
+    html = (base / "accounts.html").read_text()
+    assert "flex: none; font-size: 10.5px; line-height: 1" in html  # 自立行高

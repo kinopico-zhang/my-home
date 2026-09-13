@@ -17,6 +17,8 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="改进", text="门厅搬到了根路径: 打开就是两个应用的大卡片, 点一下就进; 门厅自己也有主屏图标 (黑底白房子)"),
         ChangelogItem(kind="改进", text="账号管理从 My Tesla 搬进门厅: 账号是全家共用的, 不属于任何一个应用; 旧地址和老邀请链接自动跳转, 不会失效"),
         ChangelogItem(kind="修复", text="登录页显示 / 隐藏密码的两个图标并排显示"),
+        ChangelogItem(kind="修复", text="iPhone Safari 上复制邀请链接没反应: 换了兜底拷贝方案, 实在拷不了就直接弹分享面板 (里面也能拷贝, 还能直接发给家人)"),
+        ChangelogItem(kind="修复", text="账号列表里「管理员」标签的椭圆外框只剩上半截"),
     ]),
     ChangelogVersion(version="2.4.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="充电详情可以导航到充电站, 自己挑手机里的地图 App (高德 / 百度 / 腾讯 / 苹果地图), 没装的地图长按就能隐藏"),
