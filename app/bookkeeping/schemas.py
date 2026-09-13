@@ -64,3 +64,17 @@ class SyncResponse(BaseModel):
 
     server_now: datetime
     entries: list[EntryOut]
+
+
+class CategoryGroup(BaseModel):
+    """一个大类: 名字 + 子类列表 (弹层两级胶囊)。"""
+
+    name: str
+    children: list[str]
+
+
+class CategoryTree(BaseModel):
+    """类别树: 支出/收入各自的大类列表, 按种子的 sort 保序。"""
+
+    expense: list[CategoryGroup]
+    income: list[CategoryGroup]

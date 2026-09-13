@@ -195,11 +195,13 @@ class _SqliteState:
         self.factory = None
 
     def engine_or_fail(self) -> Engine:
+        """引擎 (未初始化是装配错误, 直接炸)。"""
         if self.engine is None:
             raise RuntimeError(f"{self.name}库引擎未初始化 (init 未调用)")
         return self.engine
 
     def session_factory_or_fail(self) -> sessionmaker[Session]:
+        """会话工厂 (未初始化是装配错误, 直接炸)。"""
         if self.factory is None:
             raise RuntimeError(f"{self.name}库引擎未初始化 (init 未调用)")
         return self.factory

@@ -779,10 +779,9 @@ def _driver_condition(own: Session, driver_id: int) -> ColumnElement[bool]:
     if scope is None:
         return Drive.id.in_(set())   # 驾驶员不存在 → 空
     marked, all_marked, is_default = scope
-    cond = Drive.id.in_(marked)
     if is_default:
-        cond = cond | Drive.id.not_in(all_marked)
-    return cond
+        return or_(Drive.id.in_(marked), Drive.id.not_in(all_marked))
+    return Drive.id.in_(marked)
 
 
 def filter_map_tracks_by_driver(tracks: list[MapTrack], own: Session,

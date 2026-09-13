@@ -98,8 +98,7 @@ def list_albums(session: Session, language: str = "全部", sort: str = "added",
     if condition is not None:
         statement = statement.where(condition)
         total_statement = total_statement.where(condition)
-    albums = [(album, artist_name) for album, artist_name in
-              session.execute(statement)]
+    albums = list(session.execute(statement))
     total = session.scalar(total_statement) or 0
     return AlbumPageList(
         albums=[album_card(album, artist_name)

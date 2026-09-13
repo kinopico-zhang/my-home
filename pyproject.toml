@@ -2,13 +2,13 @@
 name = "mytesla"
 version = "1.0.0"
 description = "My Tesla — TeslaMate 数据展示 (充电 / 足迹 / 行程)"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
 # 全库严格模式: DB 行 → SQLAlchemy 实体 → Pydantic 模型 → JSON 端到端有类型。
 # app 严格 / tests 非严格 (见 overrides); SQLAlchemy 2.0 / Pydantic v2 自带类型标注。
-python_version = "3.10"
+python_version = "3.13"   # 服务固定跑本 venv 的 3.13 (Path.walk 等 3.12+ API)
 strict = true
 files = ["app", "tests"]
 plugins = ["pydantic.mypy"]
@@ -22,13 +22,21 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
 
+[[tool.mypy.overrides]]
+# mutagen 有 py.typed 但 __init__ 不列 __all__ (File/MutagenError 是再导出),
+# 公开文档就这么 import —— 别让 no-implicit-reexport 揪它
+module = "mutagen.*"
+implicit_reexport = true
+
 # ---------------------------------------------------------------- pylint
 [tool.pylint.main]
 # 从仓库根运行时让 pylint 找到 app 包 (conftest 里是运行时 sys.path 注入)
 init-hook = 'import sys; sys.path.insert(0, ".")'
-# FastAPI 路由函数天然多参数 (查询参数 + Depends 依赖), 默认 5 不够
+# FastAPI 路由函数天然多参数 (查询参数 + Depends 依赖), 默认 5 不够;
+# 查询条件包成参数对象 (SessionFilter 这类) 属性数同步放宽
 max-args = 10
 max-positional-arguments = 10
+max-attributes = 10
 # 数据密集的查询/组装函数局部变量多
 max-locals = 18
 # repository 聚合全部查询 (TeslaMate 只读 + 自有库: 补路/分组/设置), 不拆模块

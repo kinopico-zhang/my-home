@@ -30,7 +30,7 @@ let dirty = new Set(loadLS("bk-dirty", []));  // 有本地改动待上行的 id
 let lastSync = loadLS("bk-last-sync", "");    // 上次同步的服务器时间 (游标)
 let month = loadLS("bk-month", "");
 let person = loadLS("bk-person", "");
-let catTree = loadLS("bk-categories", null);   // {expense: [[大类,[子类...]],...], income: [...]}
+let catTree = loadLS("bk-categories-v2", null);  // {expense: [{name,children}...], income: [...]}
 
 function persist() {
   saveLS("bk-entries", entries);
@@ -269,7 +269,7 @@ function renderTagChips() {
 
 function fillChips() {
   const tiles = [];                 // [组合名, 显示名, 大类(取图标)]
-  for (const [top, kids] of treeFor(sheetKind)) {
+  for (const {name: top, children: kids} of treeFor(sheetKind)) {
     if (kids.length) for (const kid of kids) tiles.push([top + "/" + kid, kid, top]);
     else tiles.push([top, top, top]);   // 没子类的大类自己就是可选类别
   }
@@ -286,7 +286,7 @@ async function loadCategories() {   // 类别树: 缓存先用, 联网刷新 (�
     const tree = await r.json();
     if (tree && Array.isArray(tree.expense) && Array.isArray(tree.income)) {
       catTree = tree;
-      saveLS("bk-categories", catTree);
+      saveLS("bk-categories-v2", catTree);
       fillChips();                  // 弹层正开着也立刻换上
     }
   } catch (_e) { /* 离线/失败: 用缓存树 */ }
@@ -368,7 +368,7 @@ $("#kind-seg").addEventListener("click", e => {
   $("#kind-seg").querySelectorAll("button").forEach(b =>
     b.classList.toggle("on", b === btn));
   const top = sheetCat.split("/")[0];      // 支出↔收入树不同, 原大类不在就清空重选
-  if (!treeFor(sheetKind).some(t => t[0] === top)) sheetCat = "";
+  if (!treeFor(sheetKind).some(t => t.name === top)) sheetCat = "";
   fillChips();
 });
 

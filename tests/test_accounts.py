@@ -150,6 +150,7 @@ def test_accounts_user_list_no_uuid_leak(usersdb, client):
 def test_rename_keeps_session_and_uuid(usersdb):
     other, _ = _register(usersdb)
     before = other.get("/api/me").json()
+    assert before["name"] == "二号账号"
     r = other.post("/api/account/name", json={"name": "新名字"})
     assert r.status_code == 200
     assert r.json() == {"name": "新名字", "is_admin": False}

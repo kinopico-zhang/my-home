@@ -15,6 +15,12 @@ rc=0
 mkdir -p .pytest-tmp
 export TMPDIR="$PWD/.pytest-tmp"
 
+# 静态检查: app 严检; tests 是 pytest 仪式代码 (fixture 形参/保护访问/
+# 模块内导入), 单独放宽这几类 —— 4.0 没有 per-path-ignores, 只好两次调用
+.venv/bin/python -m pylint app || rc=1
+.venv/bin/python -m pylint tests --disable=W0613,W0212,R0801,C0415 || rc=1
+.venv/bin/python -m mypy || rc=1
+
 .venv/bin/python -m pytest tests -q --cov=app || rc=1
 
 DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker

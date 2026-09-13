@@ -14,7 +14,7 @@
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 from sqlalchemy import String, UniqueConstraint, create_engine, select
 from sqlalchemy.engine import Engine
@@ -22,7 +22,7 @@ from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
                             sessionmaker)
 
 from .default_categories import EXPENSE_CATEGORIES, INCOME_CATEGORIES
-from .schemas import EntryIn
+from .schemas import CategoryGroup, CategoryTree, EntryIn
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DB_URL = (os.environ.get("MYTESLA_BOOKKEEPING_DB")
@@ -50,7 +50,7 @@ class Entry(EntryBase):
     date: Mapped[str] = mapped_column(String)             # 记账日期 YYYY-MM-DD
     time: Mapped[str] = mapped_column(String, default="") # 时刻 HH:MM (可空)
     amount: Mapped[float]                                 # 元 (恒正, 收支看 kind)
-    kind: Mapped[str] = mapped_column(String)             # expense / income
+    kind: Mapped[Literal["expense", "income"]] = mapped_column(String)
     category: Mapped[str] = mapped_column(String, default="")
     tags: Mapped[str] = mapped_column(String, default="") # 标签, 逗号连接 (≤5 个)
     note: Mapped[str] = mapped_column(String, default="")
@@ -73,50 +73,54 @@ class Category(EntryBase):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, index=True)
-    kind: Mapped[str] = mapped_column(String)             # expense / income
+    kind: Mapped[Literal["expense", "income"]] = mapped_column(String)
     parent: Mapped[str] = mapped_column(String, default="")   # "" = 大类
     sort: Mapped[int] = mapped_column(default=0)          # 同层展示顺序
 
 
 # 引擎持有者 (与主应用各自的库同构: 启动 init, 关闭 dispose, 测试注入别的 SQLite)
-_engine: Engine | None = None
-_factory: sessionmaker[Session] | None = None
+class _EngineState:
+    """进程级引擎持有者 (避免 global 语句)。"""
+
+    engine: Engine | None = None
+    factory: sessionmaker[Session] | None = None
+
+
+_state = _EngineState()
 
 
 def init_engine(url: str | None = None) -> None:
     """创建引擎 (缺省 data/bookkeeping.db)。"""
-    global _engine, _factory
     if url is None:
         url = DEFAULT_DB_URL
     if url.startswith("sqlite:///"):
         parent = Path(url.removeprefix("sqlite:///")).parent
         if str(parent):
             parent.mkdir(parents=True, exist_ok=True)
-    _engine = create_engine(url, connect_args={"check_same_thread": False})
-    _factory = sessionmaker(_engine, expire_on_commit=False)
+    _state.engine = create_engine(url, connect_args={"check_same_thread": False})
+    _state.factory = sessionmaker(_state.engine, expire_on_commit=False)
 
 
 def dispose_engine() -> None:
     """释放连接池 (测试隔离也用它)。"""
-    global _engine, _factory
-    if _engine is not None:
-        _engine.dispose()
-    _engine = None
-    _factory = None
+    if _state.engine is not None:
+        _state.engine.dispose()
+    _state.engine = None
+    _state.factory = None
 
 
 def engine() -> Engine:
     """记账库引擎 (启动时建表用)。"""
-    if _engine is None:
+    if _state.engine is None:
         raise RuntimeError("记账库引擎未初始化 (init_engine 未调用)")
-    return _engine
+    return _state.engine
 
 
 def session_factory() -> sessionmaker[Session]:
     """记账库会话工厂。"""
-    if _factory is None:
+    if _state.factory is None:
         raise RuntimeError("记账库引擎未初始化 (init_engine 未调用)")
-    return _factory
+    return _state.factory
 
 
 def get_db() -> Iterator[Session]:
@@ -210,18 +214,22 @@ def seed_default_categories() -> None:
         session.commit()
 
 
-def category_tree(session: Session) -> dict[str, list[list]]:
-    """类别树 → {"expense": [[大类, [子类...]], ...], "income": [...]},
-    按种子的 sort 保序 (给前端弹层画两级胶囊用)。"""
+def category_tree(session: Session) -> CategoryTree:
+    """类别树 → 支出/收入各自的大类 + 子类, 按种子的 sort 保序
+    (给前端弹层画两级胶囊用)。"""
     rows = session.execute(select(Category).order_by(Category.sort, Category.id)
                            ).scalars().all()
     children: dict[str, list[str]] = {}
     for row in rows:
         if row.parent:
             children.setdefault(row.parent, []).append(row.name)
-    tree: dict[str, list[list]] = {"expense": [], "income": []}
+    tree = CategoryTree(expense=[], income=[])
     for row in rows:
         if not row.parent:
-            tree.setdefault(row.kind, []).append(
-                [row.name, children.get(row.name, [])])
+            group = CategoryGroup(name=row.name,
+                                  children=children.get(row.name, []))
+            if row.kind == "expense":
+                tree.expense.append(group)
+            else:
+                tree.income.append(group)
     return tree

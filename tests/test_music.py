@@ -7,6 +7,7 @@ import os
 import struct
 import time
 from pathlib import Path
+from typing import Callable
 
 import pytest
 from fastapi import HTTPException
@@ -28,7 +29,7 @@ from app.music import library_queries
 PICTURE_BYTES = b"\xff\xd8\xff\xe0FAKEJPEG" + b"x" * 64
 
 
-def _flac_bytes(tags: dict | None, picture: bytes | None = None,
+def _flac_bytes(tags: dict[str, str] | None, picture: bytes | None = None,
                 total_samples: int = 88200) -> bytes:
     """最小可读 FLAC: 标题/歌词等全走 vorbis 注释块, 封面走 PICTURE 块。
 
@@ -61,7 +62,7 @@ def _flac_bytes(tags: dict | None, picture: bytes | None = None,
     return b"fLaC" + b"".join(blocks)
 
 
-def _write_audio(root: Path, relative_path: str, tags: dict | None = None,
+def _write_audio(root: Path, relative_path: str, tags: dict[str, str] | None = None,
                  picture: bytes | None = None,
                  sidecar_lyrics: str | None = None,
                  mtime: float | None = None) -> Path:
@@ -96,11 +97,13 @@ def test_scripts_for_language_negation():
     """其他 = 已知 script 取反; 全部/未知 → None (不过滤)。"""
     assert scripts_for_language("全部") is None
     assert scripts_for_language("不存在的语种") is None
-    scripts, negate = scripts_for_language("日文")
-    assert scripts == frozenset({"Jpan"}) and negate is False
-    scripts, negate = scripts_for_language("其他")
-    assert negate is True                 # 已知集取反
-    assert "Jpan" in scripts and "Hant" in scripts and "" not in scripts
+    japanese = scripts_for_language("日文")
+    assert japanese is not None
+    assert japanese[0] == frozenset({"Jpan"}) and japanese[1] is False
+    others = scripts_for_language("其他")
+    assert others is not None
+    assert others[1] is True              # 已知集取反
+    assert "Jpan" in others[0] and "Hant" in others[0] and "" not in others[0]
 
 
 # ---------------------------------------------------------------- 标签
@@ -237,13 +240,17 @@ def test_read_dsf_id3_frames(tmp_path):
 class _StubTags:
     """只有 get/keys 的标签桩 (MP4 / APE 的形状)。"""
 
-    def __init__(self, mapping: dict | None = None):
+    getall: Callable[[str], list[object]]   # ID3 桩动态挂 (attr 声明过 mypy 才认)
+
+    def __init__(self, mapping: dict[str, object] | None = None):
         self._mapping = mapping or {}
 
     def get(self, key, default=None):
+        """字典式取键 (vorbis 兜底读法)。"""
         return self._mapping.get(key, default)
 
     def keys(self):
+        """APE 封面探测会遍历键名。"""
         return list(self._mapping)
 
 
@@ -369,7 +376,9 @@ def test_scanner_skips_unreadable_and_rejects_double(tmp_path):
     scanner.scan()
     with session_factory()() as session:
         assert session.query(Track).count() == 0
-    assert scanner._scan_lock.acquire(blocking=False)      # noqa: SLF001
+    # 非阻塞拿锁是刻意的: 验证并发第二把锁立刻报错, 没法写成 with
+    assert scanner._scan_lock.acquire(  # noqa: SLF001 pylint: disable=consider-using-with
+        blocking=False)
     try:
         with pytest.raises(RuntimeError):
             scanner.scan()
@@ -460,6 +469,7 @@ def test_album_and_artist_pages(tmp_path):
             album_id = other.query(Album).filter_by(title="甲").one().id
             artist_id = other.query(Artist).filter_by(name="AI机组").one().id
         page = library_queries.album_page(session, album_id)
+        assert page is not None
         assert page.album.track_count == 2
         assert [track.title for track in page.tracks] == ["曲A", "曲B"]
         assert page.tracks[0].playable and not page.tracks[1].playable  # tak
@@ -468,6 +478,7 @@ def test_album_and_artist_pages(tmp_path):
         assert library_queries.album_page(session, 99999) is None
 
         artist = library_queries.artist_page(session, artist_id)
+        assert artist is not None
         assert [card.title for card in artist.albums] == ["乙", "甲"]  # 年份倒序
         assert artist.artist.album_count == 2
         assert artist.artist.track_count == 3
@@ -533,14 +544,18 @@ def test_search_four_boards(tmp_path):
 def test_parse_range_header():
     """Range 解析: 常规/开放/尾缀区间, 非法格式, 越界 416。"""
     total = 1000
-    assert parse_range_header("bytes=0-1", total).model_dump() == {
+    first = parse_range_header("bytes=0-1", total)
+    assert first is not None and first.model_dump() == {
         "start": 0, "end": 1, "total": total}
-    assert parse_range_header("bytes=10-", total).model_dump() == {
+    second = parse_range_header("bytes=10-", total)
+    assert second is not None and second.model_dump() == {
         "start": 10, "end": 999, "total": total}
-    assert parse_range_header("bytes=-100", total).model_dump() == {
+    suffix = parse_range_header("bytes=-100", total)
+    assert suffix is not None and suffix.model_dump() == {
         "start": 900, "end": 999, "total": total}
-    assert parse_range_header(          # 越界终点截到文件尾
-        "bytes=990-2000", total).end == 999
+    overflow = parse_range_header(      # 越界终点截到文件尾
+        "bytes=990-2000", total)
+    assert overflow is not None and overflow.end == 999
     assert parse_range_header("not-bytes", total) is None
     assert parse_range_header("bytes=-", total) is None
     with pytest.raises(HTTPException) as exc_info:
@@ -845,14 +860,14 @@ def test_media_edge_cases(auth, tmp_path):
 def test_music_webapp_fallbacks(auth):
     """webapp 兜底: 登出 / 数据库异常 503 / 会话失效 401 / 资源不存在 404。"""
     from sqlalchemy.exc import SQLAlchemyError
-    from app.music import webapp as music_webapp
+    patched_queries = library_queries
     with pytest.MonkeyPatch.context() as patcher:   # 只撤自己的补丁
-        patcher.setattr(music_webapp.library_queries, "list_albums",
+        patcher.setattr(patched_queries, "list_albums",
                         lambda *a, **k: (_ for _ in ()).throw(
                             SQLAlchemyError("boom")))
         assert auth.get("/music/api/albums").status_code == 503
     with pytest.MonkeyPatch.context() as patcher:
-        patcher.setattr(music_webapp.account_store, "user_for_cookie",
+        patcher.setattr("app.account_store.user_for_cookie",
                         lambda *a, **k: None)
         assert auth.get("/music/api/status").status_code == 401
     assert auth.get("/music/api/artists/99999").status_code == 404

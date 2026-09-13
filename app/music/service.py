@@ -10,8 +10,15 @@ from .library_database import (DEFAULT_MUSIC_DIRECTORY, create_all,
                                dispose_engine, init_engine, session_factory)
 from .library_scanner import LibraryScanner
 
-_scanner: LibraryScanner | None = None
-_scan_thread: threading.Thread | None = None
+
+class _ServiceState:
+    """进程级服务持有者 (避免 global 语句)。"""
+
+    scanner: LibraryScanner | None = None
+    scan_thread: threading.Thread | None = None
+
+
+_service = _ServiceState()
 _trigger_lock = threading.Lock()
 
 
@@ -22,41 +29,38 @@ def start_service(database_url: str | None = None,
 
     测试用参数注入临时库 (scan_immediately=False 只装配不扫);
     重复调用重装配 (换实例, 正在跑的扫描自然收尾)。"""
-    global _scanner
     init_engine(database_url, music_directory)
     create_all()
-    _scanner = LibraryScanner(music_directory or Path(DEFAULT_MUSIC_DIRECTORY),
-                              session_factory())
+    _service.scanner = LibraryScanner(
+        music_directory or Path(DEFAULT_MUSIC_DIRECTORY), session_factory())
     if scan_immediately:
         trigger_scan()
 
 
 def stop_service() -> None:
     """关闭时释放连接池 (扫描线程是 daemon, 随进程退出)。"""
-    global _scanner
-    _scanner = None
+    _service.scanner = None
     dispose_engine()
 
 
 def scanner() -> LibraryScanner:
     """当前扫描器 (start_service 之前调用是程序装配错误, 直接炸)。"""
-    if _scanner is None:
+    if _service.scanner is None:
         raise RuntimeError("My Music 未初始化 (start_service 未调用)")
-    return _scanner
+    return _service.scanner
 
 
 def trigger_scan() -> bool:
     """起后台扫描线程; 已在扫返回 False (路由层答 409)。"""
-    global _scan_thread
-    current = _scanner
+    current = _service.scanner
     if current is None or current.status().running:
         return False
     with _trigger_lock:
-        if _scan_thread is not None and _scan_thread.is_alive():
+        if _service.scan_thread is not None and _service.scan_thread.is_alive():
             return False
-        _scan_thread = threading.Thread(target=_run_scan, args=(current,),
-                                        daemon=True, name="music-scan")
-        _scan_thread.start()
+        _service.scan_thread = threading.Thread(target=_run_scan, args=(current,),
+                                                daemon=True, name="music-scan")
+        _service.scan_thread.start()
         return True
 
 

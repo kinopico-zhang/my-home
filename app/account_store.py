@@ -26,7 +26,7 @@ _NAME_RE = re.compile(r"^\S(.*\S)?$", re.S)
 INVITE_DAYS_CHOICES = (1, 7, 30)   # 邀请有效期档位 (天)
 
 
-class NameError_(ValueError):
+class InvalidNameError(ValueError):
     """名称不合法 / 已被占用 (路由转 400)。"""
 
 
@@ -65,7 +65,7 @@ def _check_name(name: str) -> str:
     """名称规范: 去空白后 2~20 字符且不含内部空白。"""
     name = (name or "").strip()
     if not 2 <= len(name) <= 20 or not _NAME_RE.match(name) or any(c.isspace() for c in name):
-        raise NameError_("名称需 2~20 个字符, 且不含空格")
+        raise InvalidNameError("名称需 2~20 个字符, 且不含空格")
     return name
 
 
@@ -86,7 +86,7 @@ def create_user(session: Session, name: str, password: str, *,
     name = _check_name(name)
     _check_password(password)
     if find_by_name(session, name) is not None:
-        raise NameError_("这个名称已被占用")
+        raise InvalidNameError("这个名称已被占用")
     user = User(uuid=uuid_module.uuid4().hex, name=name,
                 password_hash=hash_password(password),
                 is_admin=is_admin, created_at=datetime.utcnow())
@@ -142,7 +142,7 @@ def rename_user(session: Session, user: User, new_name: str) -> User:
     new_name = _check_name(new_name)
     other = find_by_name(session, new_name)
     if other is not None and other.uuid != user.uuid:
-        raise NameError_("这个名称已被占用")
+        raise InvalidNameError("这个名称已被占用")
     user.name = new_name
     session.commit()
     return user

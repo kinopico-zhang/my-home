@@ -87,10 +87,16 @@ class Track(MusicLibraryBase):
     has_artwork: Mapped[bool] = mapped_column(default=False)  # 内嵌封面 (专辑封面取材)
 
 
-_engine: Engine | None = None
-_session_factory: sessionmaker[Session] | None = None
-_music_directory: Path | None = None
-_artwork_cache_directory: Path | None = None
+class _EngineState:
+    """进程级引擎持有者 (避免 global 语句)。"""
+
+    engine: Engine | None = None
+    session_factory: sessionmaker[Session] | None = None
+    music_directory: Path | None = None
+    artwork_cache_directory: Path | None = None
+
+
+_engine = _EngineState()
 
 
 def artwork_cache_directory_for(url: str) -> Path:
@@ -101,61 +107,59 @@ def artwork_cache_directory_for(url: str) -> Path:
 
 
 def init_engine(url: str | None = None,
-                music_directory: Path | None = None) -> None:
+                library_directory: Path | None = None) -> None:
     """创建引擎 (缺省 data/music.db + /share/Media/Music)。
 
     曲库目录 / 封面缓存目录跟着引擎走 (测试注入临时目录, 不碰真曲库);
     封面缓存 = 库文件同目录下的 music-art/。"""
-    global _engine, _session_factory, _music_directory, _artwork_cache_directory
     if url is None:
         url = DEFAULT_DATABASE_URL
     if url.startswith("sqlite:///"):
         Path(url.removeprefix("sqlite:///")).parent.mkdir(
             parents=True, exist_ok=True)
-    _artwork_cache_directory = artwork_cache_directory_for(url)
-    _music_directory = music_directory or Path(DEFAULT_MUSIC_DIRECTORY)
-    _engine = create_engine(url, connect_args={"check_same_thread": False})
-    _session_factory = sessionmaker(_engine, expire_on_commit=False)
+    _engine.artwork_cache_directory = artwork_cache_directory_for(url)
+    _engine.music_directory = library_directory or Path(DEFAULT_MUSIC_DIRECTORY)
+    _engine.engine = create_engine(url, connect_args={"check_same_thread": False})
+    _engine.session_factory = sessionmaker(_engine.engine,
+                                           expire_on_commit=False)
 
 
 def dispose_engine() -> None:
     """释放连接池 (测试隔离也用它)。"""
-    global _engine, _session_factory, _music_directory
-    global _artwork_cache_directory
-    if _engine is not None:
-        _engine.dispose()
-    _engine = None
-    _session_factory = None
-    _music_directory = None
-    _artwork_cache_directory = None
+    if _engine.engine is not None:
+        _engine.engine.dispose()
+    _engine.engine = None
+    _engine.session_factory = None
+    _engine.music_directory = None
+    _engine.artwork_cache_directory = None
 
 
 def engine() -> Engine:
     """曲库索引引擎 (启动时建表用)。"""
-    if _engine is None:
+    if _engine.engine is None:
         raise RuntimeError("曲库引擎未初始化 (init_engine 未调用)")
-    return _engine
+    return _engine.engine
 
 
 def music_directory() -> Path:
     """曲库根目录 (音频/封面文件都从这里找)。"""
-    if _music_directory is None:
+    if _engine.music_directory is None:
         raise RuntimeError("曲库引擎未初始化 (init_engine 未调用)")
-    return _music_directory
+    return _engine.music_directory
 
 
 def artwork_cache_directory() -> Path:
     """封面缓存目录 (库文件同目录的 music-art/)。"""
-    if _artwork_cache_directory is None:
+    if _engine.artwork_cache_directory is None:
         raise RuntimeError("曲库引擎未初始化 (init_engine 未调用)")
-    return _artwork_cache_directory
+    return _engine.artwork_cache_directory
 
 
 def session_factory() -> sessionmaker[Session]:
     """曲库索引会话工厂。"""
-    if _session_factory is None:
+    if _engine.session_factory is None:
         raise RuntimeError("曲库引擎未初始化 (init_engine 未调用)")
-    return _session_factory
+    return _engine.session_factory
 
 
 def get_db() -> Iterator[Session]:

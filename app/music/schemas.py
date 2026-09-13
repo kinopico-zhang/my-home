@@ -28,6 +28,23 @@ class ScannedTrack(BaseModel):
     has_artwork: bool = False          # 内嵌封面
 
 
+class TagFields(BaseModel):
+    """音频标签读出的原始字段 (缺标签 = 空值, 文件名/目录名兜底在后面)。"""
+
+    title: str = ""
+    artist: str = ""
+    album_title: str = ""
+    album_artist: str = ""
+    album_artist_sort: str = ""
+    date_text: str = ""
+    script: str = ""
+    track_number: int = 0
+    disc_number: int = 1
+    duration_seconds: float = 0.0
+    embedded_lyrics: str = ""
+    has_artwork: bool = False
+
+
 class ScanStatus(BaseModel):
     """扫描进度 (前端轮询; 不扫描时也能答上次结果)。"""
 
@@ -73,6 +90,7 @@ class AlbumCard(BaseModel):
 
     album_id: int
     title: str
+    artist_id: int           # 艺人名跳转用 (专辑页 hero)
     artist_name: str
     year: int
     track_count: int
