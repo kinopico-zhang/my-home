@@ -77,6 +77,7 @@ if (range0 === "all") {
 const state = {
   type: ["fast", "slow"].includes(qs0.get("type")) ? qs0.get("type") : "all",
   city: qs0.get("city") || "",
+  cost: ["recorded", "missing"].includes(qs0.get("cost")) ? qs0.get("cost") : "all",
   range: range0, cFrom: cFrom0, cTo: cTo0,
   offset: 0, total: 0, loading: false, done: false, err: null,
 };
@@ -94,7 +95,8 @@ function rangeParams() {
   return from ? { from } : {};
 }
 function sessionParams(extra) {
-  const p = new URLSearchParams({ type: state.type, ...rangeParams(), ...(extra || {}) });
+  const p = new URLSearchParams({ type: state.type, cost: state.cost,
+                                  ...rangeParams(), ...(extra || {}) });
   if (state.city) p.set("city", state.city);
   return p.toString();
 }
@@ -110,6 +112,7 @@ function syncURL() {   // 筛选写进地址栏 (默认值不写, 链接保持�
   }
   if (state.type === "all") u.searchParams.delete("type"); else u.searchParams.set("type", state.type);
   if (state.city) u.searchParams.set("city", state.city); else u.searchParams.delete("city");
+  if (state.cost === "all") u.searchParams.delete("cost"); else u.searchParams.set("cost", state.cost);
   history.replaceState(null, "", u);
 }
 
@@ -370,6 +373,15 @@ $("#type-opts").addEventListener("click", e => {   // 快充/慢充下拉 (与�
   $("#type-lb").textContent = TYPE_LABELS[state.type];
   syncURL(); refetch();
 });
+const COST_LABELS = { all: "费用: 全部", recorded: "费用: 已记录", missing: "费用: 未记录" };
+$("#cost-opts").addEventListener("click", e => {   // 费用记录下拉 (找没记费用的充电补录)
+  const b = e.target.closest("button"); if (!b || b.classList.contains("on")) return;
+  $("#cost-menu").removeAttribute("open");
+  state.cost = b.dataset.v;
+  $("#cost-opts .on").classList.remove("on"); b.classList.add("on");
+  $("#cost-lb").textContent = COST_LABELS[state.cost];
+  syncURL(); refetch();
+});
 function timeLabel() {
   if (state.range === "custom")   // 自定义显示紧凑区间, 如 01/01–03/31
     return `${state.cFrom.slice(5).replace("-", "/")}–${state.cTo.slice(5).replace("-", "/")}`;
@@ -460,6 +472,11 @@ $("#type-lb").textContent = TYPE_LABELS[state.type] || "类型: 全部";
 if (state.type !== "all") {                   // URL 带类型/城市时同步选中态
   $("#type-opts .on").classList.remove("on");
   $(`#type-opts button[data-v="${state.type}"]`).classList.add("on");
+}
+if (state.cost !== "all") {                   // URL 带费用筛选时同步选中态
+  $("#cost-lb").textContent = COST_LABELS[state.cost];
+  $("#cost-opts .on").classList.remove("on");
+  $(`#cost-opts button[data-v="${state.cost}"]`).classList.add("on");
 }
 $("#city-lb").textContent = state.city ? "城市: " + state.city : "城市: 全部";
 (async () => {   // 城市筛选选项 (按充电次数降序); 拉不到就只有"全部"

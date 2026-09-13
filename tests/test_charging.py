@@ -158,6 +158,22 @@ def test_sessions_type_filter(auth, db):
                     ).json()["total"] == 2
 
 
+def test_sessions_cost_filter(auth, db):
+    """费用筛选: 已记录 / 未记录 (费用记 0 也算已记录); 非法值 400。"""
+    seed_addresses(db)
+    seed_charging(db, id=1, cost=25.5)                       # 记了费用
+    seed_charging(db, id=2, cost=0.0,                        # 记了 0 元也算已记录
+                  start_date=datetime(2026, 9, 8, 10, 0))
+    seed_charging(db, id=3, cost=None,                       # 没记
+                  start_date=datetime(2026, 9, 9, 10, 0))
+    base = "/tesla/charging/api/sessions"
+    assert auth.get(base, params={"cost": "recorded"}).json()["total"] == 2
+    assert auth.get(base, params={"cost": "missing"}).json()["total"] == 1
+    assert auth.get(base).json()["total"] == 3               # 不带 = 全部
+    r = auth.get(base, params={"cost": "hack"})
+    assert r.status_code == 400 and r.json()["detail"] == "不支持的费用筛选"
+
+
 def test_sessions_search_by_address(auth, db):
     seed_addresses(db)
     seed_charging(db, id=1)
@@ -396,3 +412,16 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
     # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)
     assert ".filters { overflow-x: auto; scrollbar-width: none; }" in html
     assert ".filters::-webkit-scrollbar { display: none; }" in html
+
+
+def test_charging_page_cost_filter_menu(auth):
+    """费用筛选下拉 (全部/已记录/未记录): 与类型筛选同款收起式, 写进 URL。"""
+    html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
+    for frag in ['id="cost-menu"', 'id="cost-opts"', 'id="cost-lb"',
+                 'data-v="recorded"', 'data-v="missing"', "已记录费用", "未记录费用",
+                 "COST_LABELS", '$("#cost-opts").addEventListener',
+                 'u.searchParams.set("cost", state.cost)',
+                 'cost: state.cost',                       # 列表请求带费用筛选
+                 'qs0.get("cost")']:                       # URL 深链带入
+        assert frag in html, f"充电页缺少 {frag}"
