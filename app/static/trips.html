@@ -431,9 +431,11 @@ body.selecting #refresh-btn { display: none; }
   left: -160px; top: -320px;
 }
 #trip-map .amap-logo, #trip-map .amap-copyright {
-  /* 高德给 logo 锚块内联 left:4px (钉在容器左缘 = 可视区外): 只写 right 时
-     锚块被拉宽、油墨仍停在左缘; left:auto 清掉内联值, right 才真正接管 */
-  left: auto !important; right: 168px !important; bottom: 328px !important;
+  /* 高德原生是 logo 贴容器左缘、版权紧随其后并排 (dbg81 实测 left:4px /
+     left:85px, 天然不重叠)。之前逐个锚 right/bottom 把两者钉到同一角 →
+     互相重叠; 改为整体平移环带偏移量 (对称补偿 #trip-map 的 -160/-320),
+     保住原生并排, 版权文字多宽都不怕 */
+  transform: translate(160px, -320px);
 }
 .trip-msg {
   position: absolute; inset: 0; display: flex; flex-direction: column;

@@ -1040,7 +1040,7 @@ def test_trips_page_preloads_tiles(auth):
                  "width: calc(100% + 320px); height: calc(100% + 640px);",
                  "left: -160px; top: -320px;",
                  "#trip-map .amap-logo, #trip-map .amap-copyright",
-                 "left: auto !important; right: 168px !important; bottom: 328px !important;",
+                 "transform: translate(160px, -320px);",
                  "const MAP_RING_X = 160, MAP_RING_Y = 320;",
                  "const FIT_AVOID = [46 + MAP_RING_Y, 46 + MAP_RING_Y,"
                  " 46 + MAP_RING_X, 46 + MAP_RING_X];",
