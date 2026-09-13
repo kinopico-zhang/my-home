@@ -608,6 +608,12 @@ def trips_page() -> FileResponse:
     return _page("trips.html")
 
 
+@app.get("/tesla/groups")
+def groups_page() -> FileResponse:
+    """行程分组页: 分组的浏览/打开/改名/删除 (创建入口在行程列表)。"""
+    return _page("groups.html")
+
+
 @app.get("/tesla/live")
 def live_page() -> FileResponse:
     """当前驾驶页: 在开时实时速度 / 位置 / 电耗 / 剩余电量。"""

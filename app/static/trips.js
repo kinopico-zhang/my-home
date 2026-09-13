@@ -563,11 +563,10 @@ $("#sel-go").addEventListener("click", () => {
 });
 
 /* ============================ 轨迹分组 ============================ */
-/* 逻辑分组存自有库 (api/groups), 行程原数据不动; 打开分组 = 合并播放。
-   深链用逗号串原样直通 —— 不能折叠成头尾区间, 区间会把中间没选进的行程
-   也算进来 (分组本就不要求 id 连续)。 */
+/* 逻辑分组存自有库 (api/groups), 行程原数据不动; 管理 (打开/改名/删除) 在
+   独立的分组页, 本页只留创建入口 (多选 → 存为分组)。打开分组 = 行程页
+   ?ids= 深链合并播放, 关弹层自动回分组页 (见 closeTrip)。 */
 let gpIds = [];         // 进入命名模式时快照的选中 ids (之后划选变动不影响本次保存)
-let gpGroups = [];      // 分组面板当前数据 (渲染 + 委托处理器查用)
 let toastTimer = null;
 
 function toast(msg) {
@@ -618,115 +617,6 @@ $("#gp-save").addEventListener("click", async () => {
   } catch (err) {
     toast(`存分组失败: ${err.message}`);
     btn.disabled = false;
-  }
-});
-
-// ---- 分组面板 ----
-function gpRowHTML(g) {
-  return `<div class="gp-item" data-gid="${g.id}" data-ids="${g.ids.join(",")}">` +
-    `<button class="gp-main"><div class="gp-name">${esc(g.name)}</div>` +
-    `<div class="gp-meta">${g.n} 段 · ${num(g.km)} km` +
-    (g.span ? ` · ${esc(g.span)}` : "") + `</div></button>` +
-    `<button class="gp-act gp-rename">改名</button>` +
-    `<button class="gp-act gp-del">删除</button></div>`;
-}
-
-function gpRender() {
-  $("#gp-empty").hidden = gpGroups.length > 0;
-  $("#gp-list").innerHTML = gpGroups.map(gpRowHTML).join("");
-}
-
-async function openGroups() {
-  const panel = $("#gpanel");
-  panel.style.top = $("header").offsetHeight + "px";   // 顶栏含安全区 padding, 高度只能现量
-  panel.hidden = false;
-  requestAnimationFrame(() => panel.classList.add("show"));
-  $("#gp-list").innerHTML = "";
-  $("#gp-empty").hidden = true;
-  try {
-    gpGroups = await getJSON("/tesla/trips/api/groups");
-  } catch {
-    gpGroups = [];
-    toast("分组加载失败");
-  }
-  gpRender();
-}
-
-function closeGroups() {
-  const panel = $("#gpanel");
-  panel.classList.remove("show");
-  setTimeout(() => { panel.hidden = true; }, 300);
-}
-
-$("#groups-btn").addEventListener("click", openGroups);
-$("#gp-close").addEventListener("click", closeGroups);
-
-document.addEventListener("keydown", e => {
-  /* 弹层播分组时面板藏在弹层下面, Esc 不连面板一起关 (关弹层要能回到
-     分组页); 弹层自己不吃 Esc, 这里只挡面板 */
-  if (e.key === "Escape" && !$("#gpanel").hidden &&
-      !$("#sheet").classList.contains("show")) closeGroups();
-});
-
-/* 面板点击委托: 点条目开合并播放; 改名行内编辑; 删除二次确认 (3s 内再点才删)。
-   行内重渲染会脱链事件目标 —— 委托先判 isConnected (与页签菜单同一坑)。 */
-$("#gp-list").addEventListener("click", async e => {
-  const t = e.target;
-  if (!(t instanceof Element) || !t.isConnected) return;
-  const item = t.closest(".gp-item");
-  if (!item) return;
-  const gid = +item.dataset.gid;
-  const group = gpGroups.find(g => g.id === gid);
-  if (t.closest(".gp-del")) {
-    const btn = t.closest(".gp-del");
-    if (!btn.classList.contains("arm")) {          // 第一次点: 挂起 3s
-      btn.classList.add("arm"); btn.textContent = "确认删除";
-      setTimeout(() => { btn.classList.remove("arm"); btn.textContent = "删除"; }, 3000);
-      return;
-    }
-    try {
-      const r = await fetch(`/tesla/trips/api/groups/${gid}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(`${r.status}`);
-      gpGroups = gpGroups.filter(g => g.id !== gid);
-      gpRender();
-      toast("已删除分组");
-    } catch { toast("删除失败"); }
-  } else if (t.closest(".gp-rename")) {
-    item.innerHTML =
-      `<input class="gp-input" value="${esc(group.name)}" maxlength="30">` +
-      `<button class="gp-act gp-ok">确定</button>` +
-      `<button class="gp-act gp-no">取消</button>`;
-    const inp = item.querySelector(".gp-input");
-    inp.focus(); inp.select();
-  } else if (t.closest(".gp-ok")) {
-    const name = item.querySelector(".gp-input").value.trim();
-    if (!name) { toast("名字不能为空"); return; }
-    try {
-      const r = await fetch(`/tesla/trips/api/groups/${gid}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      if (!r.ok) throw new Error(`${r.status}`);
-      group.name = name;
-      gpRender();
-    } catch { toast("改名失败"); }
-  } else if (t.closest(".gp-no")) {
-    gpRender();
-  } else if (t.closest(".gp-main")) {
-    /* 面板不关: z-index 89 让弹层盖上来播, 关弹层原地回到分组页
-       (浏览完分组轨迹留在分组页, 不回行程列表) */
-    openMerged(item.dataset.ids);   // 逗号串原样直通 (保成员, 不折叠区间)
-  }
-});
-
-$("#gp-list").addEventListener("keydown", e => {
-  if (!(e.target instanceof Element)) return;
-  if (e.key === "Enter" && e.target.classList.contains("gp-input")) {
-    e.preventDefault();
-    e.target.closest(".gp-item").querySelector(".gp-ok").click();
-  } else if (e.key === "Escape") {
-    e.stopPropagation();   // 阻断冒泡, 别再触发面板级 Esc 关面板
-    gpRender();            // 行内改名的输入框: Esc 放弃
   }
 });
 
@@ -1590,8 +1480,9 @@ async function preloadVectorTrack(pts, ts, openZoom, onProgress, seq) {
 /* ---------- 地址栏深链: 打开变 /tesla/trips?id=X 或 ?ids=a,b, 方便分享/回退 ---------- */
 /* listURL(): 筛选参数 + 行程深链 共同组成地址栏 (时间菜单/筛选行/深链共用) */
 function urlTripKey() {
-  const m = /[?&](?:id|ids)=([\d,-]+)/.exec(location.search);
-  return m ? m[1] : null;
+  /* ids= 逗号串经分享渠道常被再编码成 %2C (微信/备忘录都会), 先解一遍再配 */
+  const m = /[?&](?:id|ids)=([\d,%-]+)/.exec(location.search);
+  return m ? decodeURIComponent(m[1]) : null;
 }
 
 async function openByKey(key) {
@@ -1615,6 +1506,10 @@ function hideSheet() {
   sheetTrip = null;
 }
 
+/* 分组页跳来的深链 (?ids=): 关弹层要回分组页。referrer 是整页导航留下的,
+   页内后续 push/replace 不影响它; 直开的分享链没有这个 referrer, 照旧抹参。 */
+const cameFromGroups = document.referrer.endsWith("/tesla/groups");
+
 function closeTrip() {
   const key = curKey;
   hideSheet();
@@ -1622,8 +1517,10 @@ function closeTrip() {
   if (key == null) return;
   if (history.state && history.state.k === key)
     history.back();   // 弹层是本页推入的 → 回退 (popstate 会再走一遍 hideSheet, 无害)
-  else if (urlTripKey() != null)
+  else if (urlTripKey() != null) {
+    if (cameFromGroups) { history.back(); return; }    // 分组页跳来 → 回分组页
     history.replaceState(null, "", listURL());         // 分享直开 → 只抹行程参数
+  }
 }
 
 /* 弹层头部汇总 (日期/时长/里程/最高速/功耗): 单条来自卡片数据, 合并来自

@@ -13,7 +13,7 @@
      站外。主屏全屏 App 的存储与 Safari 相互独立, 两边各自记各自的。 */
 (function () {
   "use strict";
-  var PAGES = ["/tesla/charging", "/tesla/map", "/tesla/trips",
+  var PAGES = ["/tesla/charging", "/tesla/map", "/tesla/trips", "/tesla/groups",
                "/tesla/live", "/tesla/settings"];
   var path = location.pathname;
   if (PAGES.indexOf(path) === -1) return;
