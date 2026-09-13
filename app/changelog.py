@@ -1,73 +1,65 @@
-"""更新日志: 从 git 历史生成逐提交的版本条目。
+"""更新日志数据: 每个版本 = 一批改动的合并, 文案站在使用者视角。
 
-版本号规则 (用户定): x.y.z —— x=架构重构, y=特性, z=修复;
-首个提交定 1.0.0, 之后每个提交按自身类型步进 (低段清零, 同语义化版本)。
-类型从提交信息推断: 含"重构"→架构, 含"修复"/"修正"→修复, 其余→特性。
+不逐提交记版本 (一个版本可以同时含多个修复和多个功能); 版本号 x.y.z ——
+x 大改版 · y 新功能 · z 问题修复, 新批次加在最上面 (新→老)。
 """
-import subprocess
-from pathlib import Path
+from typing import Final
 
-from .schemas import ChangelogEntry
+from .schemas import ChangelogItem, ChangelogVersion
 
-_REPO = Path(__file__).resolve().parent.parent   # 服务就跑在仓库里
-_SEP = "\x1f"                                    # git log 字段分隔 (提交信息里不会出现)
+VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="2.3.0", date="2026-09-13", items=[
+        ChangelogItem(kind="新增", text="充电统计页: 快慢充占比、充电时段、常去充电点、城市分布等图表"),
+        ChangelogItem(kind="新增", text="充电地图页: 常去充电点的热力图, 按电量 / 次数 / 费用三种视角着色, 点一下看明细"),
+        ChangelogItem(kind="新增", text="更新日志页 (本页), 加入每页的菜单"),
+        ChangelogItem(kind="新增", text="行程分组独立成页, 行程页只保留创建入口"),
+        ChangelogItem(kind="新增", text="轨迹播放可以录成视频, 播完一键存到相册"),
+        ChangelogItem(kind="新增", text="充电记录可按「已记费用 / 未记费用」筛选, 逐条补录更顺手"),
+        ChangelogItem(kind="新增", text="足迹地图可按驾驶员筛选"),
+        ChangelogItem(kind="改进", text="页签更名: 充电记录 / 足迹地图 / 行程列表 / 软件设置"),
+        ChangelogItem(kind="改进", text="充电详情和轨迹弹层可以拽着顶部把手下拉关闭"),
+        ChangelogItem(kind="修复", text="各页顶栏统一: 时间范围一律进顶栏, 行程分组和软件设置页的顶栏与全站对齐"),
+        ChangelogItem(kind="修复", text="录完视频在 iPhone 上没有「存到相册」按钮"),
+        ChangelogItem(kind="修复", text="充电时间很短的卡片, 电量起止标签会叠在一起"),
+    ]),
+    ChangelogVersion(version="2.2.0", date="2026-09-12", items=[
+        ChangelogItem(kind="新增", text="当前驾驶页: 车在开时实时看车速、电量、续航和已驶里程, 行程结束自动转到行程页"),
+        ChangelogItem(kind="新增", text="加到主屏幕后的全屏体验完善: 整个 App 都在全屏里, 冷启动回到上次看的页面"),
+        ChangelogItem(kind="新增", text="没记费用的充电在列表里有红色标记, 补录后自动恢复正常"),
+        ChangelogItem(kind="改进", text="播放视角可手动锁定, 播放条 +/− 整体调远近并记住; 播放中不会自动熄屏"),
+        ChangelogItem(kind="改进", text="地图默认深色, 与 App 风格一致 (可在设置页换)"),
+        ChangelogItem(kind="改进", text="合并播放上限提到 100 段, 全选一键补齐"),
+        ChangelogItem(kind="修复", text="全屏 App 里跳页面会弹出 Safari 菜单、实时数字位数变化挤乱布局等一批问题"),
+    ]),
+    ChangelogVersion(version="2.1.0", date="2026-09-11", items=[
+        ChangelogItem(kind="新增", text="软件设置页: TeslaMate 连接、高德 Key、驾驶员名单都在页面里改"),
+        ChangelogItem(kind="新增", text="行程可标注驾驶员, 行程列表按驾驶员筛选"),
+        ChangelogItem(kind="新增", text="高速费估价: 按实际走过的路线估算, 打开行程自动估一次"),
+        ChangelogItem(kind="新增", text="行程分组: 常跑的线路存成命名分组, 一键合并播放"),
+        ChangelogItem(kind="改进", text="播放镜头随车速平滑拉远近, 长轨迹播放放慢到肉眼跟得上"),
+        ChangelogItem(kind="修复", text="手机端自定义日历出屏、下拉菜单被遮挡等一批问题"),
+    ]),
+    ChangelogVersion(version="2.0.0", date="2026-09-10", items=[
+        ChangelogItem(kind="新增", text="行程列表页: 每段行程的里程、时长、起终点, 点开看轨迹地图"),
+        ChangelogItem(kind="新增", text="轨迹动画播放: 视角跟着车走, 按车速着色, GPS 断档沿真实道路补连"),
+        ChangelogItem(kind="新增", text="多选连续行程合并成一条长轨迹播放, 链接可直接分享"),
+        ChangelogItem(kind="新增", text="时间范围和城市筛选, 筛选条件写进链接可直接分享"),
+        ChangelogItem(kind="改进", text="服务架构整体重写, 数据链路全类型化, 更快更稳"),
+        ChangelogItem(kind="修复", text="手机端地图缩放被劫持、日期筛选报错、浏览器缓存旧脚本等一批问题"),
+    ]),
+    ChangelogVersion(version="1.1.0", date="2026-09-09", items=[
+        ChangelogItem(kind="新增", text="足迹地图: 一张地图看所有走过的路线, 越放大越精细"),
+        ChangelogItem(kind="新增", text="登录保护: 密码可显示, 输错会提示原因"),
+        ChangelogItem(kind="新增", text="费用补录: 忘记记金额的充电点一下就能补上, 写回 TeslaMate"),
+        ChangelogItem(kind="改进", text="轨迹数据服务端缓存, 第二次打开更快"),
+    ]),
+    ChangelogVersion(version="1.0.0", date="2026-09-08", items=[
+        ChangelogItem(kind="新增", text="My Tesla 上线: 手机上翻看特斯拉充电历史 (电量 / 时长 / 费用)"),
+        ChangelogItem(kind="新增", text="充电详情: 每次充电的过程曲线"),
+    ]),
+]
 
-_TYPE_LABELS = {"refactor": "重构", "feat": "特性", "fix": "修复"}
 
-
-def classify(subject: str) -> str:
-    """提交信息 → 类型: 重构 → refactor, 修复/修正 → fix, 其余 → feat。"""
-    if "重构" in subject:
-        return "refactor"
-    if "修复" in subject or "修正" in subject:
-        return "fix"
-    return "feat"
-
-
-def parse_log(text: str) -> list[ChangelogEntry]:
-    """git log 原始输出 (新→老) → 版本条目 (新→老)。
-
-    逐提交编号: 最老一条定 1.0.0; refactor 进 x 段 (y/z 清零), feat 进 y 段
-    (z 清零), fix 进 z 段。merge 提交与缺字段的行跳过 (不占版本号)。
-    """
-    rows: list[dict[str, str]] = []
-    for line in text.splitlines():
-        parts = line.split(_SEP)
-        if len(parts) != 3:                     # 空行/脏数据跳过
-            continue
-        commit, date, subject = parts
-        if subject.startswith("Merge "):        # 合并提交不是一次变更
-            continue
-        rows.append({"hash": commit, "date": date, "subject": subject})
-    rows.reverse()                                # git log 新→老, 编号要老→新
-    entries: list[ChangelogEntry] = []
-    x, y, z = 1, 0, 0
-    for i, row in enumerate(rows):
-        kind = classify(row["subject"])
-        if i == 0:
-            version = "1.0.0"                   # 首版 1.0.0
-        else:
-            if kind == "refactor":
-                x, y, z = x + 1, 0, 0
-            elif kind == "feat":
-                y, z = y + 1, 0
-            else:
-                z += 1
-            version = f"{x}.{y}.{z}"
-        entries.append(ChangelogEntry(version=version, type=kind,
-                                      type_label=_TYPE_LABELS[kind], **row))
-    entries.reverse()                           # 页面新→老
-    return entries
-
-
-def entries() -> list[ChangelogEntry]:
-    """读仓库 git 历史生成条目; 不在仓库里跑 (无 .git) 返回空。"""
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(_REPO), "log", "--date=short",
-             f"--pretty=format:%h{_SEP}%ad{_SEP}%s"],
-            capture_output=True, text=True, check=True, timeout=10,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return parse_log(out)
+def entries() -> list[ChangelogVersion]:
+    """全部版本, 新→老。"""
+    return VERSIONS

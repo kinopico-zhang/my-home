@@ -32,7 +32,8 @@ from .schemas import (
     CarInfo,
     ChargeDims,
     ChargeMapLocation,
-    ChangelogEntry,
+    ChangelogItem,
+    ChangelogVersion,
     ChargingSessionDetail,
     ChargingSessionsPage,
     ChargingSummary,
@@ -668,7 +669,7 @@ def settings_page() -> FileResponse:
 
 @app.get("/tesla/changelog")
 def changelog_page() -> FileResponse:
-    """更新日志页: 逐提交的版本条目 (x.y.z: x=架构重构, y=特性, z=修复)。"""
+    """更新日志页: 合并批次的版本条目, 用户视角文案。"""
     return _page("changelog.html")
 
 
@@ -737,8 +738,8 @@ def remove_driver(driver_id: int,
 
 
 @changelogapi.get("/entries")
-def get_changelog_entries() -> list[ChangelogEntry]:
-    """更新日志条目 (新→老), 版本号逐提交步进。"""
+def get_changelog_entries() -> list[ChangelogVersion]:
+    """更新日志版本 (新→老), 每版是一批改动的合并。"""
     return changelog.entries()
 
 

@@ -111,22 +111,29 @@ main { flex: 1; padding: 14px 14px calc(env(safe-area-inset-bottom) + 24px);
 
 #entries { background: var(--surface); border: 1px solid var(--hairline);
            border-radius: 14px; overflow: hidden; }
-.ver { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; }
+.ver { padding: 12px 14px; }
 .ver + .ver { border-top: 1px solid var(--hairline); }
+.v-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
 .v-badge {
-  flex: none; margin-top: 1px; font-family: ui-monospace, Menlo, monospace;
-  font-size: 12.5px; font-weight: 600; color: #7db3f0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 15px; font-weight: 600; color: #7db3f0;
   font-variant-numeric: tabular-nums;
 }
-.v-chip { flex: none; margin-top: 1px; font-size: 10.5px; font-weight: 600;
-          padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
-.v-chip.feat { color: #7db3f0; background: rgba(57,135,229,.18); }
-.v-chip.fix { color: #6fce8e; background: rgba(31,163,73,.16); }
-.v-chip.refactor { color: #f0b13d; background: rgba(224,138,60,.16); }
-.v-body { flex: 1; min-width: 0; }
-.v-subj { font-size: 13.5px; line-height: 1.4; word-break: break-word; }
-.v-meta { font-size: 11px; color: var(--ink-3); margin-top: 3px;
-          font-family: ui-monospace, Menlo, monospace; }
+.v-date {
+  font-size: 11px; color: var(--ink-3);
+  font-family: ui-monospace, Menlo, monospace;
+}
+.v-items { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.v-items li {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 13.5px; line-height: 1.45; word-break: break-word;
+}
+.k { flex: none; margin-top: 2px; font-size: 10.5px; font-weight: 600;
+     padding: 1.5px 7px; border-radius: 6px; white-space: nowrap; }
+.k-add { color: #7db3f0; background: rgba(57,135,229,.18); }
+.k-imp { color: #f0b13d; background: rgba(224,138,60,.16); }
+.k-fix { color: #6fce8e; background: rgba(31,163,73,.16); }
+.t { flex: 1; min-width: 0; }
 
 .state { padding: 40px 20px; text-align: center; color: var(--ink-2); font-size: 14px; }
 .spin {
@@ -156,6 +163,7 @@ main { flex: 1; padding: 14px 14px calc(env(safe-area-inset-bottom) + 24px);
         <a href="/tesla/groups">行程分组</a>
         <a href="/tesla/live">当前驾驶</a>
         <a href="/tesla/settings">软件设置</a>
+        <a class="on" href="/tesla/changelog">更新日志</a>
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
@@ -163,7 +171,7 @@ main { flex: 1; padding: 14px 14px calc(env(safe-area-inset-bottom) + 24px);
 </header>
 
 <main>
-  <div class="rule">每个提交一条。版本号 <b>x.y.z</b> —— x 架构重构 · y 特性 · z 修复, 逐提交步进; <b>1.0.0</b> 为首版。</div>
+  <div class="rule">一批改动记一个版本 (新功能和修复合在一起)。版本号 <b>x.y.z</b> —— x 大改版 · y 新功能 · z 问题修复; <b>1.0.0</b> 为首版。</div>
   <div id="entries">
     <div id="list"></div>
     <div class="state" id="loading"><div class="spin"></div>正在读取版本历史…</div>
