@@ -43,7 +43,8 @@ class LibraryScanner:
 
     def scan(self) -> ScanSummary:
         """同步执行一轮 (调用方放后台线程); 结束返回汇总统计。"""
-        if not self._scan_lock.acquire(blocking=False):
+        # 非阻塞拿锁 (拿不到说明已有扫描在跑, 要立刻报错), 语义上用不了 with
+        if not self._scan_lock.acquire(blocking=False):  # pylint: disable=consider-using-with
             raise RuntimeError("扫描正在进行中")
         try:
             return self._run_scan()
@@ -250,16 +251,16 @@ class LibraryScanner:
         """曲目行 (路径幂等: 有则改, 无则插)。"""
         album_id = album_ids[
             LibraryScanner._album_directory_of(track.relative_path)]
-        values = dict(
-            album_id=album_id,
-            title=track.title, artist=track.artist,
-            track_number=track.track_number,
-            disc_number=track.disc_number,
-            duration_seconds=track.duration_seconds,
-            file_size=track.file_size, file_mtime=track.file_mtime,
-            file_format=track.file_format, script=track.script,
-            lyrics=track.lyrics, lyrics_synced=track.lyrics_synced,
-            has_artwork=track.has_artwork)
+        values = {
+            "album_id": album_id,
+            "title": track.title, "artist": track.artist,
+            "track_number": track.track_number,
+            "disc_number": track.disc_number,
+            "duration_seconds": track.duration_seconds,
+            "file_size": track.file_size, "file_mtime": track.file_mtime,
+            "file_format": track.file_format, "script": track.script,
+            "lyrics": track.lyrics, "lyrics_synced": track.lyrics_synced,
+            "has_artwork": track.has_artwork}
         track_id = existing_track_ids.get(track.relative_path)
         if track_id is None:
             session.add(Track(file_path=track.relative_path, **values))

@@ -820,7 +820,8 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  'tripMap.on("zoomend", () => {',
                  "if (zoomUserLock && anim && !anim.finished)"
                  " zoomUserZoom = tripMap.getZoom();",
-                 "if (zoomUserLock) {\n    const z = Math.round(zoomUserZoom || tripMap.getZoom());",
+                 "if (zoomUserLock) {\n    const z = "
+                 "Math.round(zoomUserZoom || tripMap.getZoom());",
                  "zoomUserLock = false;                    // 手动锁定解除, 恢复随速变焦",
                  # 堵车平滑 + 提前量: 滑窗开在播放时间轴上 (过去 2s + 预看 5s,
                  # 均匀 8 采样插值车速取均值) —— 领先当前车速 ~1.5s, 减速刚起势

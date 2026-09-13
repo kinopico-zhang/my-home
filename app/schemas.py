@@ -4,7 +4,6 @@
 (FastAPI 响应默认按别名序列化)。
 """
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -521,4 +520,3 @@ class InvitationItem(BaseModel):
     expires_at: datetime
     used_at: datetime | None = None
     revoked: bool
-

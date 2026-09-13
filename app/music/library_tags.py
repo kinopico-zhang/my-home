@@ -7,12 +7,12 @@
 import re
 from pathlib import Path
 
-from mutagen import File as load_audio_file, MutagenError
+from mutagen import File as load_audio_file, FileType, MutagenError
 from mutagen.flac import FLAC
 
 from .library_database import AUDIO_EXTENSION_FORMATS
 from .library_languages import detect_script
-from .schemas import ScannedTrack
+from .schemas import ScannedTrack, TagFields
 
 # 刮削器的目录命名: "2015 25 [2b4c1e9c]" → 标题 "25"
 _YEAR_PREFIX_PATTERN = re.compile(r"^\d{4}\s+")
@@ -153,64 +153,64 @@ def read_track_metadata(audio_path: Path, relative_path: str,
     if not file_format:
         return None
 
-    title = artist = album_title = album_artist = ""
-    album_artist_sort = date_text = script = embedded_lyrics = ""
-    track_number = disc_number = 0
-    duration_seconds = 0.0
-    has_artwork = False
     audio = load_audio_file(audio_path)
-    if audio is not None:
-        tags = audio.tags
-        title = _read_tag(tags, "title")
-        artist = _read_tag(tags, "artist")
-        album_title = _read_tag(tags, "album")
-        album_artist = _read_tag(tags, "albumartist")
-        album_artist_sort = _read_tag(tags, "albumartistsort") \
-            or _read_tag(tags, "artistsort")
-        date_text = _read_tag(tags, "date")
-        script = _read_tag(tags, "script")
-        track_number = _number_prefix(_read_tag(tags, "tracknumber"))
-        disc_number = _number_prefix(_read_tag(tags, "discnumber"))
-        if disc_number == 0:
-            disc_number = 1
-        embedded_lyrics = _read_tag(tags, "lyrics")
-        duration_seconds = float(getattr(audio.info, "length", 0.0) or 0.0)
-        has_artwork = _has_embedded_artwork(audio)
+    fields = TagFields() if audio is None else _read_tag_fields(audio)
 
     parts = relative_path.split("/")
     artist_directory = parts[0]
     album_directory = parts[1] if len(parts) > 2 else artist_directory
-    if not title:
-        title = title_from_filename(audio_path.name)
-    if not album_title:
-        album_title = album_title_from_directory(album_directory)
-    if not album_artist:
-        album_artist = artist or artist_directory
-    if not script:
-        script = detect_script(title, artist, album_artist)
+    if not fields.title:
+        fields.title = title_from_filename(audio_path.name)
+    if not fields.album_title:
+        fields.album_title = album_title_from_directory(album_directory)
+    if not fields.album_artist:
+        fields.album_artist = fields.artist or artist_directory
+    if not fields.script:
+        fields.script = detect_script(fields.title, fields.artist,
+                                      fields.album_artist)
 
     lyrics = _read_sidecar_lyrics(audio_path)
     if not lyrics:
-        lyrics = embedded_lyrics.strip()
+        lyrics = fields.embedded_lyrics.strip()
 
     return ScannedTrack(
         relative_path=relative_path,
         file_size=file_size,
         file_mtime=file_mtime,
         file_format=file_format,
-        title=title[:300],
-        artist=artist[:200] or album_artist[:200],
-        album_title=album_title[:300],
-        album_artist=album_artist[:200],
-        album_artist_sort=album_artist_sort[:200],
-        year=_year_from_date(date_text),
-        track_number=track_number,
-        disc_number=disc_number,
-        duration_seconds=duration_seconds,
-        script=script,
+        title=fields.title[:300],
+        artist=fields.artist[:200] or fields.album_artist[:200],
+        album_title=fields.album_title[:300],
+        album_artist=fields.album_artist[:200],
+        album_artist_sort=fields.album_artist_sort[:200],
+        year=_year_from_date(fields.date_text),
+        track_number=fields.track_number,
+        disc_number=fields.disc_number,
+        duration_seconds=fields.duration_seconds,
+        script=fields.script,
         lyrics=lyrics[:20000],
         lyrics_synced=looks_like_synced_lyrics(lyrics),
-        has_artwork=has_artwork,
+        has_artwork=fields.has_artwork,
+    )
+
+
+def _read_tag_fields(audio: FileType) -> TagFields:
+    """音频对象的标签/时长/封面一次读全 (read_track_metadata 只管兜底与截断)。"""
+    tags = audio.tags
+    return TagFields(
+        title=_read_tag(tags, "title"),
+        artist=_read_tag(tags, "artist"),
+        album_title=_read_tag(tags, "album"),
+        album_artist=_read_tag(tags, "albumartist"),
+        album_artist_sort=(_read_tag(tags, "albumartistsort")
+                           or _read_tag(tags, "artistsort")),
+        date_text=_read_tag(tags, "date"),
+        script=_read_tag(tags, "script"),
+        track_number=_number_prefix(_read_tag(tags, "tracknumber")),
+        disc_number=_number_prefix(_read_tag(tags, "discnumber")) or 1,
+        embedded_lyrics=_read_tag(tags, "lyrics"),
+        duration_seconds=float(getattr(audio.info, "length", 0.0) or 0.0),
+        has_artwork=_has_embedded_artwork(audio),
     )
 
 

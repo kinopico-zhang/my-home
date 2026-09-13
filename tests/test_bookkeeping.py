@@ -3,8 +3,6 @@
 协议要点: id 客户端生成, 记账人 (created_by / updated_by) 服务端按会话落
 (客户端说了不算), synced_at 是服务端时间作为增量游标, 删除是墓碑。
 """
-from datetime import datetime, timedelta
-
 from fastapi.testclient import TestClient
 
 from app import account_store, config
@@ -149,9 +147,9 @@ def test_sync_edit_propagates_to_other_user(usersdb):
     yi_first = _sync(yi)               # 乙首同步: 全量, 拿到甲的账
     got = yi_first["entries"][0]
     assert got["created_by_name"] == "记账人甲"
-    yi_last = _sync(yi, [_entry("aaaa1111", "2026-09-13T10:00:00Z",
-                                amount=30, note="乙改的金额")],
-                    last_sync=yi_first["server_now"])
+    _sync(yi, [_entry("aaaa1111", "2026-09-13T10:00:00Z",
+                      amount=30, note="乙改的金额")],
+          last_sync=yi_first["server_now"])
     jia_second = _sync(jia, last_sync=jia_first["server_now"])   # 甲用自己的游标
     out = [e for e in jia_second["entries"] if e["id"] == "aaaa1111"][0]
     assert out["amount"] == 30
@@ -229,16 +227,16 @@ def test_categories_seeded_from_wacai(usersdb, bkdb):
     """类别树种子: 空库建好就有 (挖财导出的 163 类), 大类在前子类随后。"""
     from app.bookkeeping import store  # pylint: disable=import-outside-toplevel
     tree = store.category_tree(bkdb)
-    assert len(tree["expense"]) == 14        # 支出大类
-    assert len(tree["income"]) == 15         # 收入大类
-    canyin = tree["expense"][0]
-    assert canyin[0] == "餐饮"
-    assert "早餐" in canyin[1] and "餐饮其他" in canyin[1]
-    income_names = [t[0] for t in tree["income"]]
+    assert len(tree.expense) == 14           # 支出大类
+    assert len(tree.income) == 15            # 收入大类
+    canyin = tree.expense[0]
+    assert canyin.name == "餐饮"
+    assert "早餐" in canyin.children and "餐饮其他" in canyin.children
+    income_names = [group.name for group in tree.income]
     assert "工资薪水" in income_names and "顺风车" in income_names
     # 子类总数对上 (大类的子类拼起来)
-    assert sum(len(kids) for _, kids in tree["expense"]) == 134
-    assert all(kids == [] for _, kids in tree["income"])
+    assert sum(len(group.children) for group in tree.expense) == 134
+    assert all(group.children == [] for group in tree.income)
 
 
 def test_categories_seeded_only_once(usersdb, bkdb):
@@ -258,15 +256,14 @@ def test_categories_api_serves_tree(usersdb):
     r = client.get("/bookkeeping/api/categories")
     assert r.status_code == 200, r.text
     tree = r.json()
-    tops = {t[0]: t[1] for t in tree["expense"]}
+    tops = {g["name"]: g["children"] for g in tree["expense"]}
     assert tops["交通"][0] == "充电"          # 子类有序 (种子顺序)
     assert "房贷" in tops and tops["房贷"] == []
-    assert any(t[0] == "工资薪水" for t in tree["income"])
+    assert any(g["name"] == "工资薪水" for g in tree["income"])
 
 
 def test_categories_api_requires_login(usersdb):
     """类别接口也是登录态资源: 未登录 401。"""
-    from fastapi.testclient import TestClient  # pylint: disable=import-outside-toplevel
     anon = TestClient(m.app)
     assert anon.get("/bookkeeping/api/categories").status_code == 401
 
@@ -282,9 +279,8 @@ def test_bookkeeping_page_has_amount_keyboard():
     assert 'id="amt-pad"' in html and 'id="amt-eq"' in html
     assert 'class="cat-tiles" id="cat-tiles"' in html
     assert 'id="cat-sub"' not in html             # 子类上格后子类行整个撤掉
-    keys = [k for k in ("back", "done", "7", "8", "9", "/", "4", "5",
-                        "6", "*", "1", "2", "3", "-", "0", ".", "+")]
-    for k in keys:
+    for k in ("back", "done", "7", "8", "9", "/", "4", "5",
+              "6", "*", "1", "2", "3", "-", "0", ".", "+"):
         assert f'data-k="{k}"' in html, f"键盘缺键 {k}"
     assert 'data-k="again"' not in html           # 再记键撤了 (完成一记到底)
     assert 'data-k="clear"' not in html          # 清空改长按 ⌫
@@ -314,7 +310,8 @@ def test_bookkeeping_js_wires_calculator_and_categories():
     assert "function saveEntry()" in js
     assert '"pointerdown"' in js and '"clear"' in js   # 长按 ⌫ 清空
     assert '"/bookkeeping/api/categories"' in js
-    assert 'saveLS("bk-categories"' in js and 'loadLS("bk-categories"' in js
+    assert 'saveLS("bk-categories-v2"' in js \
+        and 'loadLS("bk-categories-v2"' in js   # v2: 类别树换成 pydantic 形状
     assert "#cat-tiles" in js and "treeFor(sheetKind)" in js
     assert "cat-sub" not in js                     # 子类行撤了
     assert "function parseTags(" in js and "function nowTime(" in js

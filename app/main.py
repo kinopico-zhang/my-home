@@ -12,6 +12,7 @@ import re
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Awaitable, Callable, Iterator
 
 from fastapi import (APIRouter, Depends, FastAPI, HTTPException, Query,
@@ -35,7 +36,6 @@ from .schemas import (
     CarInfo,
     ChargeDims,
     ChargeMapLocation,
-    ChangelogItem,
     ChangelogVersion,
     ChargingSessionDetail,
     ChargingSessionsPage,
@@ -211,6 +211,7 @@ async def auth_middleware(
     token_ok = authentication.check_token(request.cookies.get("auth", ""))
     protected = _is_protected(path)
     is_api = protected and "/api/" in path
+    resp: Response
     if path == "/login" and token_ok:
         # 已登录的访客不再看表单, 直接进门厅
         resp = RedirectResponse("/", status_code=302)
@@ -232,7 +233,7 @@ async def auth_middleware(
     return resp
 
 
-def _page(fname: str, directory=None) -> FileResponse:
+def _page(fname: str, directory: Path | None = None) -> FileResponse:
     """HTML 页面: 允许缓存但必须带 ETag 重新校验 (no-cache), 更新即时生效。
 
     目录缺省 My Tesla 的静态目录; 门厅/登录/注册/账号管理在 home 共享层。"""
@@ -352,7 +353,7 @@ def register(creds: RegisterCredentials, request: Request,
         account_store.invitation_usable(users, creds.invite)
         user = account_store.create_user(users, creds.name, creds.password)
         account_store.consume_invitation(users, creds.invite)
-    except (account_store.NameError_, account_store.PasswordError,
+    except (account_store.InvalidNameError, account_store.PasswordError,
             account_store.InvitationError) as exc:
         raise HTTPException(400, str(exc)) from exc
     authentication.clear_fails(ip)
@@ -376,7 +377,7 @@ def account_change_name(body: AccountNameUpdate, request: Request,
     user = _require_user(request, users)
     try:
         account_store.rename_user(users, user, body.name)
-    except account_store.NameError_ as exc:
+    except account_store.InvalidNameError as exc:
         raise HTTPException(400, str(exc)) from exc
     return MeInfo(name=user.name, is_admin=user.is_admin)
 
@@ -408,7 +409,8 @@ def accounts_list_users(request: Request,
 
 @accounts.post("/invitations", response_model=InvitationCreated)
 def accounts_create_invitation(body: InvitationRequest, request: Request,
-                               users: Session = Depends(database.get_users_db)) -> InvitationCreated:
+                               users: Session = Depends(database.get_users_db)
+                               ) -> InvitationCreated:
     """签发注册邀请 (仅管理员; 前端拼 /register?invite= 链接分享)。"""
     _require_admin(request, users)
     try:
@@ -421,7 +423,8 @@ def accounts_create_invitation(body: InvitationRequest, request: Request,
 
 @accounts.get("/invitations", response_model=list[InvitationItem])
 def accounts_list_invitations(request: Request,
-                              users: Session = Depends(database.get_users_db)) -> list[InvitationItem]:
+                              users: Session = Depends(database.get_users_db)
+                              ) -> list[InvitationItem]:
     """邀请列表 (仅管理员, 签发时间倒序)。"""
     _require_admin(request, users)
     return [InvitationItem(token=i.token, created_at=repository.to_local(i.created_at),

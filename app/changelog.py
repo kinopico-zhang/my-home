@@ -9,8 +9,10 @@ from .schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
     ChangelogVersion(version="2.6.0", date="2026-09-14", items=[
-        ChangelogItem(kind="新增", text="My Music (听歌): 独立小应用, 可单独加到主屏幕; 扫描 NAS 里的曲库 (5 万首) 建索引, 手机上直接串流播放"),
-        ChangelogItem(kind="新增", text="播放器: 迷你条悬浮在页面底部, 点开是全屏播放页, 背景是专辑封面的模糊大图; 锁屏 / 控制中心能看歌名封面, 也能暂停切歌"),
+        ChangelogItem(kind="新增", text="My Music (听歌): 独立小应用, 可单独加到主屏幕; 扫描 NAS 里的曲库 (5 万首) 建索引,"
+                                       " 手机上直接串流播放"),
+        ChangelogItem(kind="新增", text="播放器: 迷你条悬浮在页面底部, 点开是全屏播放页, 背景是专辑封面的模糊大图; 锁屏 / 控制中心能看歌名封面,"
+                                       " 也能暂停切歌"),
         ChangelogItem(kind="新增", text="歌词: 全屏页点「词」看逐行滚动的歌词, 唱到哪行哪行放大; 点任意一行直接跳到那句"),
         ChangelogItem(kind="新增", text="搜歌词: 搜索框直接搜歌词内容, 想不起歌名只记得一句词也能找到那首歌"),
         ChangelogItem(kind="新增", text="按语种筛歌: 中文 / 日文 / 英文 / 韩文 / 俄文一键筛, 想专门听日文歌不用一张张专辑翻"),
@@ -21,24 +23,31 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="修复", text="极少数老格式 (TAK / DSD / APE) 浏览器播不了的会置灰标明, 点了会提示而不是没反应"),
     ]),
     ChangelogVersion(version="2.5.0", date="2026-09-13", items=[
-        ChangelogItem(kind="新增", text="My Money (记账): 独立小应用, 可单独加到主屏幕; 记一笔支出或收入, 按月看汇总, 每笔都记着是谁记的; 断网也能记, 联网自动同步"),
+        ChangelogItem(kind="新增", text="My Money (记账): 独立小应用, 可单独加到主屏幕; 记一笔支出或收入, 按月看汇总, 每笔都记着是谁记的;"
+                                       " 断网也能记, 联网自动同步"),
         ChangelogItem(kind="新增", text="多账号: 管理员生成邀请链接发给家人, 注册后各有各的账号; 除账号管理外的功能都能用"),
         ChangelogItem(kind="新增", text="账号管理页 (仅管理员): 看账号列表, 生成 / 撤销注册邀请, 一键复制邀请链接"),
         ChangelogItem(kind="新增", text="设置页可以改自己的名称和密码"),
-        ChangelogItem(kind="新增", text="记账的金额输入换成自带计算器键盘: 0-9 加加减乘除顺手就能算 (买菜 3.5×2 这种), 边打边出结果; 「完成」和 ⌫ 排在键盘右边, 长按 ⌫ 一键清空; 系统键盘不再弹出来"),
-        ChangelogItem(kind="新增", text="记账类别直接铺子类: 一格就是一个子类 (早餐 / 午餐 / 充电 / 地铁…), 点一下就选好, 不用先点大类; 类别是从挖财账本导过来的 160 多个, 收入支出各一套"),
+        ChangelogItem(kind="新增", text="记账的金额输入换成自带计算器键盘: 0-9 加加减乘除顺手就能算 (买菜 3.5×2 这种), 边打边出结果;"
+                                       " 「完成」和 ⌫ 排在键盘右边, 长按 ⌫ 一键清空; 系统键盘不再弹出来"),
+        ChangelogItem(kind="新增", text="记账类别直接铺子类: 一格就是一个子类 (早餐 / 午餐 / 充电 / 地铁…), 点一下就选好, 不用先点大类;"
+                                       " 类别是从挖财账本导过来的 160 多个, 收入支出各一套"),
         ChangelogItem(kind="新增", text="记一笔可以改记账时刻, 还能给账目贴标签; 用过的标签会记着, 下次点一下就能选上"),
         ChangelogItem(kind="改进", text="记一笔弹层顶部的把手可以拽下来关闭 (和充电详情一个手势), 点一下把手也能关; 类别图标改成单色, 跟深色界面更搭"),
-        ChangelogItem(kind="改进", text="服务定名 My Home: 登录后是家门厅, My Tesla (车辆) 和 My Money (记账) 两个应用都从这里进"),
+        ChangelogItem(kind="改进", text="服务定名 My Home: 登录后是家门厅, My Tesla (车辆) 和 My Money (记账)"
+                                       " 两个应用都从这里进"),
         ChangelogItem(kind="改进", text="门厅搬到了根路径: 打开就是两个应用的大卡片, 点一下就进; 门厅自己也有主屏图标 (黑底白房子)"),
-        ChangelogItem(kind="改进", text="账号管理从 My Tesla 搬进门厅: 账号是全家共用的, 不属于任何一个应用; 旧地址和老邀请链接自动跳转, 不会失效"),
+        ChangelogItem(kind="改进", text="账号管理从 My Tesla 搬进门厅: 账号是全家共用的, 不属于任何一个应用; 旧地址和老邀请链接自动跳转,"
+                                       " 不会失效"),
         ChangelogItem(kind="修复", text="登录页显示 / 隐藏密码的两个图标并排显示"),
-        ChangelogItem(kind="修复", text="iPhone Safari 上复制邀请链接没反应: 换了兜底拷贝方案, 实在拷不了就直接弹分享面板 (里面也能拷贝, 还能直接发给家人)"),
+        ChangelogItem(kind="修复", text="iPhone Safari 上复制邀请链接没反应: 换了兜底拷贝方案, 实在拷不了就直接弹分享面板 (里面也能拷贝,"
+                                       " 还能直接发给家人)"),
         ChangelogItem(kind="修复", text="账号列表里「管理员」标签的椭圆外框只剩上半截"),
         ChangelogItem(kind="修复", text="记一笔弹层能被左右拖动 (日期备注一行比屏幕宽了一点)"),
     ]),
     ChangelogVersion(version="2.4.0", date="2026-09-13", items=[
-        ChangelogItem(kind="新增", text="充电详情可以导航到充电站, 自己挑手机里的地图 App (高德 / 百度 / 腾讯 / 苹果地图), 没装的地图长按就能隐藏"),
+        ChangelogItem(kind="新增", text="充电详情可以导航到充电站, 自己挑手机里的地图 App (高德 / 百度 / 腾讯 / 苹果地图),"
+                                       " 没装的地图长按就能隐藏"),
         ChangelogItem(kind="新增", text="每个页面的顶栏都有刷新按钮了"),
         ChangelogItem(kind="改进", text="充电页的地点筛选改成省 → 市 → 区县三级展开, 任选一级都能筛"),
         ChangelogItem(kind="改进", text="更新日志页和录制弹层的说明文字更简洁了"),

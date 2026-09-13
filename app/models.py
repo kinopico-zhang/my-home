@@ -261,4 +261,3 @@ class Invitation(UsersBase):
     expires_at: Mapped[datetime]
     used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     revoked: Mapped[bool] = mapped_column(default=False)
-

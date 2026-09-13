@@ -46,27 +46,30 @@ def scripts_for_language(
     if language == "其他":
         known = {script for group in LANGUAGE_SCRIPTS.values()
                  for script in group}
-        return known, True
+        return frozenset(known), True
     scripts = LANGUAGE_SCRIPTS.get(language)
     return (scripts, False) if scripts is not None else None
 
 
+# 检测优先级: 有假名必是日文 (汉字中日共用, 假名不共用);
+# 汉字简繁没把握, 一律归 Hant (反正分组同是中文)
+_SCRIPT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("Jpan", _KANA_PATTERN),
+    ("Kore", _HANGUL_PATTERN),
+    ("Cyrl", _CYRILLIC_PATTERN),
+    ("Hant", _CJK_PATTERN),
+)
+_LATIN_PATTERN = re.compile(r"[A-Za-z]")
+
+
 def detect_script(*texts: str) -> str:
-    """按文字检测 script 码 (标题/艺人名兜底; 优先级 假名 > 谚文 > 汉字 > 拉丁)。
+    """按文字检测 script 码 (标题/艺人名兜底; 优先级见表 _SCRIPT_PATTERNS)。
 
     只有标点/数字/空白的串检不出 (返回空串), 由调用方保留原 script。"""
-    text = " ".join(t for t in texts if t)
-    if not text:
-        return ""
-    text = unicodedata.normalize("NFKC", text)
-    if _KANA_PATTERN.search(text):
-        return "Jpan"          # 有假名必是日文 (汉字中日共用, 假名不共用)
-    if _HANGUL_PATTERN.search(text):
-        return "Kore"
-    if _CYRILLIC_PATTERN.search(text):
-        return "Cyrl"
-    if _CJK_PATTERN.search(text):
-        return "Hant"          # 汉字: 简繁没把握, 归中文组即可 (分组一样)
-    if re.search(r"[A-Za-z]", text):
+    text = unicodedata.normalize("NFKC", " ".join(t for t in texts if t))
+    for script, pattern in _SCRIPT_PATTERNS:
+        if pattern.search(text):
+            return script
+    if _LATIN_PATTERN.search(text):
         return "Latn"
     return ""

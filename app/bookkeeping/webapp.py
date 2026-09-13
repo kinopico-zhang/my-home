@@ -14,8 +14,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .. import account_store, database
+from ..models import User
 from . import store
-from .schemas import EntryOut, SyncRequest, SyncResponse
+from .schemas import (CategoryTree, EntryOut, SyncRequest, SyncResponse)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -38,7 +39,7 @@ def _page(fname: str) -> FileResponse:
     return resp
 
 
-def _require_user(request: Request, users: Session):
+def _require_user(request: Request, users: Session) -> User:
     """已登录账号, 否则 401 (中间件已拦, 这里兜底)。"""
     user = account_store.user_for_cookie(request.cookies.get("auth", ""), users)
     if user is None:
@@ -64,7 +65,8 @@ def logout() -> JSONResponse:
 @api.get("/categories")
 def bookkeeping_categories(request: Request,
                            users: Session = Depends(database.get_users_db),
-                           bk: Session = Depends(store.get_db)) -> dict:
+                           bk: Session = Depends(store.get_db)
+                           ) -> CategoryTree:
     """类别树 (挖财导入的两级类别): 支出/收入各自的大类 + 子类, 画弹层胶囊用。"""
     _require_user(request, users)
     return store.category_tree(bk)
