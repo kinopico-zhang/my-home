@@ -63,7 +63,7 @@ function timeFrom(v) {   // 档位 → from 本地日期 (含今天共 N 天; 24
   const d = new Date(); d.setDate(d.getDate() - (r.days - 1));
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-// URL → 初始筛选: ?range= 快捷档; ?from=&to= 自定义区间; ?type= / ?city= 筛选行
+// URL → 初始筛选: ?range= 快捷档; ?from=&to= 自定义区间; ?type= / ?region= 筛选行
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const qs0 = new URLSearchParams(location.search);
 let range0 = TIME_RANGES.some(r => r.v === qs0.get("range")) ? qs0.get("range") : "all";
@@ -72,9 +72,13 @@ if (range0 === "all") {
   const f = qs0.get("from"), t = qs0.get("to");
   if (DATE_RE.test(f || "") && DATE_RE.test(t || "") && f <= t) { range0 = "custom"; cFrom0 = f; cTo0 = t; }
 }
+const locParam = () => {   // ?region=省/市/区 (1~3 段, 脏参数丢弃)
+  const segs = (qs0.get("region") || "").split("/").map(x => x.trim()).filter(Boolean);
+  return segs.length && segs.length <= 3 && segs.every(x => x.length <= 30) ? segs.join("/") : "";
+};
 const state = {
   type: ["fast", "slow"].includes(qs0.get("type")) ? qs0.get("type") : "all",
-  city: qs0.get("city") || "",
+  region: locParam(),
   cost: ["recorded", "missing"].includes(qs0.get("cost")) ? qs0.get("cost") : "all",
   range: range0, cFrom: cFrom0, cTo: cTo0,
   offset: 0, total: 0, loading: false, done: false, err: null,
@@ -95,7 +99,7 @@ function rangeParams() {
 function sessionParams(extra) {
   const p = new URLSearchParams({ type: state.type, cost: state.cost,
                                   ...rangeParams(), ...(extra || {}) });
-  if (state.city) p.set("city", state.city);
+  if (state.region) p.set("region", state.region);
   return p.toString();
 }
 function syncURL() {   // 筛选写进地址栏 (默认值不写, 链接保持干净)
@@ -109,7 +113,7 @@ function syncURL() {   // 筛选写进地址栏 (默认值不写, 链接保持�
     else u.searchParams.set("range", state.range);
   }
   if (state.type === "all") u.searchParams.delete("type"); else u.searchParams.set("type", state.type);
-  if (state.city) u.searchParams.set("city", state.city); else u.searchParams.delete("city");
+  if (state.region) u.searchParams.set("region", state.region); else u.searchParams.delete("region");
   if (state.cost === "all") u.searchParams.delete("cost"); else u.searchParams.set("cost", state.cost);
   history.replaceState(null, "", u);
 }
@@ -324,24 +328,73 @@ if (state.cost !== "all") {                   // URL 带费用筛选时同步选
   $("#cost-opts .on").classList.remove("on");
   $(`#cost-opts button[data-v="${state.cost}"]`).classList.add("on");
 }
-$("#city-lb").textContent = state.city ? "城市: " + state.city : "城市: 全部";
-(async () => {   // 城市筛选选项 (按充电次数降序); 拉不到就只有"全部"
-  try {
-    const cs = await getJSON("/tesla/charging/api/cities");
-    $("#city-opts").innerHTML =
-      `<button data-c=""${state.city ? "" : ' class="on"'}>全部</button>` +
-      cs.map(c => `<button data-c="${esc(c.city)}"${c.city === state.city ? ' class="on"' : ""}>` +
-                  `${esc(c.city)} (${c.count})</button>`).join("");
-  } catch (_e) { /* keep 全部 */ }
+/* ---------- 地点筛选: 省市区级联 (行程页同款) ----------
+   树来自 /charging/api/regions (省→市→区县, 次数降序)。点层级行钻下一级,
+   顶部 "全部X" 行选中当前层 (省/市/区县任一级都能作为筛选条件), 叶子直接选中。 */
+let REGIONS = [];
+function renderLocMenu() {
+  const menuEl = $("#loc-menu"), optsEl = $("#loc-opts"), lbEl = $("#loc-lb");
+  const stack = [];   // 当前钻取路径 (省名/市名), 空 = 省列表
+  const setLoc = v => {
+    state.region = v;
+    lbEl.textContent = "地点: " + (v ? v.split("/").pop() : "全部");   // 显示末级, title 全路径
+    lbEl.parentElement.title = v;
+  };
+  const nodesAt = () => {   // stack 对应的节点层
+    let nodes = REGIONS;
+    for (const seg of stack) {
+      const n = nodes.find(x => x.name === seg);
+      nodes = n ? n.children : [];
+    }
+    return nodes;
+  };
+  const render = () => {
+    const sel = state.region, cur = stack.join("/");
+    const rows = nodesAt().map(n => {
+      const path = (cur ? cur + "/" : "") + n.name;
+      return `<button class="loc-row${path === sel ? " on" : ""}" data-n="${esc(n.name)}">` +
+        `<span class="nm">${esc(n.name)}</span>` +
+        `<span class="cnt">${n.count}${n.children.length ? " ›" : ""}</span></button>`;
+    }).join("");
+    optsEl.innerHTML =
+      (stack.length ? `<button class="loc-back" data-b="1">‹ 返回</button>` +
+        `<div class="loc-crumb">${esc(stack.join(" · "))}</div>` : "") +
+      `<button data-a="${esc(cur)}"${sel === cur ? ' class="on"' : ""}>` +
+      `${cur ? "全部" + esc(stack[stack.length - 1]) : "全部"}</button>` + rows;
+  };
+  optsEl.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.b) { stack.pop(); return render(); }   // ‹ 返回
+    if (b.dataset.a !== undefined) {                     // "全部X" = 选中当前层
+      menuEl.removeAttribute("open");
+      setLoc(b.dataset.a);
+      syncURL(); refetch();
+      return;
+    }
+    const node = nodesAt().find(n => n.name === b.dataset.n);
+    if (!node) return;
+    if (node.children.length) { stack.push(node.name); return render(); }   // 钻下一级
+    menuEl.removeAttribute("open");                     // 叶子 (区县) 直接选中
+    setLoc([...stack, node.name].join("/"));
+    syncURL(); refetch();
+  });
+  menuEl.addEventListener("toggle", () => {   // 关闭时把视图重置到当前所选的父层,
+    if (menuEl.open) return;                  // 下次打开即所见 (toggle 异步, 开时才渲会闪旧视图)
+    stack.length = 0;
+    if (state.region) stack.push(...state.region.split("/").slice(0, -1));
+    render();
+  });
+  setLoc(state.region);   // URL 带筛选时同步标签
+  if (state.region) stack.push(...state.region.split("/").slice(0, -1));
+  render();
+  return render;
+}
+const rerenderLoc = renderLocMenu();
+(async () => {   // 地点树 (次数降序); 拉不到就只有"全部"
+  try { REGIONS = await getJSON("/tesla/charging/api/regions"); }
+  catch (_e) { /* keep 全部 */ }
+  rerenderLoc();
 })();
-$("#city-opts").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
-  $("#city-menu").removeAttribute("open");
-  state.city = b.dataset.c;
-  $("#city-opts .on").classList.remove("on"); b.classList.add("on");
-  $("#city-lb").textContent = state.city ? "城市: " + state.city : "城市: 全部";
-  syncURL(); refetch();
-});
 $("#retry").addEventListener("click", () => { state.err = null; $("#errbox").hidden = true; refetch(); });
 
 masonryEl.addEventListener("click", e => {
@@ -436,7 +489,7 @@ async function loadDetail(id) {
   $("#sh-loc").textContent = d.city ? `${d.location} · ${d.city}` : d.location;
   $("#sh-row").innerHTML = `
     <span class="tag ${d.is_fast ? "tag-fast" : "tag-slow"}">${d.is_fast ? "⚡ 快充" : "🔌 慢充"}</span>
-    <span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.cable || "—")}</span>
+    ${d.cable ? `<span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.cable)}</span>` : ""}
     ${d.charger_type ? `<span class="tag tag-slow" style="color:var(--ink-2);background:var(--surface-2)">${esc(d.charger_type)}</span>` : ""}`;
   sheetBody.innerHTML = `
     ${d.lat != null && d.lng != null
@@ -508,6 +561,33 @@ async function loadDetail(id) {
    中打开」确认框, 用户按确认前页面不切后台, 探测窗口一过就当没装接着
    拉下一个, 高德百度被连环拉起 (2026-09-13 用户实测), 弃。各图商都用
    国测局 GCJ-02 坐标, TeslaMate 存的是 WGS-84, 直接用会偏几百米。 */
+/* 选单里的 App 列表: 网页枚举不了手机装了哪些地图 (这正是弃自动探测的原因),
+   所以四个都列, 没装的 (如腾讯) 长按一行隐藏掉, 记在 localStorage。 */
+const NAV_APPS = [
+  { app: "amap", label: "高德地图" },
+  { app: "baidu", label: "百度地图" },
+  { app: "tencent", label: "腾讯地图" },
+  { app: "apple", label: "苹果地图" },
+];
+const navHidden = new Set(JSON.parse(localStorage.getItem("navHiddenApps") || "[]")
+  .filter(x => NAV_APPS.some(a => a.app === x)));
+let navLongFired = false;   // 长按已处理, 跟着的 click 要吞掉
+
+function renderNavApps() {   // 在用的行 + 隐藏过的 (＋ 恢复胶囊)
+  const appsEl = $("#nav-apps");
+  appsEl.innerHTML = NAV_APPS.filter(a => !navHidden.has(a.app))
+    .map(a => `<button data-app="${a.app}">${a.label}</button>`).join("");
+  const hidden = NAV_APPS.filter(a => navHidden.has(a.app));
+  if (hidden.length) {
+    const box = document.createElement("div");
+    box.className = "nav-restore";
+    box.innerHTML = hidden.map(a =>
+      `<button data-restore="${a.app}">＋ ${a.label}</button>`).join("");
+    appsEl.appendChild(box);
+  }
+}
+renderNavApps();
+
 let navTarget = null;
 
 function navAppUrl(app, d) {
@@ -653,7 +733,42 @@ alInput.addEventListener("keydown", e => {
   e.stopPropagation();
   if (e.key === "Enter") saveCost();
 });
+(() => {   // 长按 480ms 隐藏一行 (移动 >10px 取消), contextmenu 拦下防 iOS 掐触摸
+  const appsEl = $("#nav-apps");
+  let timer = 0, sx = 0, sy = 0;
+  appsEl.addEventListener("pointerdown", e => {
+    const b = e.target.closest("button[data-app]");
+    if (!b) return;
+    navLongFired = false;
+    sx = e.clientX; sy = e.clientY;
+    timer = setTimeout(() => {
+      navLongFired = true;
+      const app = b.dataset.app;
+      navHidden.add(app);
+      localStorage.setItem("navHiddenApps", JSON.stringify([...navHidden]));
+      renderNavApps();                       // 行就地消失, ＋ 恢复胶囊随即出现
+    }, 480);
+  });
+  const cancel = e => {
+    if (!timer) return;
+    if (e.type === "pointermove" &&
+        Math.hypot(e.clientX - sx, e.clientY - sy) <= 10) return;
+    clearTimeout(timer); timer = 0;
+  };
+  appsEl.addEventListener("pointermove", cancel);
+  appsEl.addEventListener("pointerup", cancel);
+  appsEl.addEventListener("pointercancel", cancel);
+  appsEl.addEventListener("contextmenu", e => e.preventDefault());
+})();
 $("#nav-apps").addEventListener("click", e => {
+  if (navLongFired) { navLongFired = false; return; }   // 长按隐藏后的 click 吞掉
+  const r = e.target.closest("button[data-restore]");   // ＋ 恢复胶囊
+  if (r) {
+    navHidden.delete(r.dataset.restore);
+    localStorage.setItem("navHiddenApps", JSON.stringify([...navHidden]));
+    renderNavApps();
+    return;
+  }
   const b = e.target.closest("button[data-app]");
   if (!b || !navTarget) return;
   const url = navAppUrl(b.dataset.app, navTarget);

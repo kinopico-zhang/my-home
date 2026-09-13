@@ -251,6 +251,9 @@ def test_charging_detail_nav_button(auth):
         'data-app="amap"', 'data-app="baidu"',
         'data-app="tencent"', 'data-app="apple"',
         "openNavChooser",                     # 点按钮先弹选单
+        # 没装的地图长按隐藏 (localStorage 记住), ＋ 胶囊恢复 —— 网页枚举不了装了哪些 App
+        "navHiddenApps", "function renderNavApps()", "data-restore",
+        "长按可隐藏没装的地图", "长按隐藏后的 click 吞掉",
         "function navAppUrl(",                # 一个 App 一个 URL
         "GCJ02.wgs84ToGcj02",                 # WGS-84 → GCJ-02, 不转偏几百米
         "iosamap://navi", "androidamap://navi",    # 高德 (iOS / 安卓 scheme)
@@ -267,6 +270,20 @@ def test_charging_detail_nav_button(auth):
     # 坐标换算库要先于页面脚本加载
     page = auth.get("/tesla/charging").text
     assert page.index("gcj02.js") < page.index("index.js")
+
+
+def test_session_detail_hides_national_standard_tags(auth, db):
+    """国标取值 (线缆 GB_DC / 类型 Gb, 国内满屏都是) 不进详情 —— 用户点名撤掉。
+
+    品牌 Tesla 不受影响; 非国标取值 (CCS / v3) 照常展示。
+    """
+    seed_addresses(db)
+    seed_charging(db)
+    seed_charge(db, 1, conn_charge_cable="GB_DC",
+                fast_charger_brand="Tesla", fast_charger_type="Gb")
+    d = auth.get("/tesla/charging/api/sessions/1").json()
+    assert d["cable"] is None and d["charger_type"] is None
+    assert d["charger_brand"] == "Tesla"       # 国标过滤不殃及品牌
 
 
 def test_session_detail_404(auth):
@@ -398,22 +415,35 @@ def test_charging_page_soc_labels_merge_on_short_charges(auth):
     assert "${it.start_soc} → ${it.end_soc}%" in html
 
 
-# ---------------------------------------------------------------- 城市筛选
-def test_charging_cities_endpoint(auth, db):
-    """充电城市列表 (次数降序); 无城市信息的地址不参与筛选。"""
+# ---------------------------------------------------------------- 地点筛选
+def test_charging_regions_endpoint(auth, db):
+    """充电地点省市区三级树 (每级按次数降序); 解析不出省的地址不进树。
+
+    覆盖两种 display_name: 连写 "广东省深圳市龙岗区坂田街道" 与 OSM 逗号链。
+    """
     db.add(Address(id=3, name="无名地", city=None, display_name="某处"))
+    db.add(Address(id=4, name="翠湖边", city=None,
+                   display_name="翠湖西路, 华山街道, 五华区, 昆明市, 云南省, 650031, 中国"))
     db.commit()
-    seed_addresses(db)                       # 1=深圳市 2=东莞市
+    seed_addresses(db)                       # 1=深圳市龙岗区 2=东莞市长安镇
     seed_charging(db, id=1, address_id=1)
     seed_charging(db, id=2, address_id=1)
     seed_charging(db, id=3, address_id=2)
-    seed_charging(db, id=4, address_id=3)    # 无城市 → 不进列表
-    assert auth.get("/tesla/charging/api/cities").json() == [
-        {"city": "深圳市", "count": 2}, {"city": "东莞市", "count": 1}]
+    seed_charging(db, id=4, address_id=4)    # 云南 (OSM 逗号链, 带邮编带中国)
+    seed_charging(db, id=5, address_id=3)    # 解析不出省 → 不进树
+    assert auth.get("/tesla/charging/api/regions").json() == [
+        {"name": "广东省", "count": 3, "children": [
+            {"name": "深圳市", "count": 2, "children": [
+                {"name": "龙岗区", "count": 2, "children": []}]},
+            {"name": "东莞市", "count": 1, "children": [
+                {"name": "长安镇", "count": 1, "children": []}]}]},
+        {"name": "云南省", "count": 1, "children": [
+            {"name": "昆明市", "count": 1, "children": [
+                {"name": "五华区", "count": 1, "children": []}]}]}]
 
 
-def test_charging_sessions_filters_by_city(auth, db):
-    """城市筛选可与快慢充叠加。"""
+def test_charging_sessions_filters_by_region(auth, db):
+    """地点筛选: 省/市/区县逐级精确 ("/" 路径 1~3 段), 可与快慢充叠加。"""
     db.add(Address(id=3, name="无名地", city=None, display_name="某处"))
     db.commit()
     seed_addresses(db)
@@ -422,20 +452,27 @@ def test_charging_sessions_filters_by_city(auth, db):
                   start_date=datetime(2026, 9, 8, 15, 50),
                   end_date=datetime(2026, 9, 8, 23, 2))
     seed_charge(db, 2, date=datetime(2026, 9, 8, 16, 0))   # 深圳 快充
-    seed_charging(db, id=3, address_id=2)    # 东莞 慢充
+    seed_charging(db, id=3, address_id=2,    # 东莞 慢充 (日期再早一档, 排序确定)
+                  start_date=datetime(2026, 9, 6, 15, 50),
+                  end_date=datetime(2026, 9, 6, 23, 2))
+    seed_charging(db, id=4, address_id=3)    # 解析不出省 → 只在全列表出现
 
     def ids(**params):
         return [i["id"] for i in auth.get(
             "/tesla/charging/api/sessions", params=params).json()["items"]]
 
-    assert ids(city="深圳市") == [2, 1]
-    assert ids(city="东莞市") == [3]
-    assert ids(city="深圳市", type="fast") == [2]
-    assert ids(city="不存在") == []
+    assert ids(region="广东省") == [2, 1, 3]             # 省: 全省
+    assert ids(region="广东省/深圳市") == [2, 1]         # 市
+    assert ids(region="广东省/深圳市/龙岗区") == [2, 1]  # 区县
+    assert ids(region="广东省/东莞市") == [3]
+    assert ids(region="云南省") == []
+    assert ids(region="广东省/深圳市", type="fast") == [2]
+    assert auth.get("/tesla/charging/api/sessions",
+                    params={"region": "省/市/区/街道"}).status_code == 400  # 最多 3 段
 
 
-def test_charging_page_time_menu_calendar_and_city_filter(auth):
-    """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行城市下拉, 筛选写进 URL。"""
+def test_charging_page_time_menu_calendar_and_region_filter(auth):
+    """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行省市区级联, 筛选写进 URL。"""
     html = auth.get("/tesla/charging").text
     html += auth.get("/tesla/static/index.js?v=1").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
@@ -446,19 +483,22 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
                  # 时间菜单在顶栏 nav-row (全站统一位置; 本页品牌旁还有车名胶囊)
                  '<span class="car-pill" id="car-pill">Tesla</span>\n'
                  '    <details class="nav-menu time-menu" id="time-menu">',
-                 'id="city-menu"', 'id="city-opts"', "/tesla/charging/api/cities",
-                 # 快充/慢充筛选改下拉 (与城市筛选同款, 分段钮太占地方)
+                 'id="loc-menu"', 'id="loc-opts"', "/tesla/charging/api/regions",
+                 # 地点省市区级联 (行程页同款): 钻取行/返回行/面包屑/限高滚动
+                 'class="menu loc-menu"', 'class="loc-back"', 'class="loc-crumb"',
+                 '<button class="loc-row', "const locParam = () =>", "钻下一级",
+                 # 快充/慢充筛选改下拉 (与地点筛选同款, 分段钮太占地方)
                  'id="type-menu"', 'id="type-opts"', 'id="type-lb"',
                  'data-v="fast"', "⚡ 快充", "🔌 慢充", "TYPE_LABELS",
                  '$("#type-opts").addEventListener',
-                 "function syncURL()", 'u.searchParams.set("city", state.city)',
+                 "function syncURL()", 'u.searchParams.set("region", state.region)',
                  # 手机: 下拉面板锚全宽 header (日历行 ~300px, 挂胶囊右缘必出屏)
                  '@media (max-width: 479px)', '.nav-menu { position: static; }']:
         assert frag in html, f"充电页缺少 {frag}"
     assert "chips-range" not in html and 'id="tm-from"' not in html
     assert 'id="seg-type"' not in html and ".seg {" not in html   # 分段钮样式不许回来
     for i in ('time-menu', 'time-lb', 'time-opts', 'tm-dates', 'tm-cal', 'tm-prev',
-              'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout', 'city-opts',
+              'tm-next', 'tm-ym', 'tm-sel', 'brand-menu', 'logout', 'loc-opts',
               'type-opts'):
         assert html.count(f'id="{i}"') == 1, f"页面 {i} 重复"
     # 筛选行太宽时手机端自己横滑, 不把整个页面带着滑 (下拉锚在 header 不受裁)

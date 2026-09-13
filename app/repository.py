@@ -35,7 +35,6 @@ from .schemas import (
     ChargingSession,
     ChargingSessionDetail,
     ChargingSummary,
-    CityCount,
     CityStat,
     CostUpdateResult,
     GapFillRequest,
@@ -328,8 +327,8 @@ class SessionFilter:
     sort: str               # SORT_OPTIONS 之一
     offset: int
     limit: int
-    city: str | None = None    # 充电城市 (空 = 全部)
-    cost: str | None = None    # 费用记录: recorded / missing (None = 全部)
+    region: str | None = None    # 充电地点 "/" 路径 (1~3 段 = 省/市/区县, 空 = 全部)
+    cost: str | None = None      # 费用记录: recorded / missing (None = 全部)
 
 
 def list_charging_sessions(session: Session,
@@ -340,9 +339,9 @@ def list_charging_sessions(session: Session,
         rows = [row for row in rows if row.agg.is_fast]
     elif flt.charge_type == "slow":
         rows = [row for row in rows if not row.agg.is_fast]
-    if flt.city:      # 无地址/无城市的充电不参与城市筛选
-        rows = [row for row in rows
-                if row.address is not None and row.address.city == flt.city]
+    if flt.region:
+        # 地点筛选与地点树同源同解析 (display_name 剥省市区), 段数即精确到哪一级
+        rows = [row for row in rows if _match_region(row.address, flt.region)]
     if flt.cost == "recorded":   # 已记录费用 / 未记录费用 (费用记 0 也算已记录)
         rows = [row for row in rows if row.process.cost is not None]
     elif flt.cost == "missing":
@@ -368,10 +367,17 @@ def charging_session_detail(session: Session,
     def _clean(value: str | None) -> str | None:
         return value if value and value != "<invalid>" else None
 
-    cable = next((c.conn_charge_cable for c in samples if c.conn_charge_cable), None)
+    # 国标取值 (线缆 GB_AC/GB_DC, 充电类型 Gb) 在国内满屏都是, 没有信息量,
+    # 2026-09-13 用户点名不展示; 其他取值 (CCS / v3 等) 照常
+    def _clean_national(value: str | None) -> str | None:
+        v = _clean(value)
+        return None if v is not None and v.upper().startswith("GB") else v
+
+    cable = _clean_national(next(
+        (c.conn_charge_cable for c in samples if c.conn_charge_cable), None))
     brand = _clean(next(
         (c.fast_charger_brand for c in samples if c.fast_charger_brand), None))
-    charger_type = _clean(next(
+    charger_type = _clean_national(next(
         (c.fast_charger_type for c in samples if c.fast_charger_type), None))
     base = _session_item(row)
     return ChargingSessionDetail(
@@ -408,15 +414,28 @@ def update_charging_cost(session: Session, session_id: int,
     return CostUpdateResult(ok=True, cost=cost, price_per_kwh=price)
 
 
-def list_charging_cities(session: Session) -> list[CityCount]:
-    """充电城市列表 (按充电次数降序); 无城市信息的充电不参与筛选。"""
+def _match_region(address: Address | None, path: str) -> bool:
+    """充电地点筛选: 地址剥出的省市区对 "/" 路径做逐级匹配。
+
+    段数即精确到哪一级 (1=省 2=市 3=区县), 没给的层不陪绑;
+    无地址 / 解析不出省 = 不命中。与地点树、行程页 region_address_ids 同一口径。
+    """
+    segs = [seg for seg in (t.strip() for t in path.split("/")) if seg]
+    if not segs or address is None:
+        return False
+    region = parse_region(address.display_name or "")
+    return region[:len(segs)] == tuple(segs)
+
+
+def charging_region_tree(session: Session) -> list[RegionNode]:
+    """充电地点省→市→区县计数树 (按充电次数降序), 地点级联下拉数据源。
+
+    与行程页同款树 (同一解析器); 解析不出省的地址不进树, 但仍参与列表展示。
+    """
     rows = session.execute(
-        select(Address.city, func.count())
-        .join(ChargingProcess, ChargingProcess.address_id == Address.id)
-        .where(Address.city.is_not(None), Address.city != "")
-        .group_by(Address.city)
-        .order_by(func.count().desc())).all()
-    return [CityCount(city=city, count=int(n)) for city, n in rows]
+        select(Address.display_name)
+        .join(ChargingProcess, ChargingProcess.address_id == Address.id)).all()
+    return _acc_region_tree(name for (name,) in rows)
 
 
 def charging_dimensions(session: Session, date_range: DateRange | None) -> ChargeDims:
@@ -882,20 +901,14 @@ class _RegionAcc:
                       sorted(self.children.values(), key=lambda c: -c.count)])
 
 
-def _region_tree(session: Session,
-                 address_id: InstrumentedAttribute[int | None]) -> list[RegionNode]:
-    """某个地址角色 (起点/终点) 的省→市→区县计数树 (次数降序, 未结束行程不计)。
+def _acc_region_tree(names: Iterable[str | None]) -> list[RegionNode]:
+    """display_name 序列 → 省→市→区县计数树 (次数降序)。
 
-    无省信息的地址 (解析不出省) 不进树, 但仍参与列表展示。
+    无省信息的地址 (解析不出省) 不进树; 有市无区的计入省市两级, 省直辖县
+    由 parse_region 把区县提升到市层 (口径见该函数)。
     """
-    addr = aliased(Address)
-    rows = session.execute(
-        select(addr.display_name)
-        .select_from(Drive)
-        .join(addr, address_id == addr.id, isouter=True)
-        .where(Drive.end_date.is_not(None))).all()
     root = _RegionAcc("")
-    for (name,) in rows:
+    for name in names:
         prov, city, dist = parse_region(name or "")
         if not prov:
             continue
@@ -909,6 +922,18 @@ def _region_tree(session: Session,
                 dist_acc.count += 1
     return [c.node() for c in
             sorted(root.children.values(), key=lambda c: -c.count)]
+
+
+def _region_tree(session: Session,
+                 address_id: InstrumentedAttribute[int | None]) -> list[RegionNode]:
+    """某个地址角色 (起点/终点) 的省→市→区县计数树 (次数降序, 未结束行程不计)。"""
+    addr = aliased(Address)
+    rows = session.execute(
+        select(addr.display_name)
+        .select_from(Drive)
+        .join(addr, address_id == addr.id, isouter=True)
+        .where(Drive.end_date.is_not(None))).all()
+    return _acc_region_tree(name for (name,) in rows)
 
 
 def list_trip_regions(session: Session) -> TripRegions:

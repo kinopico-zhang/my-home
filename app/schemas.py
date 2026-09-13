@@ -290,13 +290,6 @@ class TripsPage(BaseModel):
     items: list[TripItem]
 
 
-class CityCount(BaseModel):
-    """城市筛选项 (下拉数据源: 城市名 + 出现次数)。"""
-
-    city: str
-    count: int
-
-
 class RegionNode(BaseModel):
     """省市区三级筛选项 (children 为下一级, 区县层为空列表)。"""
 
