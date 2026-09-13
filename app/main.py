@@ -119,6 +119,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
     bookkeeping_store.init_engine()      # 记账库 (独立文件, 独立应用)
     bookkeeping_store.create_all()
+    bookkeeping_store.seed_default_categories()   # 类别树 (空库才种, 挖财导入)
     with database.own_session_factory()() as own:   # pylint: disable=not-callable
         url = settings_store.engine_url(own)
     database.init_engine(url)

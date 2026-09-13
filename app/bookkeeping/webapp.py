@@ -61,6 +61,15 @@ def logout() -> JSONResponse:
     return resp
 
 
+@api.get("/categories")
+def bookkeeping_categories(request: Request,
+                           users: Session = Depends(database.get_users_db),
+                           bk: Session = Depends(store.get_db)) -> dict:
+    """类别树 (挖财导入的两级类别): 支出/收入各自的大类 + 子类, 画弹层胶囊用。"""
+    _require_user(request, users)
+    return store.category_tree(bk)
+
+
 @api.post("/sync", response_model=SyncResponse)
 def bookkeeping_sync(body: SyncRequest, request: Request,
                      users: Session = Depends(database.get_users_db),

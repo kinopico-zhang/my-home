@@ -166,3 +166,81 @@ def test_sync_two_databases_separate(usersdb, tmp_path):
     bookkeeping_file = tmp_path / "bookkeeping.db"
     assert users_file.exists() and bookkeeping_file.exists()
     assert users_file.read_bytes() != bookkeeping_file.read_bytes()
+
+
+# ---------------------------------------------------------------- 类别 (挖财导入)
+
+def test_categories_seeded_from_wacai(usersdb, bkdb):
+    """类别树种子: 空库建好就有 (挖财导出的 163 类), 大类在前子类随后。"""
+    from app.bookkeeping import store  # pylint: disable=import-outside-toplevel
+    tree = store.category_tree(bkdb)
+    assert len(tree["expense"]) == 14        # 支出大类
+    assert len(tree["income"]) == 15         # 收入大类
+    canyin = tree["expense"][0]
+    assert canyin[0] == "餐饮"
+    assert "早餐" in canyin[1] and "餐饮其他" in canyin[1]
+    income_names = [t[0] for t in tree["income"]]
+    assert "工资薪水" in income_names and "顺风车" in income_names
+    # 子类总数对上 (大类的子类拼起来)
+    assert sum(len(kids) for _, kids in tree["expense"]) == 134
+    assert all(kids == [] for _, kids in tree["income"])
+
+
+def test_categories_seeded_only_once(usersdb, bkdb):
+    """非空不重种: 再跑一次种子 (幂等), 行数不长。"""
+    from sqlalchemy import func, select  # pylint: disable=import-outside-toplevel
+    from app.bookkeeping import store  # pylint: disable=import-outside-toplevel
+    store.seed_default_categories()
+    store.seed_default_categories()
+    count = bkdb.execute(
+        select(func.count()).select_from(store.Category)).scalar_one()
+    assert count == 163
+
+
+def test_categories_api_serves_tree(usersdb):
+    """GET /bookkeeping/api/categories: 登录可拿两级树, 形状给前端画胶囊。"""
+    client, _ = _user(usersdb, "记账人甲")
+    r = client.get("/bookkeeping/api/categories")
+    assert r.status_code == 200, r.text
+    tree = r.json()
+    tops = {t[0]: t[1] for t in tree["expense"]}
+    assert tops["交通"][0] == "充电"          # 子类有序 (种子顺序)
+    assert "房贷" in tops and tops["房贷"] == []
+    assert any(t[0] == "工资薪水" for t in tree["income"])
+
+
+def test_categories_api_requires_login(usersdb):
+    """类别接口也是登录态资源: 未登录 401。"""
+    from fastapi.testclient import TestClient  # pylint: disable=import-outside-toplevel
+    anon = TestClient(m.app)
+    assert anon.get("/bookkeeping/api/categories").status_code == 401
+
+
+def test_bookkeeping_page_has_amount_keyboard():
+    """金额键盘: 纯文本输入 (不弹系统键盘) + 计算器按键 + 子类胶囊行 + 纯逻辑脚本。"""
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+    html = (Path(__file__).parent.parent / "app" / "bookkeeping" / "static"
+            / "bookkeeping.html").read_text(encoding="utf-8")
+    assert 'id="f-amount" type="text" inputmode="none"' in html
+    assert 'id="amt-pad"' in html and 'id="amt-eq"' in html
+    assert '<div class="cat-sub" id="cat-sub" hidden></div>' in html
+    keys = [k for k in ("clear", "back", "7", "8", "9", "/", "4", "5", "6",
+                        "*", "1", "2", "3", "-", "0", ".", "+")]
+    for k in keys:
+        assert f'data-k="{k}"' in html, f"键盘缺键 {k}"
+    assert 'src="/bookkeeping/static/amount-calculator.js?v=1"' in html
+
+
+def test_bookkeeping_js_wires_calculator_and_categories():
+    """接线: 保存用 evaluateAmount (不再 parseFloat), 键盘按键走 applyAmountKey,
+    类别树从服务器拿 + 缓存本地, 两级胶囊各自有委托。"""
+    from pathlib import Path  # pylint: disable=import-outside-toplevel
+    js = (Path(__file__).parent.parent / "app" / "bookkeeping" / "static"
+          / "bookkeeping.js").read_text(encoding="utf-8")
+    assert "evaluateAmount($(\"#f-amount\").value)" in js
+    assert "applyAmountKey(input.value, btn.dataset.k)" in js
+    assert "parseFloat($(\"#f-amount\").value)" not in js
+    assert '"/bookkeeping/api/categories"' in js
+    assert 'saveLS("bk-categories"' in js and 'loadLS("bk-categories"' in js
+    assert '#cat-sub' in js and "treeFor(sheetKind)" in js
+    assert "CATEGORY_ICONS" in js and "CATEGORIES" not in js

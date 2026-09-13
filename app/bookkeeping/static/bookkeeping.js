@@ -5,8 +5,17 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-const CATEGORIES = [["餐饮", "🍜"], ["购物", "🛒"], ["交通", "🚗"], ["居家", "🏠"],
-  ["娱乐", "🎮"], ["医疗", "💊"], ["教育", "📚"], ["人情", "🎁"], ["其他", "📝"]];
+/* 类别图标: 大类名 → emoji。类别数据本身在服务器 (挖财导入的两级树),
+   图标是纯展示映射, 跟着数据走不进库; 没映射到的大类兜底 📝。 */
+const CATEGORY_ICONS = {
+  "餐饮": "🍜", "交通": "🚗", "购物": "🛒", "居家": "🏠", "娱乐": "🎮",
+  "医教": "🎓", "人情": "🎁", "投资": "📈", "旅游": "✈️", "生意": "💼",
+  "房贷": "🏦", "团队管理": "👥", "还钱钱": "💸", "虾饺": "🥟",
+  "工资薪水": "💰", "奖金": "🏆", "兼职外快": "🛠️", "红包": "🧧", "利息": "🪙",
+  "基金": "📊", "股票": "💹", "余额宝": "🐷", "分红": "🎉", "营业收入": "🧾",
+  "工程款": "🏗️", "福利补贴": "🎀", "礼金": "💐", "赔付款": "🛡️", "顺风车": "🚕",
+  "医疗": "💊", "教育": "📚",       // 旧版平铺类别 (老账目还在用)
+};
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 
 // ---------- 本地存储 ----------
@@ -21,6 +30,7 @@ let dirty = new Set(loadLS("bk-dirty", []));  // 有本地改动待上行的 id
 let lastSync = loadLS("bk-last-sync", "");    // 上次同步的服务器时间 (游标)
 let month = loadLS("bk-month", "");
 let person = loadLS("bk-person", "");
+let catTree = loadLS("bk-categories", null);   // {expense: [[大类,[子类...]],...], income: [...]}
 
 function persist() {
   saveLS("bk-entries", entries);
@@ -51,8 +61,7 @@ function uuid() {
 }
 
 function catIcon(cat) {
-  const hit = CATEGORIES.find(c => c[0] === cat);
-  return hit ? hit[1] : "📝";
+  return CATEGORY_ICONS[String(cat || "").split("/")[0]] || "📝";
 }
 // 记账人: 服务器回声带名字; 本地刚记还没同步的暂时标"我"
 function creatorName(e) { return e.createdByName || "我"; }
@@ -220,9 +229,33 @@ let editingId = null;
 let sheetKind = "expense";
 let sheetCat = "";
 
+function treeFor(kind) {          // 当前收支方向的类别树 (离线用缓存)
+  return (catTree && catTree[kind]) || [];
+}
+
 function fillChips() {
-  $("#cat-chips").innerHTML = CATEGORIES.map(([name]) =>
-    `<button data-cat="${esc(name)}"${sheetCat === name ? ' class="on"' : ""}>${esc(name)}</button>`).join("");
+  const tops = treeFor(sheetKind);
+  $("#cat-chips").innerHTML = tops.map(([name]) =>
+    `<button data-cat="${esc(name)}"${sheetCat === name || sheetCat.startsWith(name + "/") ? ' class="on"' : ""}>${esc(name)}</button>`).join("");
+  const top = sheetCat.split("/")[0];          // "" = 没选, 子类行藏起来
+  const kids = (tops.find(t => t[0] === top) || [null, []])[1];
+  $("#cat-sub").hidden = !kids.length;
+  $("#cat-sub").innerHTML = kids.map(name =>
+    `<button data-sub="${esc(name)}"${sheetCat === top + "/" + name ? ' class="on"' : ""}>${esc(name)}</button>`).join("");
+}
+
+async function loadCategories() {   // 类别树: 缓存先用, 联网刷新 (离线优先同账目)
+  try {
+    const r = await fetch("/bookkeeping/api/categories", { cache: "no-store" });
+    if (r.status === 401) { location.replace("/login"); return; }
+    if (!r.ok) return;
+    const tree = await r.json();
+    if (tree && Array.isArray(tree.expense) && Array.isArray(tree.income)) {
+      catTree = tree;
+      saveLS("bk-categories", catTree);
+      fillChips();                  // 弹层正开着也立刻换上
+    }
+  } catch (_e) { /* 离线/失败: 用缓存树 */ }
 }
 
 function openSheet(entry) {
@@ -241,6 +274,8 @@ function openSheet(entry) {
   mask.hidden = false; sheet.hidden = false;
   requestAnimationFrame(() => { mask.classList.add("on"); sheet.classList.add("on"); });
   document.body.style.overflow = "hidden";
+  $("#amt-pad").classList.add("on");      // 金额是第一件事, 键盘直接展开
+  refreshAmountPreview();
   setTimeout(() => $("#f-amount").focus(), 260);
 }
 
@@ -249,6 +284,7 @@ function closeSheet() {
   mask.classList.remove("on"); sheet.classList.remove("on");
   setTimeout(() => { mask.hidden = true; sheet.hidden = true; }, 250);
   document.body.style.overflow = "";
+  $("#amt-pad").classList.remove("on");
   editingId = null;
 }
 
@@ -257,10 +293,13 @@ $("#sheet-mask").addEventListener("click", closeSheet);
 
 $("#kind-seg").addEventListener("click", e => {
   const btn = e.target.closest("button[data-kind]");
-  if (!btn) return;
+  if (!btn || btn.dataset.kind === sheetKind) return;
   sheetKind = btn.dataset.kind;
   $("#kind-seg").querySelectorAll("button").forEach(b =>
     b.classList.toggle("on", b === btn));
+  const top = sheetCat.split("/")[0];      // 支出↔收入树不同, 原大类不在就清空重选
+  if (!treeFor(sheetKind).some(t => t[0] === top)) sheetCat = "";
+  fillChips();
 });
 
 $("#cat-chips").addEventListener("click", e => {
@@ -269,17 +308,58 @@ $("#cat-chips").addEventListener("click", e => {
   sheetCat = sheetCat === btn.dataset.cat ? "" : btn.dataset.cat;
   fillChips();
 });
+$("#cat-sub").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-sub]");
+  if (!btn) return;
+  const val = sheetCat.split("/")[0] + "/" + btn.dataset.sub;
+  sheetCat = sheetCat === val ? val.split("/")[0] : val;   // 再点收回大类
+  fillChips();
+});
+
+function refreshAmountPreview() {      // 表达式 (含运算符) 的实时结果, 裸数字不打扰
+  const expr = $("#f-amount").value;
+  const hasOp = /[+\-*/]/.test(expr);
+  const value = hasOp ? evaluateAmount(expr) : null;
+  $("#amt-eq").textContent = value == null ? "" : "= " + Math.round(value * 100) / 100;
+}
+
+$("#amt-pad").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-k]");
+  if (!btn) return;
+  const input = $("#f-amount");
+  input.value = applyAmountKey(input.value, btn.dataset.k);
+  refreshAmountPreview();
+});
+
+$("#f-amount").addEventListener("input", () => {   // 粘贴/残存输入法兜底: 只留键盘字符
+  const input = $("#f-amount");
+  const clean = input.value.replace(/[^0-9+\-*/.]/g, "");
+  if (clean !== input.value) input.value = clean;
+  refreshAmountPreview();
+});
+
+// 键盘只在金额输入时展开; 备注/日期要弹系统输入法, 让位收起
+$("#f-amount").addEventListener("focus", () => $("#amt-pad").classList.add("on"));
+$("#f-note").addEventListener("focus", () => $("#amt-pad").classList.remove("on"));
+$("#f-date").addEventListener("focus", () => $("#amt-pad").classList.remove("on"));
 
 $("#sheet-save").addEventListener("click", () => {
-  const amount = parseFloat($("#f-amount").value);
-  if (!isFinite(amount) || amount <= 0) return;    // 金额无效不存 (按钮无反馈, 键盘就在手边)
+  const value = evaluateAmount($("#f-amount").value);
+  const amount = value == null ? NaN : Math.round(value * 100) / 100;
+  if (!isFinite(amount) || amount <= 0) {          // 金额无效不存, 抖一下提示 (不清空)
+    const line = $("#amt-line");
+    line.classList.remove("shake");
+    void line.offsetWidth;
+    line.classList.add("shake");
+    return;
+  }
   const date = $("#f-date").value || todayStr();
   const note = $("#f-note").value.trim().slice(0, 200);
   const now = new Date().toISOString();
   const prev = entries.find(x => x.id === editingId);
   const entry = {
     id: editingId || uuid(),
-    date, amount: Math.round(amount * 100) / 100,
+    date, amount,
     kind: sheetKind, category: sheetCat, note,
     deleted: false, updatedAt: now,
     createdByName: prev ? prev.createdByName : "",
@@ -323,4 +403,5 @@ $("#logout").addEventListener("click", async () => {
 
 /* ---------- 启动 ---------- */
 render();
+loadCategories();
 syncNow();

@@ -36,9 +36,11 @@ export default [
       sourceType: "script",
       globals: {
         ...globals.browser,
-        // bookkeeping-merge.js 先于 bookkeeping.js 以经典脚本加载 (函数声明进全局)
+        // bookkeeping-merge.js / amount-calculator.js 先于 bookkeeping.js
+        // 以经典脚本加载 (函数声明进全局)
         mergeEntries: "readonly", entriesToUpload: "readonly",
         remoteWins: "readonly", visibleEntries: "readonly", monthTotals: "readonly",
+        evaluateAmount: "readonly", applyAmountKey: "readonly",
       },
     },
     rules: {

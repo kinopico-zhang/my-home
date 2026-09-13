@@ -16,11 +16,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import String, create_engine, select
+from sqlalchemy import String, UniqueConstraint, create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
                             sessionmaker)
 
+from .default_categories import EXPENSE_CATEGORIES, INCOME_CATEGORIES
 from .schemas import EntryIn
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -57,6 +58,22 @@ class Entry(EntryBase):
     updated_at: Mapped[datetime]                          # 客户端版本时间
     synced_at: Mapped[datetime]                           # 服务端接收时间
     deleted: Mapped[bool] = mapped_column(default=False)
+
+
+class Category(EntryBase):
+    """类别树 (大类 + 子类), 种子数据来自挖财账本导出 (default_categories)。
+
+    条目 (entries.category) 不建外键, 存组合名: 大类 "餐饮" 或
+    "大类/子类" ("餐饮/早餐") —— 自明、离线可造、旧平铺值兼容。"""
+
+    __tablename__ = "categories"
+    __table_args__ = (UniqueConstraint("kind", "parent", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, index=True)
+    kind: Mapped[str] = mapped_column(String)             # expense / income
+    parent: Mapped[str] = mapped_column(String, default="")   # "" = 大类
+    sort: Mapped[int] = mapped_column(default=0)          # 同层展示顺序
 
 
 # 引擎持有者 (与主应用各自的库同构: 启动 init, 关闭 dispose, 测试注入别的 SQLite)
@@ -154,3 +171,37 @@ def sync_entries(session: Session, user_uuid: str, entries: list[EntryIn],
         query = query.where(Entry.synced_at > _naive_utc(last_sync))
     rows = list(session.execute(query).scalars().all())
     return rows, now
+
+
+def seed_default_categories() -> None:
+    """类别表为空时种入默认树 (挖财导出内容); 非空不动 —— 以库为准。"""
+    with session_factory()() as session:  # pylint: disable=not-callable
+        if session.execute(select(Category.id).limit(1)).scalar() is not None:
+            return
+        rows: list[Category] = []
+        for kind, tree in (("expense", EXPENSE_CATEGORIES),
+                           ("income", INCOME_CATEGORIES)):
+            for top, children in tree:
+                rows.append(Category(name=top, kind=kind, parent="",
+                                     sort=len(rows)))
+                rows.extend(Category(name=child, kind=kind, parent=top,
+                                     sort=len(rows)) for child in children)
+        session.add_all(rows)
+        session.commit()
+
+
+def category_tree(session: Session) -> dict[str, list[list]]:
+    """类别树 → {"expense": [[大类, [子类...]], ...], "income": [...]},
+    按种子的 sort 保序 (给前端弹层画两级胶囊用)。"""
+    rows = session.execute(select(Category).order_by(Category.sort, Category.id)
+                           ).scalars().all()
+    children: dict[str, list[str]] = {}
+    for row in rows:
+        if row.parent:
+            children.setdefault(row.parent, []).append(row.name)
+    tree: dict[str, list[list]] = {"expense": [], "income": []}
+    for row in rows:
+        if not row.parent:
+            tree.setdefault(row.kind, []).append(
+                [row.name, children.get(row.name, [])])
+    return tree

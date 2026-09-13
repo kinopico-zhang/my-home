@@ -38,6 +38,7 @@ def isolate(tmp_path, monkeypatch):
     UsersBase.metadata.create_all(database.users_engine())
     bookkeeping_store.init_engine(f"sqlite:///{tmp_path / 'bookkeeping.db'}")
     EntryBase.metadata.create_all(bookkeeping_store.engine())
+    bookkeeping_store.seed_default_categories()
     # 管理员种子 (生产在 lifespan 里做, TestClient 不触发 lifespan)
     with database.users_session_factory()() as users:  # pylint: disable=not-callable
         account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
