@@ -14,6 +14,13 @@ def test_groups_page_served(auth):
     # 页签菜单: 自己高亮, 行程页入口在 (分组管理搬来这, 行程页只留创建)
     assert '<a class="on" href="/tesla/groups">行程分组</a>' in html
     assert 'href="/tesla/trips"' in html
+    # 顶栏与全站一致: 品牌是 20px 粗体居左 (不是小胶囊), 手机下拉锚到全宽 header
+    for frag in [".brand-menu { margin-left: 0; }", ".brand-menu summary {",
+                 ".brand-menu .menu { left: 0; right: auto; }",
+                 "@media (max-width: 479px)",
+                 ".nav-menu { position: static; }",
+                 ".nav-menu .menu { left: 12px; right: 12px; }"]:
+        assert frag in html, f"分组页顶栏缺少片段 {frag}"
 
 
 def test_groups_page_interactions(auth):

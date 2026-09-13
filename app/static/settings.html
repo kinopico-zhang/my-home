@@ -92,6 +92,13 @@ header {
   font-size: 14px; color: var(--ink-1); text-align: left;
   padding: 9px 12px; border-radius: 10px; white-space: nowrap;
 }
+/* 手机: 下拉改顶栏正下方近全宽面板 (与全站各页同款)。header 本身没有
+   定位, .nav-menu 改 static 后要补 relative 当 .menu 的 containing block。 */
+@media (max-width: 479px) {
+  header { position: relative; }
+  .nav-menu { position: static; }
+  .nav-menu .menu { left: 12px; right: 12px; }
+}
 
 /* ---------- 设置卡片 ---------- */
 main {

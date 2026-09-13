@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -86,7 +86,24 @@ header {
 .nav-menu .menu .logout-row {
   color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
 }
-.brand-menu + .nav-menu { margin-left: auto; }
+/* 品牌即入口: My Tesla 本身是下拉按钮, 展开是全部页面 + 退出登录。
+   块要放在 .nav-menu 系列之后 —— 同特异性靠源序取胜。 */
+.brand-menu { margin-left: 0; }
+.brand-menu summary {
+  font-size: 20px; font-weight: 700; letter-spacing: -.3px;
+  background: none; padding: 0; border-radius: 0;
+}
+.brand-menu[open] summary { background: none; }
+.brand-menu .chev { color: var(--ink-3); }
+.brand-menu .menu { left: 0; right: auto; }   /* 面板锚品牌左缘向右展开, 不出屏 */
+.brand-menu + .nav-menu { margin-left: auto; }   /* 品牌居左, 顶栏其余菜单仍靠右 */
+/* 手机: 下拉改顶栏正下方近全宽面板 —— .nav-menu 改 static 让 containing
+   block 上移到全宽的 sticky header, top:calc(100%+8px) 恰好落在 header 底
+   + 8px, left/right 即视口两侧 (与全站各页同款)。 */
+@media (max-width: 479px) {
+  .nav-menu { position: static; }
+  .nav-menu .menu { left: 12px; right: 12px; }
+}
 
 /* ---------- 分组列表 (样式承接行程页分组面板, 面板已删) ---------- */
 .sec-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 16px 4px; }
