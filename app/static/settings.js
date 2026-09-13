@@ -159,6 +159,54 @@ $("#drv-list").addEventListener("click", async e => {
   }
 });
 
+/* ---------- 账号 (自助改名称 / 改密码) ---------- */
+async function loadMe() {
+  const me = await api("/tesla/api/me");
+  $("#me-name").textContent = me.name;
+}
+
+$("#me-name-save").addEventListener("click", async () => {
+  const btn = $("#me-name-save");
+  btn.disabled = true;
+  try {
+    const me = await api("/tesla/api/account/name", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("#me-name-input").value.trim() }),
+    });
+    $("#me-name").textContent = me.name;
+    $("#me-name-input").value = "";
+    toast("名称已改");
+  } catch (err) {
+    toast(`改名失败: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#me-pass-save").addEventListener("click", async () => {
+  const btn = $("#me-pass-save");
+  if ($("#me-new-pass").value !== $("#me-new-pass2").value) {
+    toast("两次输入的新密码不一致", true);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await api("/tesla/api/account/password", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        old_password: $("#me-old-pass").value,
+        new_password: $("#me-new-pass").value,
+      }),
+    });
+    $("#me-old-pass").value = $("#me-new-pass").value = $("#me-new-pass2").value = "";
+    toast("密码已改");
+  } catch (err) {
+    toast(`改密失败: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 /* 顶栏刷新: 重拉设置与司机列表 */
 $("#refresh-btn").addEventListener("click", async () => {
   const btn = $("#refresh-btn");
@@ -178,3 +226,4 @@ $("#logout").addEventListener("click", async () => {
 /* ---------- 启动 ---------- */
 loadSettings().catch(err => toast(`设置加载失败: ${err.message}`, true));
 loadDrivers().catch(() => {});
+loadMe().catch(() => {});

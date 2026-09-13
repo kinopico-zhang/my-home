@@ -9,12 +9,12 @@
    - 记录 path+search: 行程弹层深链 (?id=X) / 筛选参数原样回来; 换页时
      立即记一次, 切后台 (visibilitychange) 再记一次 —— trips 弹层开合只动
      URL 不重载, 靠后台那次捕捉最终停留的地址;
-   - 只认五个业务页 (login / 静态资源不记), 跳转目标过白名单, 不可能跳去
+   - 只认业务页 (login / 静态资源不记), 跳转目标过白名单, 不可能跳去
      站外。主屏全屏 App 的存储与 Safari 相互独立, 两边各自记各自的。 */
 (function () {
   "use strict";
   var PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/chargemap", "/tesla/map", "/tesla/trips",
-               "/tesla/groups", "/tesla/live", "/tesla/settings", "/tesla/changelog"];
+               "/tesla/groups", "/tesla/live", "/tesla/settings", "/tesla/changelog", "/bookkeeping"];
   var path = location.pathname;
   if (PAGES.indexOf(path) === -1) return;
   var KEY = "mytesla-last-page", LAUNCH = "mytesla-launch-marked";

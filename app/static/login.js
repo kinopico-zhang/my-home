@@ -12,8 +12,10 @@ eyeBtn.addEventListener("click", () => {
   const show = passInput.type === "password";
   passInput.type = show ? "text" : "password";
   eyeBtn.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
-  document.getElementById("eye-open").hidden = show;
-  document.getElementById("eye-slash").hidden = !show;
+  // hidden 属性对 SVG 不生效 (UA 的 [hidden]{display:none} 只管 HTML 命名空间),
+  // 两个眼睛曾因此并排显示, 必须动 style.display
+  document.getElementById("eye-open").style.display = show ? "none" : "";
+  document.getElementById("eye-slash").style.display = show ? "" : "none";
 });
 
 form.addEventListener("submit", async e => {
@@ -33,7 +35,7 @@ form.addEventListener("submit", async e => {
       // 回上次停留的页面 (主屏 App 里会话过期重新登录 / Safari 书签进来都适用)
       var last = null;
       try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
-      location.replace(last && /^\/tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog)(\?|$)/.test(last)
+      location.replace(last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog)|bookkeeping)(\?|$)/.test(last)
         ? last : "/tesla/charging");
       return;
     }

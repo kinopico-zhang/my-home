@@ -19,6 +19,9 @@ export default [
         AMap: "readonly",          // 高德 JS API 全局命名空间
         _AMapSecurityConfig: "writable",  // 高德安全密钥配置 (HTML 内联或页面赋值)
         echarts: "readonly",       // echarts.min.js 先于页面脚本加载
+        // bookkeeping-merge.js 先于 bookkeeping.js 以经典脚本加载 (函数声明进全局)
+        mergeEntries: "readonly", entriesToUpload: "readonly",
+        remoteWins: "readonly", visibleEntries: "readonly", monthTotals: "readonly",
       },
     },
     rules: {

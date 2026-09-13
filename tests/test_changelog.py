@@ -15,7 +15,7 @@ def test_versions_newest_first_and_wellformed():
     """新→老; 每版字段齐全, 文案是用户视角的一句话 (不夹技术黑话)。"""
     vs = changelog.entries()
     assert [v.version for v in vs] == [
-        "2.4.0", "2.3.0", "2.2.0", "2.1.0", "2.0.0", "1.1.0", "1.0.0"]
+        "2.5.0", "2.4.0", "2.3.0", "2.2.0", "2.1.0", "2.0.0", "1.1.0", "1.0.0"]
     assert vs[0].date == "2026-09-13" and vs[-1].date == "2026-09-08"
     for v in vs:
         assert v.items                                  # 每版至少一条
@@ -79,6 +79,6 @@ def test_changelog_link_in_all_nav_menus(auth):
 def test_changelog_in_lastpage_and_login_whitelist(auth):
     """上次停留页/登录回跳白名单收录 (子页可停留, 直链可回跳)。"""
     lastpage = auth.get("/tesla/static/lastpage.js?v=1").text
-    assert '"/tesla/settings", "/tesla/changelog"]' in lastpage
+    assert '"/tesla/settings", "/tesla/changelog", "/bookkeeping"]' in lastpage
     login_js = auth.get("/tesla/static/login.js?v=1").text
     assert "live|settings|changelog)" in login_js

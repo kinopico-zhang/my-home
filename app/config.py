@@ -25,3 +25,11 @@ LOGIN_LOCK_S = 60
 # TeslaMate 原库的数据 (原库始终只读不动)
 OWN_DB_URL = (os.environ.get("MYTESLA_DB")
               or f"sqlite:///{PROJECT_DIR / 'data' / 'mytesla.db'}")
+
+# 账号库 (SQLite, 与业务库分开的独立文件): 用户 + 注册邀请
+USERS_DB_URL = (os.environ.get("MYTESLA_USERS_DB")
+                or f"sqlite:///{PROJECT_DIR / 'data' / 'users.db'}")
+
+# 记账库 (SQLite, 独立文件): 多人账本 (离线优先, 浏览器本地编辑后同步上来)
+BOOKKEEPING_DB_URL = (os.environ.get("MYTESLA_BOOKKEEPING_DB")
+                      or f"sqlite:///{PROJECT_DIR / 'data' / 'bookkeeping.db'}")

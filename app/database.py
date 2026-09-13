@@ -163,3 +163,99 @@ def get_own_db() -> Iterator[Session]:
     factory = own_session_factory()
     with factory() as session:  # pylint: disable=not-callable
         yield session
+
+
+# ------------------------------------------------- 账号库 / 记账库 (独立文件)
+
+class _SqliteState:
+    """独立 SQLite 库的引擎持有者 (账号 / 记账各一份, 与自有库同构)。"""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.engine: Engine | None = None
+        self.factory: sessionmaker[Session] | None = None
+
+    def init(self, url: str | None, default_url: str) -> None:
+        """创建引擎 (缺省走 config 里的默认文件, 测试可注入别的 SQLite)。"""
+        if url is None:
+            url = default_url
+        if url.startswith("sqlite:///"):
+            parent = Path(url.removeprefix("sqlite:///")).parent
+            if str(parent):
+                parent.mkdir(parents=True, exist_ok=True)
+        self.engine = create_engine(
+            url, connect_args={"check_same_thread": False})
+        self.factory = sessionmaker(self.engine, expire_on_commit=False)
+
+    def dispose(self) -> None:
+        """释放连接池 (测试隔离也用它)。"""
+        if self.engine is not None:
+            self.engine.dispose()
+        self.engine = None
+        self.factory = None
+
+    def engine_or_fail(self) -> Engine:
+        if self.engine is None:
+            raise RuntimeError(f"{self.name}库引擎未初始化 (init 未调用)")
+        return self.engine
+
+    def session_factory_or_fail(self) -> sessionmaker[Session]:
+        if self.factory is None:
+            raise RuntimeError(f"{self.name}库引擎未初始化 (init 未调用)")
+        return self.factory
+
+
+_users_state = _SqliteState("账号")
+_bookkeeping_state = _SqliteState("记账")
+
+
+def init_users_engine(url: str | None = None) -> None:
+    """创建账号库引擎 (缺省 data/users.db)。"""
+    _users_state.init(url, config.USERS_DB_URL)
+
+
+def init_bookkeeping_engine(url: str | None = None) -> None:
+    """创建记账库引擎 (缺省 data/bookkeeping.db)。"""
+    _bookkeeping_state.init(url, config.BOOKKEEPING_DB_URL)
+
+
+def dispose_users_engine() -> None:
+    """释放账号库连接池。"""
+    _users_state.dispose()
+
+
+def dispose_bookkeeping_engine() -> None:
+    """释放记账库连接池。"""
+    _bookkeeping_state.dispose()
+
+
+def users_engine() -> Engine:
+    """账号库引擎 (启动时建表用)。"""
+    return _users_state.engine_or_fail()
+
+
+def bookkeeping_engine() -> Engine:
+    """记账库引擎 (启动时建表用)。"""
+    return _bookkeeping_state.engine_or_fail()
+
+
+def users_session_factory() -> sessionmaker[Session]:
+    """账号库会话工厂。"""
+    return _users_state.session_factory_or_fail()
+
+
+def bookkeeping_session_factory() -> sessionmaker[Session]:
+    """记账库会话工厂。"""
+    return _bookkeeping_state.session_factory_or_fail()
+
+
+def get_users_db() -> Iterator[Session]:
+    """FastAPI 依赖: 每请求一个账号库会话。"""
+    with users_session_factory()() as session:  # pylint: disable=not-callable
+        yield session
+
+
+def get_bookkeeping_db() -> Iterator[Session]:
+    """FastAPI 依赖: 每请求一个记账库会话。"""
+    with bookkeeping_session_factory()() as session:  # pylint: disable=not-callable
+        yield session
