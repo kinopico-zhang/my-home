@@ -4,14 +4,29 @@
   "description": "Tesla 充电 / 足迹 / 行程",
   "id": "/tesla/charging",
   "start_url": "/tesla/charging",
-  "scope": "/tesla/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
-    { "src": "/tesla/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/tesla/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/tesla/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/tesla/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/tesla/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/tesla/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

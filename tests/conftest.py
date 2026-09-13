@@ -71,7 +71,7 @@ def client():
 @pytest.fixture()
 def auth(client):  # pylint: disable=redefined-outer-name
     """已登录的 client (正确账密, 走真实签名 cookie)。"""
-    r = client.post("/tesla/api/login",
+    r = client.post("/api/login",
                     json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert r.status_code == 200
     return client

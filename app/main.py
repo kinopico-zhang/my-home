@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from . import (account_store, authentication, changelog,
                 config, database, repository, settings_store, tracks_cache)
 from .bookkeeping import store as bookkeeping_store, webapp
+from .home import STATIC_DIR as HOME_STATIC_DIR
 from . import models
 from .models import OwnBase, User
 from .schemas import (
@@ -87,8 +88,8 @@ live = APIRouter(prefix="/tesla/live/api")
 # 设置 API (页面: /tesla/settings —— TeslaMate 连接 / 高德 Key / 驾驶员)
 settingsapi = APIRouter(prefix="/tesla/api")
 changelogapi = APIRouter(prefix="/tesla/changelog/api")
-# 账号管理 API (页面: /tesla/accounts, 仅管理员)
-accounts = APIRouter(prefix="/tesla/accounts/api")
+# 账号管理 API (页面: /accounts, 仅管理员)
+accounts = APIRouter(prefix="/accounts/api")
 
 
 def _migrate_own_db() -> None:
@@ -142,33 +143,76 @@ async def sqlalchemy_error_handler(
     return JSONResponse({"detail": f"数据库查询失败: {exc}"}, status_code=503)
 
 
-# 无需登录即可访问的路径: 登录/注册页及其接口 (邀请令牌本身就是凭证)
+# 无需登录即可访问的路径: 登录/注册页及其接口 (邀请令牌本身就是凭证);
+# 登出只清 cookie, 不需要有效会话
 _PUBLIC_PATHS = frozenset((
-    "/tesla/login", "/tesla/register",
-    "/tesla/api/login", "/tesla/api/logout",
-    "/tesla/api/register", "/tesla/api/invite-status",
+    "/login", "/register",
+    "/api/login", "/api/logout",
+    "/api/register", "/api/invite-status",
     "/bookkeeping/api/logout"))
-_STATIC_PREFIXES = ("/tesla/static/", "/bookkeeping/static/")
+_STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/")
+
+# 账号体系从 /tesla 搬到根路径 (账号属于 My Home, 不属于任何一个应用);
+# 旧地址 302/307 兼容 —— 手机上的老书签和已经发出去的邀请链接还能用
+_MOVED_PAGES = {
+    "/tesla/login": "/login",
+    "/tesla/register": "/register",
+    "/tesla/accounts": "/accounts",
+}
+_MOVED_APIS = {
+    "/tesla/api/login": "/api/login",
+    "/tesla/api/logout": "/api/logout",
+    "/tesla/api/register": "/api/register",
+    "/tesla/api/invite-status": "/api/invite-status",
+    "/tesla/api/me": "/api/me",
+    "/tesla/api/account/name": "/api/account/name",
+    "/tesla/api/account/password": "/api/account/password",
+}
+
+
+def _moved_target(path: str) -> str | None:
+    """旧地址 → 新地址 (没搬过的返回 None); 查询串由中间件续上。"""
+    new = _MOVED_PAGES.get(path) or _MOVED_APIS.get(path)
+    if new is None and path.startswith("/tesla/accounts/api/"):
+        new = "/accounts/api/" + path[len("/tesla/accounts/api/"):]
+    return new
+
+
+def _is_protected(path: str) -> bool:
+    """保护面: 门厅 (/) + 两个应用 + 账号管理页 + 账号接口 (me / 自助改)。"""
+    if path == "/" or path.startswith(("/tesla", "/bookkeeping", "/accounts")):
+        return True
+    return path == "/api/me" or path.startswith("/api/account/")
 
 
 @app.middleware("http")
 async def auth_middleware(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    """页面未登录跳登录页, API 未登录 401; 静态放行 + 缓存策略。
+    """旧地址搬家重定向; 页面未登录跳登录页, API 未登录 401; 静态放行 + 缓存策略。
 
-    /tesla 与 /bookkeeping 两个应用同一套会话 cookie (path=/)。"""
+    My Home (根路径) 是共享层: 账号体系 + 两个应用 (My Tesla / My Money),
+    同一枚会话 cookie (path=/)。"""
     path = request.url.path
-    protected = path.startswith(("/tesla", "/bookkeeping"))
+    moved = _moved_target(path)
+    if moved is not None:
+        if request.url.query:
+            moved += "?" + request.url.query
+        # 接口用 307 保住方法与请求体, 页面 302 即可
+        api_move = moved.startswith(("/api/", "/accounts/api/"))
+        return RedirectResponse(moved, status_code=307 if api_move else 302)
+    token_ok = authentication.check_token(request.cookies.get("auth", ""))
+    protected = _is_protected(path)
     is_api = protected and "/api/" in path
-    if path in _PUBLIC_PATHS or path.startswith(_STATIC_PREFIXES):
+    if path == "/login" and token_ok:
+        # 已登录的访客不再看表单, 直接进门厅
+        resp = RedirectResponse("/", status_code=302)
+    elif path in _PUBLIC_PATHS or path.startswith(_STATIC_PREFIXES):
         resp = await call_next(request)
-    elif is_api and not authentication.check_token(
-            request.cookies.get("auth", "")):
+    elif is_api and not token_ok:
         resp = JSONResponse({"detail": "未登录"}, status_code=401)
-    elif protected and not is_api and not authentication.check_token(
-            request.cookies.get("auth", "")):
-        resp = RedirectResponse("/tesla/login", status_code=302)
+    elif protected and not is_api and not token_ok:
+        resp = RedirectResponse("/login", status_code=302)
     else:
         resp = await call_next(request)
     if is_api:
@@ -181,9 +225,11 @@ async def auth_middleware(
     return resp
 
 
-def _page(fname: str) -> FileResponse:
-    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (no-cache), 更新即时生效。"""
-    resp = FileResponse(config.STATIC_DIR / fname)
+def _page(fname: str, directory=None) -> FileResponse:
+    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (no-cache), 更新即时生效。
+
+    目录缺省 My Tesla 的静态目录; 门厅/登录/注册/账号管理在 home 共享层。"""
+    resp = FileResponse((directory or config.STATIC_DIR) / fname)
     resp.headers["Cache-Control"] = "no-cache"
     return resp
 
@@ -197,16 +243,22 @@ def _date_range_or_400(frm: str | None,
         raise HTTPException(400, str(exc)) from exc
 
 
-# ---------------------------------------------------------------- 登录 / 登出
+# --------------------------------------------- My Home 门厅 / 登录 / 登出
 
-@app.get("/tesla/login", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
+def home_page() -> FileResponse:
+    """My Home 门厅: 所有应用的入口卡片 + 账号管理 (共享层, 不属于任何应用)。"""
+    return _page("home.html", directory=HOME_STATIC_DIR)
+
+
+@app.get("/login", response_class=HTMLResponse)
 def login_page() -> FileResponse:
-    """登录页。"""
-    return _page("login.html")
+    """登录页 (My Home 的门, 全站唯一)。"""
+    return _page("login.html", directory=HOME_STATIC_DIR)
 
 
 def _set_session_cookie(resp: JSONResponse, user_uuid: str) -> None:
-    """会话 cookie 签到 path=/ (Tesla + 记账两个应用都带)。
+    """会话 cookie 签到 path=/ (门厅 + 两个应用全站通用)。
 
     单用户时代的旧 cookie path 限定 /tesla, 同名残留会让浏览器在 /tesla
     下优先送旧值 —— 设置新 cookie 前先删掉它。"""
@@ -216,7 +268,7 @@ def _set_session_cookie(resp: JSONResponse, user_uuid: str) -> None:
                     samesite="lax", path="/")
 
 
-@app.post("/tesla/api/login")
+@app.post("/api/login")
 def login(creds: LoginCredentials, request: Request,
           users: Session = Depends(database.get_users_db)) -> JSONResponse:
     """校验账密 (账号库, 带单 IP 限速), 签发会话 cookie。"""
@@ -234,7 +286,7 @@ def login(creds: LoginCredentials, request: Request,
     return resp
 
 
-@app.post("/tesla/api/logout")
+@app.post("/api/logout")
 def logout() -> JSONResponse:
     """登出 (清本设备的 cookie; 其他设备/其他人不受影响)。"""
     resp = JSONResponse(OkResponse(ok=True).model_dump())
@@ -264,13 +316,13 @@ def _require_admin(request: Request, users: Session) -> User:
     return user
 
 
-@app.get("/tesla/register")
+@app.get("/register")
 def register_page() -> FileResponse:
     """注册页 (凭邀请令牌进入, 无需登录)。"""
-    return _page("register.html")
+    return _page("register.html", directory=HOME_STATIC_DIR)
 
 
-@app.get("/tesla/api/invite-status")
+@app.get("/api/invite-status")
 def invite_status(invite: str,
                   users: Session = Depends(database.get_users_db)) -> OkResponse:
     """邀请令牌是否可用 (注册页进页即查, 坏链接直接说原因)。"""
@@ -281,7 +333,7 @@ def invite_status(invite: str,
     return OkResponse(ok=True)
 
 
-@app.post("/tesla/api/register")
+@app.post("/api/register")
 def register(creds: RegisterCredentials, request: Request,
              users: Session = Depends(database.get_users_db)) -> JSONResponse:
     """凭邀请注册账号 (一次一用), 注册即登录。"""
@@ -302,7 +354,7 @@ def register(creds: RegisterCredentials, request: Request,
     return resp
 
 
-@app.get("/tesla/api/me", response_model=MeInfo)
+@app.get("/api/me", response_model=MeInfo)
 def me(request: Request,
        users: Session = Depends(database.get_users_db)) -> MeInfo:
     """当前会话账号 (名称 + 是否管理员; uuid 不出接口)。"""
@@ -310,7 +362,7 @@ def me(request: Request,
     return MeInfo(name=user.name, is_admin=user.is_admin)
 
 
-@settingsapi.post("/account/name", response_model=MeInfo)
+@app.post("/api/account/name", response_model=MeInfo)
 def account_change_name(body: AccountNameUpdate, request: Request,
                         users: Session = Depends(database.get_users_db)) -> MeInfo:
     """自助改登录名 (uuid 不变, 会话不掉线)。"""
@@ -322,7 +374,7 @@ def account_change_name(body: AccountNameUpdate, request: Request,
     return MeInfo(name=user.name, is_admin=user.is_admin)
 
 
-@settingsapi.post("/account/password", response_model=OkResponse)
+@app.post("/api/account/password", response_model=OkResponse)
 def account_change_password(body: AccountPasswordUpdate, request: Request,
                             users: Session = Depends(database.get_users_db)) -> OkResponse:
     """自助改密码 (先验旧密码; 会话不受影响)。"""
@@ -350,7 +402,7 @@ def accounts_list_users(request: Request,
 @accounts.post("/invitations", response_model=InvitationCreated)
 def accounts_create_invitation(body: InvitationRequest, request: Request,
                                users: Session = Depends(database.get_users_db)) -> InvitationCreated:
-    """签发注册邀请 (仅管理员; 前端拼 /tesla/register?invite= 链接分享)。"""
+    """签发注册邀请 (仅管理员; 前端拼 /register?invite= 链接分享)。"""
     _require_admin(request, users)
     try:
         invitation = account_store.create_invitation(users, body.days)
@@ -790,12 +842,6 @@ def get_live_status(db: Session = Depends(database.get_db)) -> LiveStatus:
 
 # ---------------------------------------------------------------- 静态页面
 
-@app.get("/")
-def root() -> RedirectResponse:
-    """根路径 → /tesla。"""
-    return RedirectResponse("/tesla", status_code=302)
-
-
 @app.get("/tesla")
 def tesla_home() -> RedirectResponse:
     """/tesla → 默认充电页。"""
@@ -850,10 +896,10 @@ def settings_page() -> FileResponse:
     return _page("settings.html")
 
 
-@app.get("/tesla/accounts")
+@app.get("/accounts")
 def accounts_page() -> FileResponse:
-    """账号管理页 (仅管理员; 非管理员进来只见提示)。"""
-    return _page("accounts.html")
+    """账号管理页 (My Home 共享层, 仅管理员; 非管理员进来只见提示)。"""
+    return _page("accounts.html", directory=HOME_STATIC_DIR)
 
 
 @app.get("/tesla/changelog")
@@ -939,6 +985,7 @@ app.include_router(live)
 app.include_router(settingsapi)
 app.include_router(changelogapi)
 app.include_router(accounts)
+app.mount("/static", StaticFiles(directory=HOME_STATIC_DIR), name="home-static")
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 # My Money (家庭记账): 独立应用, 只共享账号体系 (会话 cookie + 账号库)
 app.mount("/bookkeeping", webapp.bk_app)

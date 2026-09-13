@@ -29,7 +29,7 @@ const thousands = v => Math.round(v).toLocaleString("zh-CN");
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
-  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (r.status === 401) { location.replace("/login"); throw new Error("未登录"); }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();
 }
@@ -538,8 +538,8 @@ $("#refresh-btn").addEventListener("click", async () => {
 });
 
 $("#logout").addEventListener("click", async () => {
-  try { await fetch("/tesla/api/logout", { method: "POST" }); } catch (e) {}
-  location.href = "/tesla/login";
+  try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
+  location.href = "/login";
 });
 
 setTimeRange(state.range, true);

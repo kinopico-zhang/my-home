@@ -131,5 +131,5 @@ def test_chargemap_link_in_all_nav_menus(auth):
         assert 'href="/tesla/chargemap">充电地图</a>' in html, path   # 含 on 态
     lastpage = auth.get("/tesla/static/lastpage.js?v=1").text
     assert '"/tesla/chargemap", "/tesla/map"' in lastpage
-    login_js = auth.get("/tesla/static/login.js?v=1").text
+    login_js = auth.get("/static/login.js?v=1").text
     assert "stats|chargemap|map" in login_js

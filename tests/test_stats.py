@@ -137,5 +137,5 @@ def test_stats_link_in_all_nav_menus(auth):
         assert 'href="/tesla/stats">充电统计</a>' in html, path   # 含 on 态 (统计页自身)
     lastpage = auth.get("/tesla/static/lastpage.js?v=1").text
     assert '"/tesla/stats", "/tesla/chargemap"' in lastpage
-    login_js = auth.get("/tesla/static/login.js?v=1").text
+    login_js = auth.get("/static/login.js?v=1").text
     assert "stats|chargemap|map" in login_js

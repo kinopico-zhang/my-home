@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 from app import account_store, authentication, config
 import app.main as m
 
-# 全部对外页面 (Tesla + 账号管理 + 注册 + 挂载的记账应用), 多处遍历用
-ALL_PAGES = ["/tesla/login", "/tesla/register", "/tesla/charging", "/tesla/stats",
+# 全部对外页面 (门厅共享层 + Tesla + 挂载的记账应用), 多处遍历用
+ALL_PAGES = ["/", "/login", "/register", "/tesla/charging", "/tesla/stats",
              "/tesla/chargemap", "/tesla/map", "/tesla/changelog", "/tesla/trips",
-             "/tesla/groups", "/tesla/live", "/tesla/settings", "/tesla/accounts",
+             "/tesla/groups", "/tesla/live", "/tesla/settings", "/accounts",
              "/bookkeeping"]
 
 
@@ -57,8 +57,9 @@ def test_all_pages_have_standalone_meta(auth):
         html = auth.get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
         assert 'content="black-translucent"' in html, path
-        # manifest 各用各的 (记账是独立应用, 有自己的 manifest)
+        # manifest 各用各的: 门厅层一份, Tesla / 记账各一份
         manifest = ("/bookkeeping/static/manifest.json" if path == "/bookkeeping"
+                    else "/static/manifest.json" if not path.startswith("/tesla")
                     else "/tesla/static/manifest.json")
         assert f'<link rel="manifest" href="{manifest}">' in html, path
 
@@ -94,14 +95,15 @@ def test_all_pages_have_refresh_button(auth):
         "/tesla/settings": ("settings.js", "await loadSettings();"),
         "/tesla/changelog": ("changelog.js", "await load();"),
         "/bookkeeping": ("bookkeeping.js", "await syncNow();"),
-        "/tesla/accounts": ("accounts.js", "await loadAll();"),
+        "/accounts": ("accounts.js", "await loadAll();"),
     }
     for path, (js_file, call) in wiring.items():
         html = auth.get(path).text
         assert '<button id="refresh-btn"' in html, path        # 按钮在顶栏
         assert "refresh-spin" in html, path                    # busy 旋转动画
-        prefix = "/bookkeeping/static" if path.startswith("/bookkeeping") \
-            else "/tesla/static"
+        prefix = ("/bookkeeping/static" if path.startswith("/bookkeeping")
+                  else "/static" if path == "/accounts"
+                  else "/tesla/static")
         js = auth.get(f"{prefix}/{js_file}?v=1").text
         assert '$("#refresh-btn").addEventListener' in js, path
         assert call in js, f"{path} 刷新按钮没接上 {call}"
@@ -120,19 +122,22 @@ def test_pages_remember_last_page(auth):
     iOS 主屏图标每次都从添加时定格的 start_url 启动, 不记得停在哪页 ——
     localStorage 记 path+search, 冷启动 (sessionStorage 无标记) 且 standalone
     才 replace 过去; 行程弹层开合只动 URL 不重载, 靠 visibilitychange 补记。"""
-    for path in [p for p in ALL_PAGES
-                 if p not in ("/tesla/login", "/tesla/register", "/bookkeeping")]:
+    # lastpage 是 Tesla 应用内的概念: 门厅/登录/注册/账号管理/记账都不挂
+    home_layer = ("/", "/login", "/register", "/accounts", "/bookkeeping")
+    for path in [p for p in ALL_PAGES if p not in home_layer]:
         html = auth.get(path).text
         tag = '<script src="/tesla/static/lastpage.js?v=1"></script>'
         assert tag in html, path
         assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
-    assert "lastpage.js" not in auth.get("/tesla/login").text
-    assert "lastpage.js" not in auth.get("/tesla/register").text
-    # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落充电页) —— 逻辑在 login.js
-    login_html = auth.get("/tesla/static/login.js?v=1").text
+    assert "lastpage.js" not in auth.get("/login").text
+    assert "lastpage.js" not in auth.get("/register").text
+    # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落门厅) —— 逻辑在 login.js
+    login_html = auth.get("/static/login.js?v=1").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
     assert ("/^\\/(tesla\\/(charging|stats|chargemap|map|trips|groups|live|settings"
             "|changelog))(\\?|$)/.test(last)") in login_html
+    # 白名单不匹配 (首次登录 / 坏值) 回门厅, 不再写死充电页
+    assert '? last : "/")' in login_html
 
     r = auth.get("/tesla/static/lastpage.js")
     assert r.status_code == 200
@@ -151,15 +156,14 @@ def test_pages_remember_last_page(auth):
 
 
 def test_webapp_manifests_scoped_per_app(auth):
-    """Web App Manifest: 两个应用各一份, scope 各圈各的 —— 没有它, iOS 全屏
-    App 只认添加图标时的那个启动 URL, 越出 scope 就当地址栏处理 (2026-09-12
-    用户实测: 行程页加的图标, 切充电/足迹出 Safari 菜单, 切回行程又正常)。
-    记账是独立应用: 单独的图标 + 单独的 manifest, 加主屏互不干扰。"""
+    """Web App Manifest: 三个入口各一份 (门厅 / Tesla / 记账), 名字和启动页
+    互不相同, scope 统一放宽到 / —— 登录页搬到了门厅层 (应用旧 scope 之外),
+    全屏 App 会话过期被 302 到 /login 时若越出 scope 就弹回 Safari 露地址栏
+    (2026-09-12 用户实测踩坑)。图标各用各的, 加主屏互不干扰。"""
     for url, name, scope, start in (
-            ("/tesla/static/manifest.json", "My Tesla", "/tesla/",
-             "/tesla/charging"),
-            ("/bookkeeping/static/manifest.json", "My Money",
-             "/bookkeeping", "/bookkeeping")):
+            ("/tesla/static/manifest.json", "My Tesla", "/", "/tesla/charging"),
+            ("/bookkeeping/static/manifest.json", "My Money", "/", "/bookkeeping"),
+            ("/static/manifest.json", "My Home", "/", "/")):
         r = auth.get(url)
         assert r.status_code == 200, url
         manifest = r.json()
@@ -171,15 +175,16 @@ def test_webapp_manifests_scoped_per_app(auth):
         assert any(i["sizes"] == "512x512" for i in manifest["icons"])
     for icon in ("/tesla/static/icon-192.png", "/tesla/static/icon-512.png",
                  "/bookkeeping/static/icon-192.png",
-                 "/bookkeeping/static/icon-512.png"):
+                 "/bookkeeping/static/icon-512.png",
+                 "/static/icon-192.png", "/static/icon-512.png"):
         assert auth.get(icon).status_code == 200, icon
 
 
 def test_login_ok_sets_cookie_attributes(client):
-    r = client.post("/tesla/api/login",
+    r = client.post("/api/login",
                     json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert r.status_code == 200
-    # 两个 set-cookie: 删旧 path=/tesla 残留 + 签新 path=/ (Tesla + 记账共用)
+    # 两个 set-cookie: 删旧 path=/tesla 残留 + 签新 path=/ (门厅 + 两应用共用)
     cookies = "; ".join(c.lower() for c in r.headers.get_list("set-cookie"))
     assert "auth=" in cookies
     assert "path=/;" in cookies, cookies          # 新 cookie 挂全站 (非 /tesla 子路径)
@@ -190,7 +195,7 @@ def test_login_ok_sets_cookie_attributes(client):
 
 
 def test_login_wrong_password_returns_reason(client):
-    r = client.post("/tesla/api/login",
+    r = client.post("/api/login",
                     json={"user": config.AUTH_USER, "password": "nope"})
     assert r.status_code == 401
     assert r.json()["detail"] == "账号或密码错误"
@@ -198,15 +203,15 @@ def test_login_wrong_password_returns_reason(client):
 
 def test_login_rate_limited_after_5_failures(client):
     for _ in range(5):
-        r = client.post("/tesla/api/login",
+        r = client.post("/api/login",
                         json={"user": config.AUTH_USER, "password": "nope"})
         assert r.status_code == 401
-    r = client.post("/tesla/api/login",
+    r = client.post("/api/login",
                     json={"user": config.AUTH_USER, "password": "nope"})
     assert r.status_code == 429
     assert "尝试次数过多" in r.json()["detail"]
     # 锁定期间正确密码也进不去
-    r = client.post("/tesla/api/login",
+    r = client.post("/api/login",
                     json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert r.status_code == 429
 
@@ -236,7 +241,7 @@ def test_legacy_two_part_token_maps_to_admin(usersdb, client):
     assert authentication.check_token(token) == authentication.LEGACY_ADMIN
     client.cookies.set("auth", token)
     assert client.get("/tesla/charging").status_code == 200
-    me = client.get("/tesla/api/me").json()
+    me = client.get("/api/me").json()
     assert me["is_admin"] is True
     # 过期的旧 cookie 无效
     exp = str(int(time.time()) - 1)
@@ -247,13 +252,13 @@ def test_legacy_two_part_token_maps_to_admin(usersdb, client):
 def test_logout_clears_only_this_device(client, usersdb):
     """登出只清本设备 cookie, 不再轮换会话密钥 (多用户下轮换会踢掉所有人)。"""
     other = account_store.create_user(usersdb, "二号账号", "password123")
-    client.post("/tesla/api/login",
+    client.post("/api/login",
                 json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert client.get("/tesla/charging").status_code == 200
-    assert client.post("/tesla/api/logout").status_code == 200
+    assert client.post("/api/logout").status_code == 200
     r = client.get("/tesla/charging", follow_redirects=False)
     assert r.status_code == 302
-    assert r.headers["location"] == "/tesla/login"
+    assert r.headers["location"] == "/login"
     # 别人的会话不受影响
     client2 = TestClient(m.app)
     client2.cookies.set("auth", authentication.make_token(other.uuid))
@@ -263,13 +268,13 @@ def test_logout_clears_only_this_device(client, usersdb):
 
 # ---------------------------------------------------------------- 中间件
 def test_unauthed_pages_redirect_to_login(client):
-    for path in ("/tesla", "/tesla/charging", "/tesla/stats", "/tesla/chargemap",
-                 "/tesla/map", "/tesla/changelog", "/tesla/trips",
-                 "/tesla/groups", "/tesla/live", "/tesla/settings",
-                 "/tesla/accounts", "/bookkeeping"):
+    for path in ("/", "/tesla", "/tesla/charging", "/tesla/stats",
+                 "/tesla/chargemap", "/tesla/map", "/tesla/changelog",
+                 "/tesla/trips", "/tesla/groups", "/tesla/live",
+                 "/tesla/settings", "/accounts", "/bookkeeping"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
-        assert r.headers["location"] == "/tesla/login", path
+        assert r.headers["location"] == "/login", path
 
 
 def test_unauthed_apis_return_401_json(client):
@@ -279,7 +284,7 @@ def test_unauthed_apis_return_401_json(client):
                  "/tesla/trips/api/sessions", "/tesla/trips/api/1/track",
                  "/tesla/live/api/status",
                  "/tesla/changelog/api/entries",
-                 "/tesla/api/me", "/tesla/accounts/api/users"):
+                 "/api/me", "/api/account/name", "/accounts/api/users"):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
@@ -289,17 +294,20 @@ def test_unauthed_apis_return_401_json(client):
 
 
 def test_public_paths_accessible_without_login(client):
-    assert client.get("/tesla/login").status_code == 200
-    assert client.get("/tesla/register").status_code == 200    # 注册页公开
+    assert client.get("/login").status_code == 200
+    assert client.get("/register").status_code == 200    # 注册页公开
     for asset in ("/tesla/static/echarts.min.js", "/tesla/static/gcj02.js",
                   "/tesla/static/trackutil.js", "/tesla/static/favicon.svg",
-                  "/tesla/static/register.js", "/tesla/static/login.js",
-                  "/bookkeeping/static/bookkeeping.js",      # 记账静态也放行
+                  "/static/login.js", "/static/register.js", "/static/home.js",
+                  "/static/favicon.svg",               # 门厅层静态放行
+                  "/bookkeeping/static/bookkeeping.js",
                   "/bookkeeping/static/bookkeeping-merge.js"):
         assert client.get(asset).status_code == 200, asset
     # Safari 不支持 SVG favicon, 需要 PNG 版 + iOS 主屏 apple-touch-icon
-    assert client.get("/tesla/static/favicon-32.png").status_code == 200
-    assert client.get("/tesla/static/apple-touch-icon.png").status_code == 200
+    for icon in ("/tesla/static/favicon-32.png",
+                 "/tesla/static/apple-touch-icon.png",
+                 "/static/favicon-32.png", "/static/apple-touch-icon.png"):
+        assert client.get(icon).status_code == 200, icon
 
 
 def test_apple_touch_icon_opaque_with_padding():
@@ -356,33 +364,76 @@ def test_mymoney_app_has_own_icons():
     tesla = (Path(m.__file__).parent / "static" / "icon-512.png").read_bytes()
     assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
 
-def test_old_paths_are_gone(client):
-    assert client.get("/login").status_code == 404
+
+def test_myhome_app_has_own_icons():
+    """My Home 门厅也是独立入口: 自己的图标 (黑底白房子, 不透明全出血方形),
+    与 Tesla / Money 互不共用 —— 三个主屏图标一眼可分。"""
+    base = Path(m.__file__).parent / "home" / "static"
+    for fname, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192),
+                        ("icon-512.png", 512), ("favicon-32.png", 32)):
+        with (base / fname).open("rb") as fh:
+            d = fh.read()
+        w, h = struct.unpack(">II", d[16:24])
+        assert (w, h) == (size, size), fname
+        assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
+    mine = (base / "icon-512.png").read_bytes()
+    assert mine != (Path(m.__file__).parent / "static" / "icon-512.png").read_bytes()
+    assert mine != (Path(m.__file__).parent / "bookkeeping" / "static"
+                    / "icon-512.png").read_bytes(), "三个入口不该共用图标"
+
+def test_moved_account_paths_redirect(client):
+    """账号体系搬到根路径 (门厅共享层), 旧地址 302/307 兼容 —— 已经发出去的
+    邀请链接和手机上的老书签不能断: 页面 302, 接口 307 (保方法与请求体),
+    查询串 (invite=) 原样带上。"""
+    for old, new in (("/tesla/login", "/login"),
+                     ("/tesla/register?invite=tok", "/register?invite=tok"),
+                     ("/tesla/accounts", "/accounts")):
+        r = client.get(old, follow_redirects=False)
+        assert (r.status_code, r.headers["location"]) == (302, new), old
+    for verb, old, new in (
+            ("post", "/tesla/api/login", "/api/login"),
+            ("post", "/tesla/api/logout", "/api/logout"),
+            ("post", "/tesla/api/register", "/api/register"),
+            ("get", "/tesla/api/invite-status?invite=tok",
+             "/api/invite-status?invite=tok"),
+            ("get", "/tesla/api/me", "/api/me"),
+            ("post", "/tesla/api/account/name", "/api/account/name"),
+            ("post", "/tesla/api/account/password", "/api/account/password"),
+            ("get", "/tesla/accounts/api/users", "/accounts/api/users"),
+            ("delete", "/tesla/accounts/api/invitations/tok",
+             "/accounts/api/invitations/tok")):
+        r = getattr(client, verb)(old, follow_redirects=False)
+        assert (r.status_code, r.headers["location"]) == (307, new), old
+    # 老书签真的能用: 307 转过去登录成功
+    r = client.post("/tesla/api/login", json={"user": config.AUTH_USER,
+                                              "password": config.AUTH_PASS})
+    assert r.status_code == 200
+    # Tesla 业务接口没有平移到根路径 (不与门厅账号接口混住)
     assert client.get("/api/summary").status_code == 404
-    assert client.post("/api/login", json={}).status_code == 404
+    assert client.get("/api/charging").status_code == 404
 
 
 # ---------------------------------------------------------------- 页面路由
 def test_root_redirect_chain(auth):
-    r = auth.get("/", follow_redirects=False)
-    assert (r.status_code, r.headers["location"]) == (302, "/tesla")
+    """登录后根路径就是 My Home 门厅 (不再转去充电页); /tesla 仍收口到默认页。"""
+    assert auth.get("/", follow_redirects=False).status_code == 200
     r = auth.get("/tesla", follow_redirects=False)
     assert (r.status_code, r.headers["location"]) == (302, "/tesla/charging")
 
 
 def test_pages_served_after_login(auth):
-    for path, marker in (("/tesla/charging", "My Tesla"),
+    for path, marker in (("/", "My Home"),                    # 门厅
+                         ("/tesla/charging", "My Tesla"),
                          ("/tesla/stats", "My Tesla"),
                          ("/tesla/chargemap", "My Tesla"),
                          ("/tesla/map", "My Tesla"),
                          ("/tesla/trips", "My Tesla"),
-                         ("/tesla/login", "My Home"),
-                         ("/tesla/register", "My Home"),
+                         ("/register", "My Home"),
                          ("/tesla/changelog", "My Tesla"),
                          ("/tesla/groups", "My Tesla"),
                          ("/tesla/live", "My Tesla"),
                          ("/tesla/settings", "My Tesla"),
-                         ("/tesla/accounts", "My Tesla"),
+                         ("/accounts", "My Home"),             # 账号管理
                          ("/bookkeeping", "My Money")):
         r = auth.get(path)
         assert r.status_code == 200, path
@@ -403,10 +454,11 @@ def test_cache_control_headers(auth):
     anon = TestClient(m.app)
     assert anon.get("/tesla/map/api/config").headers["cache-control"] == "no-store"
     for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
-                 "/tesla/login", "/bookkeeping"):
+                 "/", "/accounts", "/bookkeeping"):
         assert auth.get(path).headers["cache-control"] == "no-cache", path
     assert auth.get("/bookkeeping/static/bookkeeping.js").headers["cache-control"] \
         == "no-cache"
+    assert auth.get("/static/home.js").headers["cache-control"] == "no-cache"
 
 
 def test_all_pages_declare_png_and_touch_icons(auth):
@@ -422,8 +474,7 @@ def test_all_pages_have_brand_menu(auth):
     for path, cur, slug in (("/tesla/charging", "充电记录", "charging"),
                             ("/tesla/map", "足迹地图", "map"),
                             ("/tesla/trips", "行程列表", "trips"),
-                            ("/tesla/live", "当前驾驶", "live"),
-                            ("/tesla/accounts", "账号管理", "accounts")):
+                            ("/tesla/live", "当前驾驶", "live")):
         html = auth.get(path).text
         assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
         assert '<nav class="tabs">' not in html, path       # 平铺页签已删
@@ -440,23 +491,55 @@ def test_all_pages_have_brand_menu(auth):
         assert 'href="/bookkeeping"' not in html, path
 
 
-def test_login_page_is_home_launcher(auth):
-    """登录页 = My Home 门厅: 已登录的访客看到两个应用的入口
-    (My Tesla / My Money, JS 按 /tesla/api/me 切换), 没登录看到表单。"""
-    html = auth.get("/tesla/login").text
-    assert "<title>登录 · My Home</title>" in html
-    assert '<h1>My Home</h1>' in html
-    assert '<div class="apps" id="apps" hidden>' in html      # 默认藏, JS 放行
-    assert '<a class="app" href="/tesla/charging">' in html
+def test_home_page_is_the_launcher(auth):
+    """根路径 = My Home 门厅: 两个应用的入口卡 + 账号管理 (管理员专属,
+    home.js 按 /api/me 放行) + 退出登录。账号体系属于门厅共享层,
+    不属于任何一个应用。"""
+    html = auth.get("/").text
+    assert "<title>My Home</title>" in html
+    assert "<h1>My Home</h1>" in html
+    assert '<a class="app" href="/tesla/charging">' in html   # My Tesla 卡
     assert "My Tesla" in html
-    assert '<a class="app" href="/bookkeeping">' in html      # 独立应用从门厅进
+    assert '<a class="app" href="/bookkeeping">' in html      # My Money 卡
     assert "My Money" in html
-    assert 'id="switch-account"' in html
-    login_js = auth.get("/tesla/static/login.js?v=1").text
-    assert 'fetch("/tesla/api/me")' in login_js               # 登录态探测
-    assert 'document.getElementById("apps").hidden = false' in login_js
-    # 注册页没有门厅 (是凭邀请的一次性入口)
-    assert 'id="apps"' not in auth.get("/tesla/register").text
+    assert 'class="admin-only" id="accounts-link" href="/accounts"' in html
+    assert '<button id="logout" type="button">退出登录</button>' in html
+    home_js = auth.get("/static/home.js?v=1").text
+    assert 'fetch("/api/me"' in home_js
+    assert "is_admin" in home_js
+    assert "admin-show" in home_js            # is_admin 才放行账号管理入口
+    assert "欢迎回来" in home_js               # 欢迎语带账号名
+    # 登录页/注册页不是门厅 (登录页只放表单, 注册页是一次性邀请入口);
+    # auth fixture 的 client 已登录, 匿名视角要用全新的 TestClient
+    anon = TestClient(m.app)
+    assert 'id="apps"' not in anon.get("/login").text
+    assert 'id="apps"' not in anon.get("/register").text
+
+
+def test_login_page_redirects_authed_visitor(auth, client):
+    """已登录的人开 /login: 服务端 302 直接进门厅 (不再显示表单 ——
+    旧版靠页面 JS 探测切换, 现在登录态判断在中间件)。"""
+    r = auth.get("/login", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (302, "/")
+    # 未登录看到的才是登录表单 (My Home 的门, 全站唯一)
+    # (client 与 auth 是同一个对象且已登录, 匿名视角要新建)
+    html = TestClient(m.app).get("/login").text
+    assert "<title>登录 · My Home</title>" in html
+    assert 'id="form"' in html
+    assert 'id="eye"' in html          # 查看密码按钮 (图标并排显示 bug 修过)
+
+
+def test_accounts_page_is_home_layer(auth):
+    """账号管理页属门厅层: 品牌菜单是 My Home (门厅/两应用/账号管理,
+    当前项高亮), 退出收在菜单里, 刷新按钮最右。"""
+    html = auth.get("/accounts").text
+    assert 'class="nav-menu brand-menu" id="brand-menu"' in html
+    assert "<summary>My Home" in html
+    assert '<a href="/">My Home 门厅</a>' in html
+    assert '<a href="/tesla/charging">My Tesla</a>' in html
+    assert '<a href="/bookkeeping">My Money</a>' in html
+    assert '<a class="on" href="/accounts">账号管理</a>' in html
+    assert 'class="logout-row" id="logout"' in html
 
 
 def test_bookkeeping_topbar_is_own_app(auth):
@@ -472,13 +555,18 @@ def test_bookkeeping_topbar_is_own_app(auth):
     assert 'href="/bookkeeping/static/manifest.json"' in html
 
 
-def test_brand_menu_admin_gate(auth):
-    """账号管理入口只有管理员可见: me.js 按 /tesla/api/me 的 is_admin 放行。"""
-    me_js = auth.get("/tesla/static/me.js?v=1").text
-    assert 'fetch("/tesla/api/me")' in me_js
-    assert "is_admin" in me_js
-    assert ".admin-only" in me_js          # 非管理员保持 display:none
-    for path in ("/tesla/charging", "/tesla/map", "/tesla/trips"):
+def test_accounts_entry_only_in_home(auth):
+    """账号管理入口只在门厅且仅管理员可见 (home.js 放行); My Tesla 的页面
+    不再有账号管理 —— 账号体系属于 My Home 共享层, 不属于任何一个应用。"""
+    home_js = auth.get("/static/home.js?v=1").text
+    assert 'fetch("/api/me"' in home_js
+    assert "is_admin" in home_js
+    assert "admin-show" in home_js           # is_admin 才放行
+    html = auth.get("/").text
+    assert ".admin-only" in html             # CSS 默认 display:none
+    assert ".admin-only.admin-show" in html  # 放行态
+    for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
+                 "/tesla/settings", "/tesla/live"):
         html = auth.get(path).text
-        assert '<a class="admin-only" href="/tesla/accounts">账号管理</a>' in html, path
-        assert '<script src="/tesla/static/me.js?v=1"></script>' in html, path
+        assert "账号管理" not in html, path
+        assert "me.js" not in html, path

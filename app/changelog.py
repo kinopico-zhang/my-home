@@ -14,6 +14,8 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="新增", text="账号管理页 (仅管理员): 看账号列表, 生成 / 撤销注册邀请, 一键复制邀请链接"),
         ChangelogItem(kind="新增", text="设置页可以改自己的名称和密码"),
         ChangelogItem(kind="改进", text="服务定名 My Home: 登录后是家门厅, My Tesla (车辆) 和 My Money (记账) 两个应用都从这里进"),
+        ChangelogItem(kind="改进", text="门厅搬到了根路径: 打开就是两个应用的大卡片, 点一下就进; 门厅自己也有主屏图标 (黑底白房子)"),
+        ChangelogItem(kind="改进", text="账号管理从 My Tesla 搬进门厅: 账号是全家共用的, 不属于任何一个应用; 旧地址和老邀请链接自动跳转, 不会失效"),
         ChangelogItem(kind="修复", text="登录页显示 / 隐藏密码的两个图标并排显示"),
     ]),
     ChangelogVersion(version="2.4.0", date="2026-09-13", items=[

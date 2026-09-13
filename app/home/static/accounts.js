@@ -20,7 +20,7 @@ function toast(msg, isErr) {
 
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ cache: "no-store" }, opts));
-  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (r.status === 401) { location.replace("/login"); throw new Error("未登录"); }
   const body = await r.json().catch(() => null);
   if (!r.ok) {
     const err = new Error((body && body.detail) || `${r.status} ${r.statusText}`);
@@ -48,7 +48,7 @@ function invState(inv) {
 }
 
 function inviteLink(token) {
-  return `${location.origin}/tesla/register?invite=${encodeURIComponent(token)}`;
+  return `${location.origin}/register?invite=${encodeURIComponent(token)}`;
 }
 
 // HTTP 环境没有异步剪贴板 API: 退化用隐藏 textarea + execCommand (iOS Safari 两路都通)
@@ -76,7 +76,7 @@ async function copyText(text) {
 
 /* ---------- 载入 ---------- */
 async function loadUsers() {
-  const users = await api("/tesla/accounts/api/users");
+  const users = await api("/accounts/api/users");
   $("#user-list").innerHTML = users.map(u =>
     `<div class="usr-row">` +
     `<div class="usr-name">${esc(u.name)}${u.is_admin ? '<span class="usr-badge">管理员</span>' : ""}</div>` +
@@ -100,7 +100,7 @@ function renderInvites(invites) {
 }
 
 async function loadInvites() {
-  renderInvites(await api("/tesla/accounts/api/invitations"));
+  renderInvites(await api("/accounts/api/invitations"));
 }
 
 async function loadAll() {
@@ -132,7 +132,7 @@ $("#invite-make").addEventListener("click", async () => {
   const btn = $("#invite-make");
   btn.disabled = true;
   try {
-    const made = await api("/tesla/accounts/api/invitations", {
+    const made = await api("/accounts/api/invitations", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days: inviteDays }),
     });
@@ -161,7 +161,7 @@ $("#invite-list").addEventListener("click", async e => {
       toast(ok ? "链接已复制" : "复制失败, 请长按链接手动复制", !ok);
     } else if (t.closest(".revoke")) {
       if (!confirm("撤销这个邀请? 未注册前撤销后不能再用。")) return;
-      await api(`/tesla/accounts/api/invitations/${encodeURIComponent(token)}`,
+      await api(`/accounts/api/invitations/${encodeURIComponent(token)}`,
         { method: "DELETE" });
       await loadInvites();
       toast("已撤销");
@@ -184,8 +184,8 @@ $("#refresh-btn").addEventListener("click", async () => {
 });
 
 $("#logout").addEventListener("click", async () => {
-  await fetch("/tesla/api/logout", { method: "POST" });
-  location.replace("/tesla/login");
+  await fetch("/api/logout", { method: "POST" });
+  location.replace("/login");
 });
 
 loadAll().catch(err => toast(`加载失败: ${err.message}`, true));

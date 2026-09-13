@@ -19,7 +19,7 @@ export TMPDIR="$PWD/.pytest-tmp"
 
 DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker
 if ! $DOCKER exec mytesla-debug sh -c \
-  "cd /repo && node node_modules/eslint/bin/eslint.js app/static app/bookkeeping/static tests/js \
+  "cd /repo && node node_modules/eslint/bin/eslint.js app/static app/home/static app/bookkeeping/static tests/js \
    && node node_modules/typescript/bin/tsc -p tsconfig.json"; then
   echo "前端静态检查失败 (或调试容器 mytesla-debug 未运行)" >&2
   rc=1

@@ -16,7 +16,7 @@ def _user(usersdb, name):
     account_store.ensure_admin(usersdb, config.AUTH_USER, config.AUTH_PASS)
     user = account_store.create_user(usersdb, name, "password123")
     client = TestClient(m.app)
-    r = client.post("/tesla/api/login", json={"user": name, "password": "password123"})
+    r = client.post("/api/login", json={"user": name, "password": "password123"})
     assert r.status_code == 200
     return client, user
 
