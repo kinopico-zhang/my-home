@@ -194,6 +194,14 @@ setInterval(() => { if (cur && cur.driving) renderElapsed(cur); }, 1000);
 document.addEventListener("visibilitychange", () => {   // 从后台切回立即刷新
   if (!document.hidden) poll();
 });
+/* 顶栏刷新: 重拉当前页数据 */
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  await poll();
+  btn.classList.remove("busy");
+});
+
 $("#logout").addEventListener("click", async () => {
   try { await fetch("/tesla/api/logout", { method: "POST" }); } catch (e) {}
   location.href = "/tesla/login";

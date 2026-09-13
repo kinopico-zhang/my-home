@@ -60,6 +60,16 @@ header {
    车名 pill 兜底吸收挤压 (省略号), 更窄 (≤359px) 干脆让位隐藏 */
 .nav-row { display: flex; align-items: baseline; gap: 8px; }
 .nav-row > * { flex-shrink: 0; }
+
+/* 顶栏刷新按钮 (与页签胶囊同款样式) */
+#refresh-btn {
+  align-self: center; display: flex; align-items: center; margin-left: 0;
+  color: var(--ink-1); background: var(--surface-2);
+  padding: 5px 9px; border-radius: 999px;
+}
+#refresh-btn:active { background: var(--surface-3); }
+#refresh-btn.busy svg { animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 .car-pill {
   font-size: 11px; color: var(--ink-2); font-weight: 500; flex-shrink: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -379,6 +389,7 @@ main { max-width: 760px; margin: 0 auto; }
         </div>
       </div>
     </details>
+    <button id="refresh-btn" aria-label="刷新列表"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
   <div class="filters">
     <details class="nav-menu filt" id="type-menu">

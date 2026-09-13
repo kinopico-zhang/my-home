@@ -126,6 +126,14 @@ $("#gp-list").addEventListener("keydown", e => {
 });
 
 $("#retry").addEventListener("click", load);
+/* 顶栏刷新: 重拉当前页数据 */
+$("#refresh-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-btn");
+  btn.classList.add("busy");
+  await load();
+  btn.classList.remove("busy");
+});
+
 $("#logout").addEventListener("click", async () => {
   await fetch("/tesla/api/logout", { method: "POST" });
   location.replace("/tesla/login");
