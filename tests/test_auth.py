@@ -295,9 +295,9 @@ def test_all_pages_declare_png_and_touch_icons(client):
 
 def test_all_pages_have_brand_menu(auth):
     """品牌即入口: My Tesla 是下拉按钮, 展开是三个页面 + 退出登录, 当前页高亮。"""
-    for path, cur, slug in (("/tesla/charging", "充电", "charging"),
-                            ("/tesla/map", "足迹", "map"),
-                            ("/tesla/trips", "行程", "trips"),
+    for path, cur, slug in (("/tesla/charging", "充电记录", "charging"),
+                            ("/tesla/map", "足迹地图", "map"),
+                            ("/tesla/trips", "行程列表", "trips"),
                             ("/tesla/live", "当前驾驶", "live")):
         html = auth.get(path).text
         assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
