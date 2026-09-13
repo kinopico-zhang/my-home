@@ -25,6 +25,8 @@ let cur = null;            // 最近一次 status (driving=true)
 let driveId = null;        // 当前在渲染的行程 id
 let pollTimer = null, trackTimer = null;
 let map = null, mapFailed = false, carMarker = null, routeLine = null;
+let trackEnd = null, tailLine = null;   // 轨迹末端 → 车当前位置的连线 (见 setCar)
+let serverSkew = 0;        // 服务器时钟 - 手机时钟 (秒): 手机时间不准时走秒仍按服务器算
 
 function showState(id) {
   for (const el of ["booting", "live", "ended", "idle"]) $("#" + el).hidden = el !== id;
@@ -64,7 +66,9 @@ function render(s) {
 }
 
 function renderElapsed(s) {
-  const sec = Math.max(0, Math.floor(Date.now() / 1000 - s.started_utc));
+  /* 已行驶按服务器时钟算 (now_utc 校准偏差): 手机时钟不准时 Date.now 会把
+     差值钳到 0, 用户看到的已行驶就一直是 0:00 (真机踩坑)。 */
+  const sec = Math.max(0, Math.floor(Date.now() / 1000 + serverSkew - s.started_utc));
   $("#lv-elapsed").textContent = fmtElapsed(sec);
 }
 
@@ -88,6 +92,19 @@ function setCar(lng, lat) {   // 车辆蓝点 (跟随: 每次刷新把车拉回�
     map.add(carMarker);
   }
   map.setCenter(p);
+  /* 轨迹末端连到车: 轨迹接口 20s 一拉, 位置轮询 5s 一走, 节奏不同 —— 不补
+     这根尾巴, 速度色轨迹的终点会脱离车点 (用户要求必须连着)。颜色跟当前
+     车速档, 与历史轨迹同一套色阶。 */
+  if (trackEnd) {
+    if (tailLine) tailLine.setPath([trackEnd, p]);
+    else {
+      tailLine = new AMap.Polyline({ path: [trackEnd, p], strokeWeight: 5,
+        strokeOpacity: 1, lineJoin: "round", lineCap: "round", zIndex: 90 });
+      map.add(tailLine);
+    }
+    tailLine.setOptions({ strokeColor:
+      TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(cur ? cur.speed || 0 : 0)] });
+  }
 }
 
 async function refreshTrack() {
@@ -95,17 +112,24 @@ async function refreshTrack() {
   try {
     const t = await getJSON("/tesla/trips/api/" + driveId + "/track");
     if (!map || t.id !== driveId) return;   // 行程已切换, 迟到的响应作废
-    const path = t.pts.map(p => GCJ02.wgs84ToGcj02(p[0], p[1]));
+    /* 速度着色 (与行程回放同套色阶: 慢红快绿), 相邻同档一段共享端点无缝 */
+    const conv = pts => pts.map(q => GCJ02.wgs84ToGcj02(q[0], q[1]));
     if (routeLine) map.remove(routeLine);
-    routeLine = new AMap.Polyline({ path, strokeColor: "#3987e5", strokeWeight: 5,
-      strokeOpacity: 1, lineJoin: "round", lineCap: "round", zIndex: 90, showDir: true });
+    routeLine = TrackUtil.speedLines(t.pts).map(l => new AMap.Polyline({
+      path: conv(l.pts), strokeColor: l.color, strokeWeight: 5, strokeOpacity: 1,
+      lineJoin: "round", lineCap: "round", zIndex: 90 }));
     map.add(routeLine);
+    const last = t.pts[t.pts.length - 1];
+    trackEnd = GCJ02.wgs84ToGcj02(last[0], last[1]);
+    if (cur && cur.lng != null) setCar(cur.lng, cur.lat);   // 尾巴立刻接到车
   } catch (e) { /* 刚出发位置点不足 2 个会 404, 下轮再取 */ }
 }
 
 function enterDriving(s) {
   driveId = s.drive_id;
   if (map && routeLine) { map.remove(routeLine); routeLine = null; }
+  if (map && tailLine) { map.remove(tailLine); tailLine = null; }
+  trackEnd = null;
   showState("live");
   refreshTrack();
   clearInterval(trackTimer);
@@ -117,6 +141,7 @@ async function poll() {
   try {
     s = await getJSON("/tesla/live/api/status");
   } catch (e) { return; }   // 轮询失败保留当前画面, 下一轮再试
+  if (s.now_utc != null) serverSkew = s.now_utc - Date.now() / 1000;
   if (s.driving) {
     if (!cur || !cur.driving || cur.drive_id !== s.drive_id) enterDriving(s);
     cur = s;
