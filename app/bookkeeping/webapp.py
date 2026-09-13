@@ -86,8 +86,9 @@ def bookkeeping_sync(body: SyncRequest, request: Request,
         raise HTTPException(400, str(exc)) from exc
     names = {u.uuid: u.name for u in account_store.list_users(users)}
     entries = [EntryOut(
-        id=row.id, date=row.date, amount=row.amount, kind=row.kind,
-        category=row.category, note=row.note, deleted=row.deleted,
+        id=row.id, date=row.date, time=row.time, amount=row.amount, kind=row.kind,
+        category=row.category, tags=row.tags.split(",") if row.tags else [],
+        note=row.note, deleted=row.deleted,
         updated_at=row.updated_at.replace(tzinfo=timezone.utc),
         created_by_name=names.get(row.created_by, "未知"),
         updated_by_name=names.get(row.updated_by, "未知")) for row in rows]
