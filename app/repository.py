@@ -326,6 +326,7 @@ class SessionFilter:
     offset: int
     limit: int
     city: str | None = None    # 充电城市 (空 = 全部)
+    cost: str | None = None    # 费用记录: recorded / missing (None = 全部)
 
 
 def list_charging_sessions(session: Session,
@@ -339,6 +340,10 @@ def list_charging_sessions(session: Session,
     if flt.city:      # 无地址/无城市的充电不参与城市筛选
         rows = [row for row in rows
                 if row.address is not None and row.address.city == flt.city]
+    if flt.cost == "recorded":   # 已记录费用 / 未记录费用 (费用记 0 也算已记录)
+        rows = [row for row in rows if row.process.cost is not None]
+    elif flt.cost == "missing":
+        rows = [row for row in rows if row.process.cost is None]
     total = len(rows)
     rows = _sorted_charge_rows(rows, flt.sort)
     page = rows[flt.offset:flt.offset + flt.limit]

@@ -227,17 +227,20 @@ def get_charging_cities(
 def get_sessions(
         offset: int = 0, limit: int = 50, sort: str = "date_desc",
         type_: str = Query("all", alias="type"), q: str | None = None,
-        city: str | None = None,
+        city: str | None = None, cost: str | None = None,
         frm: str | None = Query(None, alias="from"), to: str | None = None,
         db: Session = Depends(database.get_db)) -> ChargingSessionsPage:
-    """充电列表: 过滤 (日期/快慢/城市/地址搜索) → 排序 → 分页。"""
+    """充电列表: 过滤 (日期/快慢/城市/费用记录/地址搜索) → 排序 → 分页。"""
     if sort not in repository.SORT_OPTIONS:
         raise HTTPException(400, f"不支持的排序: {sort}")
     if offset < 0 or limit < 0:
         raise HTTPException(400, "分页参数非法")
+    if cost not in (None, "recorded", "missing"):
+        raise HTTPException(400, "不支持的费用筛选")
     flt = repository.SessionFilter(
         date_range=_date_range_or_400(frm, to), charge_type=type_,
-        city=city or None, query=q, sort=sort, offset=offset, limit=limit)
+        city=city or None, query=q, sort=sort, offset=offset, limit=limit,
+        cost=cost)
     total, items = repository.list_charging_sessions(db, flt)
     return ChargingSessionsPage(total=total, items=items)
 
