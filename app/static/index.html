@@ -330,6 +330,14 @@ main { max-width: 760px; margin: 0 auto; }
 .al-btns { display: flex; border-top: 1px solid var(--hairline); }
 .al-btn { flex: 1; padding: 13px 0; font-size: 15.5px; color: var(--ink-1); }
 .al-btn + .al-btn { border-left: 1px solid var(--hairline); }
+/* 导航选单: 地图 App 一行一个, 点一个只拉一个 */
+.nav-apps { margin: 12px 16px 16px; border-radius: 10px; overflow: hidden; }
+.nav-apps button {
+  display: block; width: 100%; padding: 12px 0;
+  font-size: 15px; color: #7db3f0;
+}
+.nav-apps button + button { border-top: 1px solid var(--hairline); }
+.nav-apps button:active { background: rgba(255,255,255,.06); }
 .al-strong { font-weight: 650; color: #7db3f0; }
 .al-btn:active, .al-clear:active { background: rgba(255,255,255,.06); }
 
@@ -450,6 +458,19 @@ main { max-width: 760px; margin: 0 auto; }
     <button class="sheet-close" id="sheet-close">✕</button>
   </div>
   <div class="sheet-body" id="sheet-body"></div>
+</div>
+
+<div class="alert-backdrop" id="nav-bd" hidden>
+  <div class="alert" role="dialog" aria-label="选择地图应用">
+    <div class="al-title">导航到充电站</div>
+    <div class="nav-apps" id="nav-apps">
+      <button data-app="amap">高德地图</button>
+      <button data-app="baidu">百度地图</button>
+      <button data-app="tencent">腾讯地图</button>
+      <button data-app="apple">苹果地图</button>
+    </div>
+    <div class="al-btns"><button class="al-btn" id="nav-cancel">取消</button></div>
+  </div>
 </div>
 
 <div class="alert-backdrop" id="alert-bd" hidden>

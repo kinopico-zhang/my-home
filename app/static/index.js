@@ -356,7 +356,7 @@ masonryEl.addEventListener("click", e => {
 
 /* ============================ 详情 Sheet ============================ */
 const sheet = $("#sheet"), backdrop = $("#backdrop"), sheetBody = $("#sheet-body");
-const alertBd = $("#alert-bd"), alInput = $("#al-input");
+const alertBd = $("#alert-bd"), alInput = $("#al-input"), navBd = $("#nav-bd");
 let chSoc, chPw, pwMode = "kw", sheetOpen = false, currentDetailId = null;
 const PW_SERIES = {
   kw:       { name: "功率", color: "#3987e5", unit: "kW", key: "kw" },
@@ -379,7 +379,8 @@ backdrop.addEventListener("click", closeSheet);
 $("#sheet-close").addEventListener("click", closeSheet);
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if (!alertBd.hidden) closeAlert();
+  if (!navBd.hidden) closeNavChooser();
+  else if (!alertBd.hidden) closeAlert();
   else if (sheetOpen) closeSheet();
 });
 
@@ -502,51 +503,43 @@ async function loadDetail(id) {
 }
 
 /* ---------- 导航到充电站 ----------
-   网页没法直接问手机装了哪些 App —— 逐个拉起候选地图 (高德 / 百度 /
-   腾讯 / 苹果), scheme 打开会把本页切到后台: 探测窗口内没被切走 = 没装,
-   试下一个; 一个都没有兜底高德网页版 (任何浏览器都能开)。各图商都用
+   先弹选单让用户挑地图 App, 点一个只拉一个。试过自动探测 (逐个拉
+   scheme, 按页面切没切后台判断装没装) —— iOS 拉 scheme 前先弹「在 xx
+   中打开」确认框, 用户按确认前页面不切后台, 探测窗口一过就当没装接着
+   拉下一个, 高德百度被连环拉起 (2026-09-13 用户实测), 弃。各图商都用
    国测局 GCJ-02 坐标, TeslaMate 存的是 WGS-84, 直接用会偏几百米。 */
-const NAV_PROBE_MS = 700;   // 拉起 App 的探测窗口: 切后台是立即的, 700ms 足够
+let navTarget = null;
 
-function navOpenApp(url) {
-  return new Promise(resolve => {
-    let opened = false;
-    const onHide = () => { if (document.hidden) opened = true; };
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", onHide);
-    location.href = url;
-    setTimeout(() => {
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", onHide);
-      resolve(opened);
-    }, NAV_PROBE_MS);
-  });
-}
-
-async function navigateToStation(d) {
+function navAppUrl(app, d) {
   const [lng, lat] = GCJ02.wgs84ToGcj02(d.lng, d.lat);
   const name = encodeURIComponent(d.location);
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const apps = [
-    // 高德 (dev=0: 传入坐标已是 GCJ-02)
-    (ios ? "iosamap://navi?sourceApplication=mytesla&backScheme=mytesla"
-         : "androidamap://navi?sourceApplication=mytesla")
-      + `&poiname=${name}&lat=${lat}&lon=${lng}&dev=0&style=0`,
-    // 百度 (coord_type=gcj02: 免转 BD-09)
-    `${ios ? "baidumap" : "bdapp"}://map/direction`
-      + `?origin=${encodeURIComponent("我的位置")}&destination=${name}|${lat},${lng}`
-      + `&coord_type=gcj02&mode=driving&src=mytesla`,
-    // 腾讯 (fromcoord=CurrentLocation: 出发点用当前定位)
-    `qqmap://map/routeplan?type=drive&from=${encodeURIComponent("我的位置")}`
-      + `&fromcoord=CurrentLocation&to=${name}&tocoord=${lat},${lng}&policy=1&referer=mytesla`,
-  ];
-  if (ios) apps.push(`https://maps.apple.com/?daddr=${lat},${lng}&q=${name}&dirflg=d`);
-  for (const url of apps) {
-    if (await navOpenApp(url)) return;   // 打开了 (本页已被切走), 收工
-  }
-  location.href = `https://uri.amap.com/navigation?to=${lng},${lat},${name}`
-                + `&mode=car&src=mytesla&coordinate=gaode`;
+  if (app === "amap")                        // 高德 (dev=0: 坐标已是 GCJ-02)
+    return (ios ? "iosamap://navi?sourceApplication=mytesla&backScheme=mytesla"
+                : "androidamap://navi?sourceApplication=mytesla")
+           + `&poiname=${name}&lat=${lat}&lon=${lng}&dev=0&style=0`;
+  if (app === "baidu")                       // 百度 (coord_type=gcj02: 免转 BD-09)
+    return `${ios ? "baidumap" : "bdapp"}://map/direction`
+           + `?origin=${encodeURIComponent("我的位置")}&destination=${name}|${lat},${lng}`
+           + `&coord_type=gcj02&mode=driving&src=mytesla`;
+  if (app === "tencent")                     // 腾讯 (fromcoord=CurrentLocation: 出发点用当前定位)
+    return `qqmap://map/routeplan?type=drive&from=${encodeURIComponent("我的位置")}`
+           + `&fromcoord=CurrentLocation&to=${name}&tocoord=${lat},${lng}&policy=1&referer=mytesla`;
+  return `https://maps.apple.com/?daddr=${lat},${lng}&q=${name}&dirflg=d`;
 }
+
+function openNavChooser(d) {
+  navTarget = d;
+  navBd.hidden = false;
+  requestAnimationFrame(() => navBd.classList.add("on"));
+}
+
+function closeNavChooser() {
+  navTarget = null;
+  navBd.classList.remove("on");
+  setTimeout(() => { navBd.hidden = true; }, 230);
+}
+
 
 function renderPwChart(d) {
   if (!chPw) return;
@@ -660,11 +653,21 @@ alInput.addEventListener("keydown", e => {
   e.stopPropagation();
   if (e.key === "Enter") saveCost();
 });
+$("#nav-apps").addEventListener("click", e => {
+  const b = e.target.closest("button[data-app]");
+  if (!b || !navTarget) return;
+  const url = navAppUrl(b.dataset.app, navTarget);
+  closeNavChooser();
+  location.href = url;                       // 只拉这一个, 不探测不连环
+});
+$("#nav-cancel").addEventListener("click", closeNavChooser);
+navBd.addEventListener("click", e => { if (e.target === navBd) closeNavChooser(); });
+
 sheetBody.addEventListener("click", e => {
   if (e.target.closest("#st-cost-tile") && currentDetailId != null)
     editCost(detailCache.get(currentDetailId));
   if (e.target.closest("#nav-go") && currentDetailId != null)
-    navigateToStation(detailCache.get(currentDetailId));
+    openNavChooser(detailCache.get(currentDetailId));
 });
 
 

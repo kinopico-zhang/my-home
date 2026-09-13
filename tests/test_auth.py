@@ -96,6 +96,11 @@ def test_all_pages_have_refresh_button(auth):
         js = auth.get(f"/tesla/static/{js_file}?v=1").text
         assert '$("#refresh-btn").addEventListener' in js, path
         assert call in js, f"{path} 刷新按钮没接上 {call}"
+        # 刷新按钮始终顶栏最右: 有时间菜单的页菜单吃 auto 边距, 按钮跟在后面;
+        # 没有的页 (分组/驾驶/设置/日志) 按钮自己吃 auto 边距
+        if 'id="time-menu"' not in html:
+            block = html[html.index("#refresh-btn {"):]
+            assert "margin-left: auto" in block[:block.index("}")], path
 
 
 def test_pages_remember_last_page(auth):
