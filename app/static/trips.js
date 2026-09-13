@@ -1961,7 +1961,35 @@ $("#rec-close").addEventListener("click", recCloseModal);
 $("#rec-modal").addEventListener("click", e => { if (e.target.id === "rec-modal") recCloseModal(); });
 
 $("#backdrop").addEventListener("click", closeTrip);
-$("#grab").addEventListener("click", closeTrip);
+/* 手柄: 点一下关, 也能拖着往下拉关 (跟手 + 松手回弹; 拖过 8px 就不算点击,
+   否则回弹动画结束瞬间跟着来的 click 会把刚弹回的弹层又关掉) */
+(() => {
+  const sheetEl = $("#sheet");
+  let y0 = null, dy = 0;
+  const grab = $("#grab");
+  grab.addEventListener("pointerdown", e => {
+    y0 = e.clientY; dy = 0;
+    grab.setPointerCapture(e.pointerId);   // 手指滑出区域也能继续收事件
+  });
+  grab.addEventListener("pointermove", e => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.clientY - y0);      // 只往下拖有效, 往上顶不抬层
+    sheetEl.style.transition = "none";
+    sheetEl.style.transform = `translateY(${dy}px)`;
+  });
+  const release = () => {
+    if (y0 == null) return;
+    sheetEl.style.transition = ""; sheetEl.style.transform = "";
+    if (dy > 90) closeTrip();              // 拉过 90px = 明确想关; 否则弹回
+    y0 = null;
+  };
+  grab.addEventListener("pointerup", release);
+  grab.addEventListener("pointercancel", release);
+  grab.addEventListener("click", e => {
+    if (dy > 8) { e.stopImmediatePropagation(); dy = 0; return; }
+    closeTrip();
+  });
+})();
 
 /* 浏览器后退/前进: 只切界面不动历史, 与地址栏保持同步 */
 addEventListener("popstate", () => {

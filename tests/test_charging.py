@@ -416,6 +416,18 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
     assert ".filters::-webkit-scrollbar { display: none; }" in html
 
 
+def test_charging_sheet_grab_drag_close(auth):
+    """充电详情弹层手柄可拖拽关闭 (pointer 统一触摸/鼠标, 跟手 + 松手回弹)。"""
+    html = auth.get("/tesla/charging").text
+    html += auth.get("/tesla/static/index.js?v=1").text
+    for frag in ['id="grab-zone"', "touch-action: none",
+                 "setPointerCapture", 'zone.addEventListener("pointermove"',
+                 'zone.addEventListener("pointercancel"',
+                 "translateY(${dy}px)", "if (dy > 90) closeSheet()"]:
+        assert frag in html, f"充电页缺少 {frag}"
+    assert "touchstart" not in html    # 旧 touch 三件套已废 (鼠标拖不动)
+
+
 def test_charging_page_cost_filter_menu(auth):
     """费用筛选下拉 (全部/已记录/未记录): 与类型筛选同款收起式, 写进 URL。"""
     html = auth.get("/tesla/charging").text
