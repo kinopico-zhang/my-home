@@ -355,10 +355,14 @@ async function refetch() {
 }
 function showErr(e) { $("#errmsg").textContent = "数据加载失败: " + e.message; $("#errbox").hidden = false; }
 
-$("#seg-type").addEventListener("click", e => {
+const TYPE_LABELS = { all: "类型: 全部", fast: "类型: 快充", slow: "类型: 慢充" };
+$("#type-opts").addEventListener("click", e => {   // 快充/慢充下拉 (与城市筛选同款, 替代占地方的分段钮)
   const b = e.target.closest("button"); if (!b || b.classList.contains("on")) return;
-  $("#seg-type .on").classList.remove("on"); b.classList.add("on");
-  state.type = b.dataset.v; syncURL(); refetch();
+  $("#type-menu").removeAttribute("open");
+  state.type = b.dataset.v;
+  $("#type-opts .on").classList.remove("on"); b.classList.add("on");
+  $("#type-lb").textContent = TYPE_LABELS[state.type];
+  syncURL(); refetch();
 });
 function timeLabel() {
   if (state.range === "custom")   // 自定义显示紧凑区间, 如 01/01–03/31
@@ -446,9 +450,10 @@ $("#time-menu").addEventListener("toggle", () => {   // 重开菜单回到已应
   if ($("#time-menu").open && !$("#tm-dates").hidden) calOpen();
 });
 setTimeRange(state.range, true);
+$("#type-lb").textContent = TYPE_LABELS[state.type] || "类型: 全部";
 if (state.type !== "all") {                   // URL 带类型/城市时同步选中态
-  $("#seg-type .on").classList.remove("on");
-  $(`#seg-type button[data-v="${state.type}"]`).classList.add("on");
+  $("#type-opts .on").classList.remove("on");
+  $(`#type-opts button[data-v="${state.type}"]`).classList.add("on");
 }
 $("#city-lb").textContent = state.city ? "城市: " + state.city : "城市: 全部";
 (async () => {   // 城市筛选选项 (按充电次数降序); 拉不到就只有"全部"
