@@ -94,10 +94,8 @@ header {
 }
 .nav-menu .menu button.on { color: #7db3f0; }
 .nav-menu .menu button:active { background: var(--surface-3); }
-/* 筛选行: 时间筛选 + 三视图切换 */
+/* 筛选行: 三视图切换 (时间筛选在顶栏) */
 .filters { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
-.filters .nav-menu { margin-left: 0; }
-.filters .nav-menu .menu { left: 0; right: auto; }
 /* 三视图分段钮 (电量/次数/费用): 圆标大小的度量切换 */
 .seg { display: flex; flex: none; background: rgba(118,118,128,.24);
        border-radius: 999px; padding: 2px; -webkit-user-select: none; user-select: none; }
@@ -106,7 +104,7 @@ header {
 @media (max-width: 479px) {
   header { position: relative; }
   .nav-menu { position: static; }
-  .nav-menu .menu, .filters .nav-menu .menu { left: 12px; right: 12px; }
+  .nav-menu .menu { left: 12px; right: 12px; }
 }
 /* 时间菜单的自定义日历: 月历网格, 同一个日历连点两次 (第一下起点, 第二下终点) */
 .time-menu .tm-custom { border-top: 1px solid var(--hairline); margin-top: 5px; padding-top: 5px; }
@@ -247,8 +245,6 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-  </div>
-  <div class="filters">
     <details class="nav-menu time-menu" id="time-menu">
       <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu" id="time-opts">
@@ -273,6 +269,8 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
         </div>
       </div>
     </details>
+  </div>
+  <div class="filters">
     <div class="seg" id="view-seg">
       <button data-v="energy" class="on">充电电量</button>
       <button data-v="sessions">充电次数</button>

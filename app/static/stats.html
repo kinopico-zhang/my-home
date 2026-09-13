@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -127,11 +127,6 @@ header {
   flex: none; background: #3987e5; color: #fff;
   border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 14px;
 }
-/* 筛选行 (时间筛选) */
-.filters { display: flex; gap: 8px; margin-top: 10px; }
-.filters .nav-menu { margin-left: 0; }
-.filters .nav-menu .menu { left: 0; right: auto; }
-
 main { max-width: 920px; margin: 0 auto; padding-bottom: 40px; }
 
 /* ---------- 统计卡片横滑行 ---------- */
@@ -209,8 +204,6 @@ main { max-width: 920px; margin: 0 auto; padding-bottom: 40px; }
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-  </div>
-  <div class="filters">
     <details class="nav-menu time-menu" id="time-menu">
       <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu" id="time-opts">

@@ -119,6 +119,9 @@ def test_chargemap_page_skeleton(auth):
         "syncURL",
     ]:
         assert frag in html, f"充电地图页缺少 {frag}"
+    # 时间菜单在顶栏 nav-row (与全站一致); 筛选行只剩三视图切换
+    assert '</details>\n    <details class="nav-menu time-menu" id="time-menu">' in html
+    assert '<div class="filters">\n    <div class="seg" id="view-seg">' in html
 
 
 def test_chargemap_link_in_all_nav_menus(auth):

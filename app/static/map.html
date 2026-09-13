@@ -260,9 +260,6 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-  </div>
-  <!-- 足迹页没有独有筛选: 筛选栏只放统一的时间筛选 -->
-  <div class="filters">
     <details class="nav-menu time-menu" id="time-menu">
       <summary><span id="time-lb">全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu" id="time-opts">
@@ -287,6 +284,9 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
         </div>
       </div>
     </details>
+  </div>
+  <!-- 筛选行只剩驾驶员 (没配驾驶员整行隐藏); 时间筛选在顶栏, 与全站一致 -->
+  <div class="filters" id="filters" hidden>
     <details class="nav-menu" id="drv-menu" hidden>
       <summary><span id="drv-lb">驾驶员: 全部</span><svg class="chev" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu" id="drv-opts"></div>
