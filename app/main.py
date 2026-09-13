@@ -27,6 +27,7 @@ from . import (account_store, authentication, changelog,
                 config, database, repository, settings_store, tracks_cache)
 from .bookkeeping import store as bookkeeping_store, webapp
 from .home import STATIC_DIR as HOME_STATIC_DIR
+from .music import service as music_service, webapp as music_webapp
 from . import models
 from .models import OwnBase, User
 from .schemas import (
@@ -121,6 +122,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     bookkeeping_store.create_all()
     bookkeeping_store.migrate_columns()           # 旧库补 time/tags 列 (幂等)
     bookkeeping_store.seed_default_categories()   # 类别树 (空库才种, 挖财导入)
+    music_service.start_service()      # 曲库索引 (独立文件) + 后台首扫
     with database.own_session_factory()() as own:   # pylint: disable=not-callable
         url = settings_store.engine_url(own)
     database.init_engine(url)
@@ -132,6 +134,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     database.dispose_own_engine()
     database.dispose_users_engine()
     bookkeeping_store.dispose_engine()
+    music_service.stop_service()
 
 
 app = FastAPI(title="My Tesla", lifespan=lifespan)
@@ -151,8 +154,9 @@ _PUBLIC_PATHS = frozenset((
     "/login", "/register",
     "/api/login", "/api/logout",
     "/api/register", "/api/invite-status",
-    "/bookkeeping/api/logout"))
-_STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/")
+    "/bookkeeping/api/logout", "/music/api/logout"))
+_STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/",
+                    "/music/static/")
 
 # 账号体系从 /tesla 搬到根路径 (账号属于 My Home, 不属于任何一个应用);
 # 旧地址 302/307 兼容 —— 手机上的老书签和已经发出去的邀请链接还能用
@@ -181,8 +185,9 @@ def _moved_target(path: str) -> str | None:
 
 
 def _is_protected(path: str) -> bool:
-    """保护面: 门厅 (/) + 两个应用 + 账号管理页 + 账号接口 (me / 自助改)。"""
-    if path == "/" or path.startswith(("/tesla", "/bookkeeping", "/accounts")):
+    """保护面: 门厅 (/) + 三个应用 + 账号管理页 + 账号接口 (me / 自助改)。"""
+    if path == "/" or path.startswith(
+            ("/tesla", "/bookkeeping", "/music", "/accounts")):
         return True
     return path == "/api/me" or path.startswith("/api/account/")
 
@@ -991,3 +996,4 @@ app.mount("/static", StaticFiles(directory=HOME_STATIC_DIR), name="home-static")
 app.mount("/tesla/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 # My Money (家庭记账): 独立应用, 只共享账号体系 (会话 cookie + 账号库)
 app.mount("/bookkeeping", webapp.bk_app)
+app.mount("/music", music_webapp.music_app)

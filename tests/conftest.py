@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 # sys.path 注入必须先于 app 导入 (import 位置告警属预期, 按需豁免)
 from app import account_store, authentication, config, database, tracks_cache  # pylint: disable=wrong-import-position
 from app.bookkeeping import store as bookkeeping_store  # pylint: disable=wrong-import-position
+from app.music import service as music_service  # pylint: disable=wrong-import-position
 from app.bookkeeping.store import EntryBase  # pylint: disable=wrong-import-position
 from app.models import (Address, Base, Car, Charge,  # pylint: disable=wrong-import-position
                         ChargingProcess, Drive, OwnBase, Position, UsersBase)
@@ -39,6 +40,10 @@ def isolate(tmp_path, monkeypatch):
     bookkeeping_store.init_engine(f"sqlite:///{tmp_path / 'bookkeeping.db'}")
     EntryBase.metadata.create_all(bookkeeping_store.engine())
     bookkeeping_store.seed_default_categories()
+    # 曲库: 临时库 + 临时曲库目录 (只装配不扫, 需要扫的用例自己触发)
+    music_service.start_service(f"sqlite:///{tmp_path / 'music.db'}",
+                                tmp_path / "music-library",
+                                scan_immediately=False)
     # 管理员种子 (生产在 lifespan 里做, TestClient 不触发 lifespan)
     with database.users_session_factory()() as users:  # pylint: disable=not-callable
         account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
@@ -61,6 +66,7 @@ def isolate(tmp_path, monkeypatch):
     database.dispose_own_engine()
     database.dispose_users_engine()
     bookkeeping_store.dispose_engine()
+    music_service.stop_service()
 
 
 @pytest.fixture()
