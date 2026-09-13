@@ -51,27 +51,57 @@ function inviteLink(token) {
   return `${location.origin}/register?invite=${encodeURIComponent(token)}`;
 }
 
-// HTTP 环境没有异步剪贴板 API: 退化用隐藏 textarea + execCommand (iOS Safari 两路都通)
+/* HTTP 环境没有异步剪贴板 API (isSecureContext=false), 退化用 execCommand。
+   iOS Safari 要求: 同一手势内先 focus 再选中再拷贝, 元素还得留在视口里
+   (完全透明/移出屏幕会被拒绝建立选区)。旧版三处全踩 —— 对 textarea 用
+   Range 选 (它没有 DOM 子节点, 选不中), 没 focus, 还 opacity:0 移出屏幕,
+   iOS Safari 一直复制落空 (2026-09-13 用户抓到)。 */
 async function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {
     try { await navigator.clipboard.writeText(text); return true; } catch (_e) { /* 落回 */ }
   }
+  let ok = false;
   const ta = document.createElement("textarea");
   ta.value = text;
-  ta.style.cssText = "position:fixed;top:-999px;opacity:0";
+  ta.readOnly = true;   // 只读: 聚焦不弹 iOS 键盘
+  ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;"
+    + "opacity:.01;pointer-events:none";
   document.body.appendChild(ta);
-  ta.contentEditable = "true";   // iOS 需要可编辑才有键盘行为
-  ta.readOnly = false;
+  ta.focus({ preventScroll: true });          // 必须先聚焦, 选区才建立
+  ta.setSelectionRange(0, text.length);
+  try { ok = document.execCommand("copy"); } catch (_e) { ok = false; }
+  ta.blur();
+  ta.remove();
+  if (ok) return true;
+  // 再试老路: contenteditable + Range 选区 (更老的 iOS 只认这种)
+  const div = document.createElement("div");
+  div.contentEditable = "true";
+  div.textContent = text;
+  div.style.cssText = "position:fixed;top:0;left:0;opacity:.01;pointer-events:none";
+  document.body.appendChild(div);
   const range = document.createRange();
-  range.selectNodeContents(ta);
+  range.selectNodeContents(div);
   const sel = getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
-  ta.setSelectionRange(0, text.length);
-  const ok = document.execCommand("copy");
+  try { ok = document.execCommand("copy"); } catch (_e) { ok = false; }
   sel.removeAllRanges();
-  ta.remove();
+  div.remove();
   return ok;
+}
+
+/* 链接送出去: 复制优先; iOS Safari 在 HTTP 下拷贝这条路可能整个被拒,
+   拉起系统分享面板兜底 (面板里就有「拷贝」, 还能直接发给家人)。
+   返回 copied / shared / cancelled / failed。 */
+async function deliverLink(link) {
+  if (await copyText(link)) return "copied";
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({ text: "My Home 注册邀请:", url: link });
+      return "shared";
+    } catch (_e) { return "cancelled"; }   // 用户自己关了面板
+  }
+  return "failed";
 }
 
 /* ---------- 载入 ---------- */
@@ -79,7 +109,8 @@ async function loadUsers() {
   const users = await api("/accounts/api/users");
   $("#user-list").innerHTML = users.map(u =>
     `<div class="usr-row">` +
-    `<div class="usr-name">${esc(u.name)}${u.is_admin ? '<span class="usr-badge">管理员</span>' : ""}</div>` +
+    `<div class="usr-name">${esc(u.name)}</div>` +
+    (u.is_admin ? `<span class="usr-badge">管理员</span>` : "") +
     `<div class="usr-meta">${esc(fmtDT(u.created_at))}</div></div>`).join("");
 }
 
@@ -137,10 +168,12 @@ $("#invite-make").addEventListener("click", async () => {
       body: JSON.stringify({ days: inviteDays }),
     });
     const link = inviteLink(made.token);
-    const copied = await copyText(link);
     await loadInvites();
-    toast(copied ? `链接已复制, ${fmtDT(made.expires_at)} 前有效`
-                 : `生成成功 (复制失败, 请点列表里的复制)`);
+    const how = await deliverLink(link);
+    if (how === "copied") toast(`链接已复制, ${fmtDT(made.expires_at)} 前有效`);
+    else if (how === "shared") toast(`邀请已送出, ${fmtDT(made.expires_at)} 前有效`);
+    else if (how === "failed")
+      toast(`生成成功 (复制失败), ${fmtDT(made.expires_at)} 前有效`, true);
   } catch (err) {
     toast(`生成失败: ${err.message}`, true);
   } finally {
@@ -157,8 +190,10 @@ $("#invite-list").addEventListener("click", async e => {
   const token = card.dataset.token;
   try {
     if (t.closest(".copy")) {
-      const ok = await copyText(inviteLink(token));
-      toast(ok ? "链接已复制" : "复制失败, 请长按链接手动复制", !ok);
+      const how = await deliverLink(inviteLink(token));
+      if (how === "copied") toast("链接已复制");
+      else if (how === "failed") toast("复制失败", true);
+      // shared: 分享面板已拉起; cancelled: 用户自己关的, 都不再弹提示
     } else if (t.closest(".revoke")) {
       if (!confirm("撤销这个邀请? 未注册前撤销后不能再用。")) return;
       await api(`/accounts/api/invitations/${encodeURIComponent(token)}`,

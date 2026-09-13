@@ -143,11 +143,15 @@ main {
   padding: 11px 0; border-bottom: 1px solid var(--hairline);
 }
 .usr-row:last-child { border-bottom: 0; }
+/* 徽章必须是 .usr-row 的 flex 子元素, 不能塞在 .usr-name 里:
+   那里有 overflow:hidden (长名省略号), inline 元素的上下 padding 不撑行盒,
+   徽章下半截 (含下边框) 会伸出行盒被裁掉 (2026-09-13 用户抓到) */
 .usr-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .usr-badge {
-  font-size: 10.5px; color: #7db3f0; border: 1px solid rgba(57,135,229,.4);
-  border-radius: 999px; padding: 2px 8px; margin-left: 6px; flex: none;
+  flex: none; font-size: 10.5px; line-height: 1; color: #7db3f0;
+  border: 1px solid rgba(57,135,229,.4);
+  border-radius: 999px; padding: 3px 8px;
 }
 .usr-meta { flex: none; font-size: 12px; color: var(--ink-3); }
 
