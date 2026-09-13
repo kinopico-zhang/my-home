@@ -2,8 +2,8 @@
 // 单独成模块: node --test 直测 + c8 覆盖 (页面脚本由 E2E 覆盖)。
 //
 // 条目形状 (本地存储与服务器下行的超集):
-//   { id, date: "YYYY-MM-DD", amount, kind: "expense"|"income",
-//     category, note, deleted, updatedAt: ISO 时间串,
+//   { id, date: "YYYY-MM-DD", time: "HH:MM"|"", amount, kind: "expense"|"income",
+//     category, tags: [标签…], note, deleted, updatedAt: ISO 时间串,
 //     createdByName, updatedByName }
 // 时间比较一律 new Date(...).getTime() —— 服务器带 +00:00、本地带 Z,
 // 混格式字符串按字典序比会错。
@@ -34,8 +34,9 @@ function entriesToUpload(localEntries, dirtyIds) {
   const dirty = new Set(dirtyIds);
   return localEntries
     .filter(e => dirty.has(e.id))
-    .map(({ id, date, amount, kind, category, note, deleted, updatedAt }) =>
-      ({ id, date, amount, kind, category, note, deleted, updated_at: updatedAt }));
+    .map(({ id, date, time, amount, kind, category, tags, note, deleted, updatedAt }) =>
+      ({ id, date, time: time || "", amount, kind, category, tags: tags || [],
+         note, deleted, updated_at: updatedAt }));
 }
 
 // 从完整条目里挑出该展示的 (按月份 + 记账人 + 未删除)

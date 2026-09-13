@@ -70,11 +70,22 @@ test("entriesToUpload: 只带脏名单里的, 且只挑协议字段 (snake_case,
   const up = entriesToUpload(entries, ["b", "c"]);
   assert.deepEqual(up.map(x => x.id), ["b", "c"]);
   assert.deepEqual(up[0], {
-    id: "b", date: "2026-09-01", amount: 10, kind: "expense",
-    category: "餐饮", note: "改过", deleted: false,
+    id: "b", date: "2026-09-01", time: "", amount: 10, kind: "expense",
+    category: "餐饮", tags: [], note: "改过", deleted: false,
     updated_at: "2026-09-01T00:00:02Z",
   });
   assert.equal(up[1].deleted, true);
+});
+
+test("entriesToUpload: 时刻和标签跟着上行; 老条目缺字段补空", () => {
+  const up = entriesToUpload([
+    e("a", "2026-09-01T00:00:01Z", { time: "08:15", tags: ["报销", "固定"] }),
+    e("b", "2026-09-01T00:00:02Z"),               // 再记功能前记的老账
+  ], ["a", "b"]);
+  assert.equal(up[0].time, "08:15");
+  assert.deepEqual(up[0].tags, ["报销", "固定"]);
+  assert.equal(up[1].time, "");
+  assert.deepEqual(up[1].tags, []);
 });
 
 test("entriesToUpload: 脏名单是空 → 不上行任何东西", () => {

@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EntryIn(BaseModel):
@@ -13,12 +13,26 @@ class EntryIn(BaseModel):
 
     id: str = Field(min_length=8, max_length=64)
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")    # 记账日期
+    time: str = Field(default="",
+                      pattern=r"^$|^([01][0-9]|2[0-3]):[0-5][0-9]$")   # 时刻
     amount: float = Field(gt=0, le=1e9)                 # 元 (恒正, 收支看 kind)
     kind: Literal["expense", "income"]
     category: str = Field(default="", max_length=20)
+    tags: list[str] = Field(default_factory=list)       # 标签 (≤5 个)
     note: str = Field(default="", max_length=200)
     deleted: bool = False
     updated_at: datetime                                # 客户端版本时间 (LWW)
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        """标签清洗: 去空白/井号, 去重去空, 超出的截断 (家庭标签, 宽松)。"""
+        out: list[str] = []
+        for tag in value:
+            tag = tag.strip().lstrip("#").strip()[:12]
+            if tag and tag not in out:
+                out.append(tag)
+        return out[:5]
 
 
 class EntryOut(BaseModel):
@@ -26,9 +40,11 @@ class EntryOut(BaseModel):
 
     id: str
     date: str
+    time: str = ""
     amount: float
     kind: Literal["expense", "income"]
     category: str
+    tags: list[str] = Field(default_factory=list)
     note: str
     deleted: bool
     updated_at: datetime

@@ -48,9 +48,11 @@ class Entry(EntryBase):
 
     id: Mapped[str] = mapped_column(primary_key=True)     # 客户端 uuid
     date: Mapped[str] = mapped_column(String)             # 记账日期 YYYY-MM-DD
+    time: Mapped[str] = mapped_column(String, default="") # 时刻 HH:MM (可空)
     amount: Mapped[float]                                 # 元 (恒正, 收支看 kind)
     kind: Mapped[str] = mapped_column(String)             # expense / income
     category: Mapped[str] = mapped_column(String, default="")
+    tags: Mapped[str] = mapped_column(String, default="") # 标签, 逗号连接 (≤5 个)
     note: Mapped[str] = mapped_column(String, default="")
     created_by: Mapped[str]                                # 记账人 (账号 uuid)
     created_at: Mapped[datetime]
@@ -128,6 +130,20 @@ def create_all() -> None:
     EntryBase.metadata.create_all(engine())
 
 
+def migrate_columns(eng: Engine | None = None) -> None:
+    """create_all 只建新表不改旧表: 已有生产库要补的列写在这里 (幂等)。"""
+    if eng is None:
+        eng = engine()
+    with eng.begin() as conn:
+        cols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(entries)")}
+        if "time" not in cols:     # v2.5: 记账时刻 HH:MM
+            conn.exec_driver_sql(
+                "ALTER TABLE entries ADD COLUMN time TEXT NOT NULL DEFAULT ''")
+        if "tags" not in cols:     # v2.5: 标签 (逗号连接)
+            conn.exec_driver_sql(
+                "ALTER TABLE entries ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+
+
 def _naive_utc(value: datetime) -> datetime:
     """统一成库里的裸 UTC (pydantic 解析出的 Z/+00:00 都剥掉 tzinfo)。"""
     if value.tzinfo is not None:
@@ -150,17 +166,21 @@ def sync_entries(session: Session, user_uuid: str, entries: list[EntryIn],
         stored = session.get(Entry, entry.id)
         if stored is None:
             session.add(Entry(
-                id=entry.id, date=entry.date, amount=round(entry.amount, 2),
+                id=entry.id, date=entry.date, time=entry.time,
+                amount=round(entry.amount, 2),
                 kind=entry.kind, category=entry.category, note=entry.note,
+                tags=",".join(entry.tags),
                 deleted=entry.deleted,
                 created_by=user_uuid, created_at=now,
                 updated_by=user_uuid, updated_at=updated_at, synced_at=now))
         elif updated_at > stored.updated_at:      # LWW: 客户端版本更新才覆盖
             stored.date = entry.date
+            stored.time = entry.time
             stored.amount = round(entry.amount, 2)
             stored.kind = entry.kind
             stored.category = entry.category
             stored.note = entry.note
+            stored.tags = ",".join(entry.tags)
             stored.deleted = entry.deleted
             stored.updated_by = user_uuid
             stored.updated_at = updated_at

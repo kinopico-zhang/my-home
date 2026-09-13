@@ -47,6 +47,20 @@ function curMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 }
+function nowTime() {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// 标签输入 → 干净数组: 空格/逗号/顿号分隔, 去井号, 去重, 最多 5 个
+function parseTags(raw) {
+  const out = [];
+  for (let t of String(raw || "").split(/[\s,，、]+/)) {
+    t = t.replace(/^#/, "").slice(0, 12);
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
 if (!month) month = curMonth();
 
 // HTTP 非安全上下文没有 crypto.randomUUID (安全上下文限定 API),
@@ -93,7 +107,12 @@ function renderPersons() {
 
 function renderList() {
   const list = visibleEntries(entries, month, person)
-    .sort((a, b) => a.updatedAt < b.updatedAt ? 1 : -1);
+    .sort((a, b) => {          // 日期新→老, 同日内时刻新→老 (旧账无时刻沉底)
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      if ((a.time || "") !== (b.time || ""))
+        return (a.time || "") < (b.time || "") ? 1 : -1;
+      return a.updatedAt < b.updatedAt ? 1 : -1;
+    });
   $("#list-empty").hidden = list.length > 0;
   const groups = new Map();
   for (const e of list) {
@@ -108,13 +127,17 @@ function renderList() {
       `<div class="day-head"><span>${+m}月${+d}日 周${wd}</span>` +
       `<span>${dayOut > 0 ? "支出 " + fmtMoney(dayOut) : ""}</span></div>` +
       `<div class="entries">` +
-      items.map(e =>
-        `<div class="entry" data-id="${esc(e.id)}">` +
+      items.map(e => {
+        const l2 = [e.category || "未分类"];
+        if (e.time) l2.push(e.time);
+        for (const t of e.tags || []) l2.push("#" + t);
+        l2.push(creatorName(e));
+        return `<div class="entry" data-id="${esc(e.id)}">` +
         `<div class="cat-dot">${catIcon(e.category)}</div>` +
         `<div class="mid"><div class="l1">${esc(e.note || e.category || (e.kind === "income" ? "收入" : "支出"))}</div>` +
-        `<div class="l2">${esc(e.category || "未分类")} · ${esc(creatorName(e))}</div></div>` +
+        `<div class="l2">${esc(l2.join(" · "))}</div></div>` +
         `<div class="amt${e.kind === "income" ? " in" : ""}">${e.kind === "income" ? "+" : "-"}${Number(e.amount).toFixed(2)}</div>` +
-        `</div>`).join("") +
+        `</div>`; }).join("") +
       `</div></div>`;
   }).join("");
 }
@@ -166,8 +189,8 @@ async function syncNow() {
     const data = await r.json();
     // EntryOut (snake_case) → 本地条目形状 (camelCase)
     const remote = data.entries.map(e => ({
-      id: e.id, date: e.date, amount: e.amount, kind: e.kind,
-      category: e.category, note: e.note, deleted: e.deleted,
+      id: e.id, date: e.date, time: e.time || "", amount: e.amount, kind: e.kind,
+      category: e.category, tags: e.tags || [], note: e.note, deleted: e.deleted,
       updatedAt: e.updated_at,
       createdByName: e.created_by_name, updatedByName: e.updated_by_name,
     }));
@@ -233,18 +256,26 @@ function treeFor(kind) {          // 当前收支方向的类别树 (离线用�
   return (catTree && catTree[kind]) || [];
 }
 
+// 用过的标签 → 一排可点胶囊 (点一下加/去掉, 不想打的标签不用手输)
+function renderTagChips() {
+  const used = [...new Set(entries.filter(e => !e.deleted)
+    .flatMap(e => e.tags || []))];
+  const row = $("#tag-chips");
+  row.hidden = !used.length;
+  const cur = parseTags($("#f-tags").value);
+  row.innerHTML = used.map(t =>
+    `<button data-tag="${esc(t)}"${cur.includes(t) ? ' class="on"' : ""}>${esc(t)}</button>`).join("");
+}
+
 function fillChips() {
-  const tops = treeFor(sheetKind);
-  $("#cat-tiles").innerHTML = tops.map(([name]) => {
-    const on = sheetCat === name || sheetCat.startsWith(name + "/");
-    return `<button class="tile${on ? " on" : ""}" data-cat="${esc(name)}">` +
-      `<span class="ti">${catIcon(name)}</span><span class="tn">${esc(name)}</span></button>`;
-  }).join("");
-  const top = sheetCat.split("/")[0];          // "" = 没选, 子类行藏起来
-  const kids = (tops.find(t => t[0] === top) || [null, []])[1];
-  $("#cat-sub").hidden = !kids.length;
-  $("#cat-sub").innerHTML = kids.map(name =>
-    `<button data-sub="${esc(name)}"${sheetCat === top + "/" + name ? ' class="on"' : ""}>${esc(name)}</button>`).join("");
+  const tiles = [];                 // [组合名, 显示名, 大类(取图标)]
+  for (const [top, kids] of treeFor(sheetKind)) {
+    if (kids.length) for (const kid of kids) tiles.push([top + "/" + kid, kid, top]);
+    else tiles.push([top, top, top]);   // 没子类的大类自己就是可选类别
+  }
+  $("#cat-tiles").innerHTML = tiles.map(([val, name, top]) =>
+    `<button class="tile${sheetCat === val ? " on" : ""}" data-cat="${esc(val)}">` +
+      `<span class="ti">${catIcon(top)}</span><span class="tn">${esc(name)}</span></button>`).join("");
 }
 
 async function loadCategories() {   // 类别树: 缓存先用, 联网刷新 (离线优先同账目)
@@ -270,7 +301,10 @@ function openSheet(entry) {
     b.classList.toggle("on", b.dataset.kind === sheetKind));
   $("#f-amount").value = entry ? entry.amount : "";
   $("#f-date").value = entry ? entry.date : todayStr();
+  $("#f-time").value = entry ? (entry.time || "") : nowTime();
   $("#f-note").value = entry ? entry.note : "";
+  $("#f-tags").value = entry ? (entry.tags || []).join(" ") : "";
+  renderTagChips();
   $("#sheet-del").hidden = !entry;
   fillChips();
   const mask = $("#sheet-mask"), sheet = $("#sheet");
@@ -290,6 +324,38 @@ function closeSheet() {
   $("#amt-pad").classList.remove("on");
   editingId = null;
 }
+
+/* 下滑关闭 (与充电详情/轨迹弹层同一手法)。不用 setPointerCapture:
+   iOS Safari 对 touch 指针 capture 会当场 pointercancel (手指一动事件
+   就被系统收走), move/up 挂 window 级 —— 不捕获手指出界照样收。 */
+(() => {
+  const sheet = $("#sheet"), zone = $("#grab-zone");
+  let y0 = null, dy = 0;
+  const move = e => {
+    dy = Math.max(0, e.clientY - y0);      // 只往下拖有效, 往上顶不抬层
+    sheet.style.transition = "none";       // 拖动跟手, 不吃 .25s 缓动
+    sheet.style.transform = `translateY(${dy}px)`;
+  };
+  const release = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", release);
+    window.removeEventListener("pointercancel", release);
+    if (y0 == null) return;
+    sheet.style.transition = ""; sheet.style.transform = "";
+    if (dy > 90) closeSheet();             // 拉过 90px = 明确想关; 否则弹回
+    y0 = null;
+  };
+  zone.addEventListener("pointerdown", e => {
+    y0 = e.clientY; dy = 0;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+  });
+  zone.addEventListener("click", () => {   // 点一下把手也关 (拖过 8px 不算点)
+    if (dy > 8) { dy = 0; return; }
+    closeSheet();
+  });
+})();
 
 $("#fab").addEventListener("click", () => openSheet(null));
 $("#sheet-mask").addEventListener("click", closeSheet);
@@ -312,13 +378,16 @@ $("#cat-tiles").addEventListener("click", e => {
   sheetCat = sheetCat === btn.dataset.cat ? "" : btn.dataset.cat;
   fillChips();
 });
-$("#cat-sub").addEventListener("click", e => {
-  const btn = e.target.closest("button[data-sub]");
+$("#tag-chips").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-tag]");
   if (!btn) return;
-  const val = sheetCat.split("/")[0] + "/" + btn.dataset.sub;
-  sheetCat = sheetCat === val ? val.split("/")[0] : val;   // 再点收回大类
-  fillChips();
+  const tag = btn.dataset.tag;
+  const cur = parseTags($("#f-tags").value);
+  $("#f-tags").value = (cur.includes(tag) ? cur.filter(t => t !== tag)
+    : [...cur, tag]).join(" ");
+  renderTagChips();
 });
+$("#f-tags").addEventListener("input", renderTagChips);
 
 function refreshAmountPreview() {      // 表达式 (含运算符) 的实时结果, 裸数字不打扰
   const expr = $("#f-amount").value;
@@ -332,18 +401,6 @@ $("#amt-pad").addEventListener("click", e => {
   if (!btn || btn.dataset.k === "back") return;   // ⌫ 在 pointerdown 处理 (要区分长按)
   if (btn.dataset.k === "done") {
     if (saveEntry()) closeSheet();
-  } else if (btn.dataset.k === "again") {
-    // 再记: 存完不关弹层, 清空金额备注接着记 (改一笔时按它 = 存修改再开新一笔)
-    if (saveEntry()) {
-      editingId = null;
-      $("#f-amount").value = "";
-      $("#f-note").value = "";
-      sheetCat = "";
-      $("#sheet-title").textContent = "记一笔";
-      $("#sheet-del").hidden = true;
-      fillChips();
-      $("#amt-eq").textContent = "已记 ✓";   // 下一个数字会把预览顶掉
-    }
   } else {
     const input = $("#f-amount");
     input.value = applyAmountKey(input.value, btn.dataset.k);
@@ -375,7 +432,7 @@ $("#f-amount").addEventListener("input", () => {   // 粘贴/残存输入法兜�
   refreshAmountPreview();
 });
 
-// 键盘随弹层常驻 (完成/再记就长在键盘里, 收了就没法保存了):
+// 键盘随弹层常驻 (完成就长在键盘里, 收了就没法保存了):
 // 备注/日期聚焦弹系统键盘时, 靠弹层自身滚动让位, 不收键盘
 
 function shakeAmount() {               // 金额无效: 抖一下提示 (不清空, 键盘就在手边)
@@ -385,18 +442,20 @@ function shakeAmount() {               // 金额无效: 抖一下提示 (不清�
   line.classList.add("shake");
 }
 
-// 记一笔落库 (键盘上的 完成/再记 共用): 表达式求值 → 条目进本地账本 → 待同步
+// 记一笔落库 (键盘上的 完成): 表达式求值 → 条目进本地账本 → 待同步
 function saveEntry() {
   const value = evaluateAmount($("#f-amount").value);
   const amount = value == null ? NaN : Math.round(value * 100) / 100;
   if (!isFinite(amount) || amount <= 0) { shakeAmount(); return false; }
   const date = $("#f-date").value || todayStr();
+  const time = /^\d{2}:\d{2}$/.test($("#f-time").value) ? $("#f-time").value : "";
   const note = $("#f-note").value.trim().slice(0, 200);
+  const tags = parseTags($("#f-tags").value);
   const now = new Date().toISOString();
   const prev = entries.find(x => x.id === editingId);
   const entry = {
     id: editingId || uuid(),
-    date, amount,
+    date, time, amount, tags,
     kind: sheetKind, category: sheetCat, note,
     deleted: false, updatedAt: now,
     createdByName: prev ? prev.createdByName : "",
