@@ -601,6 +601,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
     }
   }
   $("#drv-menu").hidden = false;
+  $("#filters").hidden = false;   // 筛选行只剩驾驶员, 有驾驶员才亮 (没有就不占行)
 })();
 $("#drv-opts").addEventListener("click", e => {
   const b = e.target.closest("button");

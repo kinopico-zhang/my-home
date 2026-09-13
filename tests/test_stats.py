@@ -102,6 +102,8 @@ def test_stats_page_skeleton(auth):
         'id="monthly-view"', 'id="fastslow-view"', 'id="hour-view"',
         'id="loc-view"', 'id="soc-view"', 'id="power-view"', 'id="city-view"',
         'id="time-menu"', 'id="tm-cal"',                     # 时间筛选 + 自定义日历
+        # 时间菜单在顶栏 nav-row (与全站一致), 本页没有筛选行
+        '</details>\n    <details class="nav-menu time-menu" id="time-menu">',
         '"/tesla/charging/api/dimensions?"',                 # 新维度接口
         '"/tesla/charging/api/summary?"', '"/tesla/charging/api/monthly?"',
         "renderFastSlow", "renderHour", "renderSoc", "renderPower", "renderCity",
@@ -112,6 +114,7 @@ def test_stats_page_skeleton(auth):
         "grid-template-columns: 1fr 1fr",                    # 宽屏两列网格
     ]:
         assert frag in html, f"统计页缺少 {frag}"
+    assert 'class="filters"' not in html   # 时间筛选上顶栏后, 本页没有筛选行
 
 
 def test_charging_page_records_only(auth):

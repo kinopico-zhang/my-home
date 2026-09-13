@@ -268,8 +268,8 @@ def test_diag_endpoint_logs_and_requires_auth(auth, capsys):
         "/tesla/map/api/diag", json={"stage": "x"}).status_code == 401
 
 
-def test_map_page_time_menu_in_filters_row(auth):
-    """足迹页没有独有筛选: 时间下拉 (含自定义日历) 放顶栏下方的筛选栏。"""
+def test_map_page_time_menu_in_nav_row(auth):
+    """时间下拉 (含自定义日历) 在顶栏 nav-row (与全站一致); 筛选行只剩驾驶员。"""
     html = auth.get("/tesla/map").text
     html += auth.get("/tesla/static/map.js?v=1").text
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
@@ -281,8 +281,10 @@ def test_map_page_time_menu_in_filters_row(auth):
                  '@media (max-width: 479px)', 'header { position: relative; }',
                  '.nav-menu { position: static; }']:
         assert frag in html, f"足迹页缺少 {frag}"
-    # 时间菜单在筛选栏里 (nav-row 下方), 顶栏一行只留品牌下拉; 旧的 chips 行已删
-    assert '<div class="filters">\n    <details class="nav-menu time-menu" id="time-menu">' in html
+    # 时间菜单紧跟品牌下拉在顶栏; 筛选行只剩驾驶员, 没配驾驶员整行藏掉不占位
+    assert '</details>\n    <details class="nav-menu time-menu" id="time-menu">' in html
+    assert '<div class="filters" id="filters" hidden>' in html
+    assert '"#filters").hidden = false' in html   # 有驾驶员才亮
     assert "chips-range" not in html and ".chip {" not in html
     assert 'id="tm-from"' not in html
     # 关键 id 全页唯一 (孤儿节点会重复 id, JS 绑错元素且不报错)

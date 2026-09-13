@@ -396,6 +396,9 @@ def test_charging_page_time_menu_calendar_and_city_filter(auth):
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
                  'id="tm-ym"', 'id="tm-sel"', 'id="tm-apply"', 'function calRender()',
                  '再点结束日期',
+                 # 时间菜单在顶栏 nav-row (全站统一位置; 本页品牌旁还有车名胶囊)
+                 '<span class="car-pill" id="car-pill">Tesla</span>\n'
+                 '    <details class="nav-menu time-menu" id="time-menu">',
                  'id="city-menu"', 'id="city-opts"', "/tesla/charging/api/cities",
                  # 快充/慢充筛选改下拉 (与城市筛选同款, 分段钮太占地方)
                  'id="type-menu"', 'id="type-opts"', 'id="type-lb"',
