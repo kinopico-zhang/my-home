@@ -33,7 +33,7 @@ const fail = msg => {
     return;
   }
   try {
-    const r = await fetch(`/tesla/api/invite-status?invite=${encodeURIComponent(invite)}`);
+    const r = await fetch(`/api/invite-status?invite=${encodeURIComponent(invite)}`);
     if (!r.ok) {
       const d = await r.json().catch(() => null);
       fail((d && d.detail) || "邀请链接不可用");
@@ -55,13 +55,13 @@ form.addEventListener("submit", async e => {
   }
   btn.disabled = true;
   try {
-    const r = await fetch("/tesla/api/register", {
+    const r = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ invite, name, password }),
     });
-    if (r.ok) {                    // 注册即登录, 直接进充电页
-      location.replace("/tesla/charging");
+    if (r.ok) {                    // 注册即登录, 直接进门厅挑应用
+      location.replace("/");
       return;
     }
     const d = await r.json().catch(() => null);

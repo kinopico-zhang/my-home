@@ -20,7 +20,7 @@ function toast(msg, isErr) {
 
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ cache: "no-store" }, opts));
-  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (r.status === 401) { location.replace("/login"); throw new Error("未登录"); }
   const body = await r.json().catch(() => null);
   if (!r.ok) throw new Error((body && body.detail) || `${r.status} ${r.statusText}`);
   return body;
@@ -161,7 +161,7 @@ $("#drv-list").addEventListener("click", async e => {
 
 /* ---------- 账号 (自助改名称 / 改密码) ---------- */
 async function loadMe() {
-  const me = await api("/tesla/api/me");
+  const me = await api("/api/me");
   $("#me-name").textContent = me.name;
 }
 
@@ -169,7 +169,7 @@ $("#me-name-save").addEventListener("click", async () => {
   const btn = $("#me-name-save");
   btn.disabled = true;
   try {
-    const me = await api("/tesla/api/account/name", {
+    const me = await api("/api/account/name", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: $("#me-name-input").value.trim() }),
     });
@@ -191,7 +191,7 @@ $("#me-pass-save").addEventListener("click", async () => {
   }
   btn.disabled = true;
   try {
-    await api("/tesla/api/account/password", {
+    await api("/api/account/password", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         old_password: $("#me-old-pass").value,
@@ -219,8 +219,8 @@ $("#refresh-btn").addEventListener("click", async () => {
 });
 
 $("#logout").addEventListener("click", async () => {
-  await fetch("/tesla/api/logout", { method: "POST" });
-  location.replace("/tesla/login");
+  await fetch("/api/logout", { method: "POST" });
+  location.replace("/login");
 });
 
 /* ---------- 启动 ---------- */

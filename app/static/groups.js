@@ -52,7 +52,7 @@ async function load() {
   $("#gp-spin").hidden = false;
   try {
     const r = await fetch("/tesla/trips/api/groups");
-    if (r.status === 401) { location.replace("/tesla/login"); return; }
+    if (r.status === 401) { location.replace("/login"); return; }
     if (!r.ok) throw new Error(`${r.status}`);
     groups = await r.json();
   } catch {
@@ -82,7 +82,7 @@ $("#gp-list").addEventListener("click", async e => {
     }
     try {
       const r = await fetch(`/tesla/trips/api/groups/${gid}`, { method: "DELETE" });
-      if (r.status === 401) { location.replace("/tesla/login"); return; }
+      if (r.status === 401) { location.replace("/login"); return; }
       if (!r.ok) throw new Error(`${r.status}`);
       groups = groups.filter(g => g.id !== gid);
       render();
@@ -103,7 +103,7 @@ $("#gp-list").addEventListener("click", async e => {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-      if (r.status === 401) { location.replace("/tesla/login"); return; }
+      if (r.status === 401) { location.replace("/login"); return; }
       if (!r.ok) throw new Error(`${r.status}`);
       group.name = name;
       render();
@@ -135,8 +135,8 @@ $("#refresh-btn").addEventListener("click", async () => {
 });
 
 $("#logout").addEventListener("click", async () => {
-  await fetch("/tesla/api/logout", { method: "POST" });
-  location.replace("/tesla/login");
+  await fetch("/api/logout", { method: "POST" });
+  location.replace("/login");
 });
 
 load();

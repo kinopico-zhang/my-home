@@ -23,7 +23,7 @@ form.addEventListener("submit", async e => {
   errEl.textContent = "";
   btn.disabled = true;
   try {
-    const r = await fetch("/tesla/api/login", {
+    const r = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -36,7 +36,7 @@ form.addEventListener("submit", async e => {
       var last = null;
       try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
       location.replace(last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog))(\?|$)/.test(last)
-        ? last : "/tesla/charging");
+        ? last : "/");
       return;
     }
     // 优先展示后端给出的原因 (账号密码错误 / 尝试次数过多…), 兜底按状态码
@@ -58,15 +58,3 @@ form.addEventListener("submit", async e => {
 });
 document.getElementById("user").focus();
 
-// 已登录的访客: 这里是 My Home 的门厅, 不再要密码, 直接给两个应用的入口
-// (My Tesla + My Money 只共享账号, 门厅是唯一交汇处)
-fetch("/tesla/api/me").then(r => r.ok ? r.json() : null).then(me => {
-  if (!me) return;                       // 没登录: 表单照旧
-  document.getElementById("sub").textContent = "欢迎回来 · " + me.name;
-  form.hidden = true;
-  document.getElementById("apps").hidden = false;
-}).catch(() => {});
-document.getElementById("switch-account").addEventListener("click", async () => {
-  await fetch("/tesla/api/logout", { method: "POST" });
-  location.reload();                     // 重新进门厅 → 登录表单
-});

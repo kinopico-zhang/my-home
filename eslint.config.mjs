@@ -46,6 +46,20 @@ export default [
     },
   },
 
+  // 门厅共享层 (app/home/static): 账号体系页面 (登录/注册/账号管理) + 根路径门厅页
+  {
+    files: ["app/home/static/*.js"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: { ...globals.browser },
+    },
+    rules: {
+      "no-use-before-define": ["error", { functions: false, classes: false }],
+    },
+  },
+
   // 前端单元测试 (node:test, ESM)
   {
     files: ["tests/js/*.mjs"],

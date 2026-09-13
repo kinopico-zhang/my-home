@@ -47,7 +47,7 @@ function fmtDurLive(sec) {
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
-  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (r.status === 401) { location.replace("/login"); throw new Error("未登录"); }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();
 }
@@ -57,7 +57,7 @@ async function postJSON(url, body) {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (r.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (r.status === 401) { location.replace("/login"); throw new Error("未登录"); }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status}`);
   return r.json();
 }
@@ -442,8 +442,8 @@ new IntersectionObserver(es => {
 
 $("#retry").addEventListener("click", () => { state.err = null; loadMore(); });
 $("#logout").addEventListener("click", async () => {
-  await fetch("/tesla/api/logout", { method: "POST" });
-  location.replace("/tesla/login");
+  await fetch("/api/logout", { method: "POST" });
+  location.replace("/login");
 });
 
 /* ============================ 多选: 连续行程拼成一条轨迹 ============================ */
@@ -610,7 +610,7 @@ $("#gp-save").addEventListener("click", async () => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, ids: gpIds }),
     });
-    if (r.status === 401) { location.replace("/tesla/login"); return; }
+    if (r.status === 401) { location.replace("/login"); return; }
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status}`);
     toast(`已存分组「${name}」`);
     exitSelect();
@@ -1767,7 +1767,7 @@ async function openTrip(it, fromUrl) {
 async function loadMergedStream(it, seq) {
   const key = it.mergeKey;
   const res = await fetch(`/tesla/trips/api/merged_stream?ids=${key}`);
-  if (res.status === 401) { location.replace("/tesla/login"); throw new Error("未登录"); }
+  if (res.status === 401) { location.replace("/login"); throw new Error("未登录"); }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   const reader = res.body.getReader(), dec = new TextDecoder();
   const t0 = performance.now();

@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="icon" type="image/png" sizes="32x32" href="/tesla/static/favicon-32.png">
-<link rel="icon" type="image/svg+xml" href="/tesla/static/favicon.svg">
-<link rel="apple-touch-icon" href="/tesla/static/apple-touch-icon.png?v=2">
-<link rel="manifest" href="/tesla/static/manifest.json">
-  <title>注册 · My Home</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=1">
+  <link rel="manifest" href="/static/manifest.json">
+  <title>登录 · My Home</title>
 <style>
 :root {
   color-scheme: dark;
@@ -23,6 +23,8 @@
   --hairline: rgba(255,255,255,.09);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+/* 触屏双击控件不再触发整页放大 (manipulation 保留平移/捏合, 只去掉双击缩放) */
 button, a, summary { touch-action: manipulation; }
 html, body { height: 100%; }
 body {
@@ -73,8 +75,6 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .err {
   font-size: 13px; color: #ff6961; margin-top: 12px; min-height: 18px;
 }
-.ok-note { font-size: 12px; color: var(--ink-3); margin-top: 14px; }
-.ok-note a { color: #7db3f0; text-decoration: none; }
 .shake { animation: shake .35s; }
 @keyframes shake {
   20% { transform: translateX(-8px); } 40% { transform: translateX(7px); }
@@ -84,20 +84,18 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 </head>
 <body>
 <div class="card" id="card">
-  <div class="icon">⚡</div>
+  <div class="icon">🔑</div>
   <h1>My Home</h1>
-  <div class="sub" id="sub">凭邀请注册账号</div>
+  <div class="sub" id="sub">请登录后查看</div>
   <form id="form" autocomplete="on">
     <div class="field">
-      <label for="name">名称</label>
-      <input id="name" name="name" type="text" autocapitalize="off"
-             autocorrect="off" autocomplete="nickname" maxlength="20"
-             placeholder="2~20 个字符" required>
+      <label for="user">账号</label>
+      <input id="user" name="username" type="text" autocapitalize="off"
+             autocorrect="off" autocomplete="username" required>
     </div>
     <div class="field">
       <label for="pass">密码</label>
-      <input id="pass" name="new-password" type="password"
-             autocomplete="new-password" minlength="6" maxlength="64" required>
+      <input id="pass" name="password" type="password" autocomplete="current-password" required>
       <button type="button" class="eye-btn" id="eye" aria-label="显示密码">
         <svg id="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -111,16 +109,10 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
         </svg>
       </button>
     </div>
-    <div class="field">
-      <label for="pass2">确认</label>
-      <input id="pass2" name="confirm-password" type="password"
-             autocomplete="new-password" minlength="6" maxlength="64" required>
-    </div>
-    <button class="btn" id="btn" type="submit">注 册</button>
+    <button class="btn" id="btn" type="submit">登 录</button>
     <div class="err" id="err"></div>
   </form>
-  <div class="ok-note">已有账号? <a href="/tesla/login">去登录</a></div>
 </div>
-<script src="/tesla/static/register.js?v=1"></script>
+<script src="/static/login.js?v=1"></script>
 </body>
 </html>

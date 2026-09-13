@@ -152,7 +152,7 @@ async function syncNow() {
         entries: entriesToUpload(entries, [...dirty]),
       }),
     });
-    if (r.status === 401) { location.replace("/tesla/login"); return; }
+    if (r.status === 401) { location.replace("/login"); return; }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     // EntryOut (snake_case) → 本地条目形状 (camelCase)
@@ -318,7 +318,7 @@ $("#entry-list").addEventListener("click", e => {
 
 $("#logout").addEventListener("click", async () => {
   await fetch("/bookkeeping/api/logout", { method: "POST" });
-  location.replace("/tesla/login");
+  location.replace("/login");
 });
 
 /* ---------- 启动 ---------- */

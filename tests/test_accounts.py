@@ -15,7 +15,7 @@ def _register(usersdb, name="二号账号", password="password123"):
     """凭邀请注册一个普通账号, 返回 (该账号登录态的 client, 邀请令牌)。"""
     invitation = account_store.create_invitation(usersdb, 7)
     client = TestClient(m.app)
-    r = client.post("/tesla/api/register",
+    r = client.post("/api/register",
                     json={"invite": invitation.token, "name": name,
                           "password": password})
     assert r.status_code == 200, r.text
@@ -24,7 +24,7 @@ def _register(usersdb, name="二号账号", password="password123"):
 
 def _admin(client):
     """管理员登录态的 client (env 账密 = 种入的管理员)。"""
-    r = client.post("/tesla/api/login",
+    r = client.post("/api/login",
                     json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
     assert r.status_code == 200
     return client
@@ -45,20 +45,20 @@ def test_ensure_admin_seeds_once(usersdb):
 def test_register_full_lifecycle(client, usersdb):
     invitation = account_store.create_invitation(usersdb, 1)
     # 进页先查状态: 可用
-    r = client.get("/tesla/api/invite-status",
+    r = client.get("/api/invite-status",
                    params={"invite": invitation.token})
     assert r.status_code == 200
     # 注册成功 = 自动登录 (新 cookie 落在 path=/)
-    r = client.post("/tesla/api/register",
+    r = client.post("/api/register",
                     json={"invite": invitation.token, "name": "家里那位",
                           "password": "password123"})
     assert r.status_code == 200
-    me = client.get("/tesla/api/me").json()
+    me = client.get("/api/me").json()
     assert me == {"name": "家里那位", "is_admin": False}   # 不含 uuid
     # 邀请一次一用: 状态与再注册都不行
-    assert client.get("/tesla/api/invite-status",
+    assert client.get("/api/invite-status",
                       params={"invite": invitation.token}).status_code == 400
-    r = client.post("/tesla/api/register",
+    r = client.post("/api/register",
                     json={"invite": invitation.token, "name": "第三位",
                           "password": "password123"})
     assert r.status_code == 400
@@ -71,18 +71,18 @@ def test_register_validates_name_password_invite(client, usersdb):
                            ("a", "password123"),      # 名字 1 字符
                            ("带 空格", "password123"),  # 内部空白
                            ("名字", "12345")):        # 密码太短
-        r = client.post("/tesla/api/register",
+        r = client.post("/api/register",
                         json={"invite": invitation.token, "name": name,
                               "password": password})
         assert r.status_code == 400, name
     # 名字重名 (管理员已种)
-    r = client.post("/tesla/api/register",
+    r = client.post("/api/register",
                     json={"invite": invitation.token, "name": config.AUTH_USER,
                           "password": "password123"})
     assert r.status_code == 400
     assert "已被占用" in r.json()["detail"]
     # 环令牌
-    r = client.post("/tesla/api/register",
+    r = client.post("/api/register",
                     json={"invite": "no-such-token", "name": "家里那位",
                           "password": "password123"})
     assert r.status_code == 400
@@ -92,29 +92,29 @@ def test_register_validates_name_password_invite(client, usersdb):
 def test_invitation_states(usersdb, client):
     _admin(client)
     # 签发档位: 只有 1/7/30
-    assert client.post("/tesla/accounts/api/invitations",
+    assert client.post("/accounts/api/invitations",
                        json={"days": 5}).status_code == 400
-    made = client.post("/tesla/accounts/api/invitations",
+    made = client.post("/accounts/api/invitations",
                        json={"days": 30}).json()
     assert made["token"] and made["expires_at"]
     # 撤销后不可用
-    assert client.delete(f"/tesla/accounts/api/invitations/{made['token']}"
+    assert client.delete(f"/accounts/api/invitations/{made['token']}"
                          ).status_code == 200
-    r = client.get("/tesla/api/invite-status", params={"invite": made["token"]})
+    r = client.get("/api/invite-status", params={"invite": made["token"]})
     assert r.status_code == 400
     assert "撤销" in r.json()["detail"]
     # 已撤销的不能再撤销
-    assert client.delete(f"/tesla/accounts/api/invitations/{made['token']}"
+    assert client.delete(f"/accounts/api/invitations/{made['token']}"
                          ).status_code == 400
     # 过期不可用 (直接把库里的截止时间改到过去)
     invitation = account_store.create_invitation(usersdb, 1)
     invitation.expires_at = datetime.utcnow() - timedelta(seconds=1)
     usersdb.commit()
-    r = client.get("/tesla/api/invite-status", params={"invite": invitation.token})
+    r = client.get("/api/invite-status", params={"invite": invitation.token})
     assert r.status_code == 400
     assert "过期" in r.json()["detail"]
     # 列表带全部状态字段 (前端现算有效/已注册/过期/已撤销)
-    items = client.get("/tesla/accounts/api/invitations").json()
+    items = client.get("/accounts/api/invitations").json()
     assert {i["token"] for i in items} >= {made["token"], invitation.token}
     fields = {"token", "created_at", "expires_at", "used_at", "revoked"}
     assert fields <= set(items[0])
@@ -124,20 +124,20 @@ def test_invitation_states(usersdb, client):
 def test_accounts_admin_only(usersdb):
     other, _ = _register(usersdb)
     # 普通账号: 列表/签发/撤销全部 403
-    assert other.get("/tesla/accounts/api/users").status_code == 403
-    assert other.post("/tesla/accounts/api/invitations",
+    assert other.get("/accounts/api/users").status_code == 403
+    assert other.post("/accounts/api/invitations",
                       json={"days": 7}).status_code == 403
-    assert other.get("/tesla/accounts/api/invitations").status_code == 403
-    assert other.delete("/tesla/accounts/api/invitations/x").status_code == 403
+    assert other.get("/accounts/api/invitations").status_code == 403
+    assert other.delete("/accounts/api/invitations/x").status_code == 403
     # 未登录: 401
     anon = TestClient(m.app)
-    assert anon.get("/tesla/accounts/api/users").status_code == 401
+    assert anon.get("/accounts/api/users").status_code == 401
 
 
 def test_accounts_user_list_no_uuid_leak(usersdb, client):
     _admin(client)
     _register(usersdb, "家里那位")
-    users = client.get("/tesla/accounts/api/users").json()
+    users = client.get("/accounts/api/users").json()
     assert len(users) == 2
     assert users[0]["is_admin"] is True                    # 管理员在前
     assert users[1] == {"name": "家里那位", "is_admin": False,
@@ -148,42 +148,42 @@ def test_accounts_user_list_no_uuid_leak(usersdb, client):
 # ---------------------------------------------------------------- 自助账号
 def test_rename_keeps_session_and_uuid(usersdb):
     other, _ = _register(usersdb)
-    before = other.get("/tesla/api/me").json()
-    r = other.post("/tesla/api/account/name", json={"name": "新名字"})
+    before = other.get("/api/me").json()
+    r = other.post("/api/account/name", json={"name": "新名字"})
     assert r.status_code == 200
     assert r.json() == {"name": "新名字", "is_admin": False}
     # 会话不掉线 (uuid 没变)
-    assert other.get("/tesla/api/me").json()["name"] == "新名字"
+    assert other.get("/api/me").json()["name"] == "新名字"
     assert other.get("/bookkeeping").status_code == 200
     # 改成管理员的名字 → 占用
-    r = other.post("/tesla/api/account/name", json={"name": config.AUTH_USER})
+    r = other.post("/api/account/name", json={"name": config.AUTH_USER})
     assert r.status_code == 400
     # 改回自己的名字 → 允许 (no-op)
-    assert other.post("/tesla/api/account/name",
+    assert other.post("/api/account/name",
                       json={"name": "新名字"}).status_code == 200
 
 
 def test_password_change(usersdb):
     other, _ = _register(usersdb, "家里那位", "password123")
     # 旧密码错 → 400
-    r = other.post("/tesla/api/account/password",
+    r = other.post("/api/account/password",
                    json={"old_password": "wrong-old", "new_password": "newpass456"})
     assert r.status_code == 400
     assert "旧密码" in r.json()["detail"]
     # 改成功: 会话不掉线, 新密码能登录, 旧密码不行
-    r = other.post("/tesla/api/account/password",
+    r = other.post("/api/account/password",
                    json={"old_password": "password123",
                          "new_password": "newpass456"})
     assert r.status_code == 200
-    assert other.get("/tesla/api/me").status_code == 200
+    assert other.get("/api/me").status_code == 200
     fresh = TestClient(m.app)
-    assert fresh.post("/tesla/api/login",
+    assert fresh.post("/api/login",
                       json={"user": "家里那位", "password": "newpass456"}
                       ).status_code == 200
-    assert fresh.post("/tesla/api/login",
+    assert fresh.post("/api/login",
                       json={"user": "家里那位", "password": "password123"}
                       ).status_code == 401
 
 
 def test_me_requires_login(client):
-    assert client.get("/tesla/api/me").status_code == 401
+    assert client.get("/api/me").status_code == 401
