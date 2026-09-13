@@ -8,6 +8,7 @@ from sqlalchemy.dialects import postgresql
 
 import app.main as m
 from app import database, repository, tracks_cache
+from app.models import Driver, TripDriver
 from app.schemas import MapTrack
 from tests.conftest import (seed_addresses, seed_drive, seed_position,
                             seed_positions)
@@ -170,6 +171,39 @@ def test_tracks_downsamples_to_40_per_drive(auth, db):
     assert d["tracks"][0]["pts"][-1][0] == round(114.0 + 399 * 0.0001, 5)
 
 
+def test_tracks_filter_by_driver(auth, db, owndb):
+    """轨迹/汇总按驾驶员筛选, 口径与行程页一致: 显式标注的 + 默认驾驶员时
+    未标注的; 驾驶员不存在 → 空。"""
+    start = datetime(2026, 9, 1, 2, 0)
+    for did in (11, 12, 13):
+        seed_drive(db, id=did, start_date=start + timedelta(hours=did),
+                   end_date=start + timedelta(hours=did, minutes=10),
+                   distance=5.0, duration_min=10)
+        seed_positions(db, did, [
+            {"date": start + timedelta(hours=did),
+             "longitude": 114.0, "latitude": 22.5},
+            {"date": start + timedelta(hours=did, minutes=10),
+             "longitude": 114.01, "latitude": 22.51}])
+    owndb.add(Driver(id=1, name="大导子", is_default=True))
+    owndb.add(Driver(id=2, name="小导子"))
+    owndb.add(TripDriver(drive_id=11, driver_id=2))
+    owndb.commit()
+
+    assert auth.get("/tesla/map/api/tracks").json()["count"] == 3      # 全部
+    t = auth.get("/tesla/map/api/tracks",
+                 params={"driver_id": 2}).json()                        # 标注小导子
+    assert [x["id"] for x in t["tracks"]] == [11]
+    t = auth.get("/tesla/map/api/tracks",
+                 params={"driver_id": 1}).json()                        # 默认 → 含未标注
+    assert sorted(x["id"] for x in t["tracks"]) == [12, 13]
+    assert auth.get("/tesla/map/api/tracks",
+                    params={"driver_id": 99}).json()["count"] == 0      # 不存在 → 空
+    s = auth.get("/tesla/map/api/summary", params={"driver_id": 2}).json()
+    assert s["drives"] == 1 and s["distance_km"] == 5.0
+    s = auth.get("/tesla/map/api/summary", params={"driver_id": 1}).json()
+    assert s["drives"] == 2 and s["distance_km"] == 10.0
+
+
 def test_tracks_excludes_unfinished_and_no_distance(auth, db):
     """distance 为空的行程 (含未关闭) 不进全量轨迹, 与旧 TRACKS_SQL 口径一致。"""
     seed_addresses(db)
@@ -262,6 +296,22 @@ def test_map_page_time_menu_in_filters_row(auth):
     assert 'mapStyle: cfg.style || "amap://styles/dark"' in html
     # "©…auto navi" 版权文字按需求去掉 (高德无官方开关, CSS 藏)
     assert '#map .amap-copyright { display: none !important; }' in html
+
+
+def test_map_page_driver_filter(auth):
+    """驾驶员筛选下拉: 选项来自设置页驾驶员表 (没配驾驶员整颗藏掉),
+    口径与行程页一致 (默认驾驶员含未标注); 写进 URL 可分享。"""
+    html = auth.get("/tesla/map").text
+    html += auth.get("/tesla/static/map.js?v=1").text
+    for frag in ['id="drv-menu"', 'id="drv-opts"', 'id="drv-lb"', "驾驶员: 全部",
+                 '"/tesla/api/drivers"', "$(\"#drv-menu\").hidden = false",
+                 'u.searchParams.set("driver_id", drvId)',
+                 'u.searchParams.delete("driver_id")',
+                 "trackParams()", "driver_id=" + '" + drvId']:
+        assert frag in html, f"足迹页缺少 {frag}"
+    # 筛选藏到拉到驾驶员选项才出现; 深链带入的驾驶员不存在要回落"全部"
+    assert '<details class="nav-menu" id="drv-menu" hidden>' in html
+    assert "drivers.find(d => d.id === drvId)" in html
     # 地名首帧竞态: 矢量样式数据异步加载, 首帧不画地名; complete 后延时补
     # 重渲染 (setFeatures 同值重设只触发重绘), 否则地名要等下次交互才出现
     assert 'map.setFeatures(map.getFeatures())' in html

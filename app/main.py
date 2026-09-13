@@ -298,18 +298,23 @@ def map_config(own: Session = Depends(database.get_own_db)) -> AmapConfig:
 @mapapi.get("/summary")
 def get_map_summary(
         frm: str | None = Query(None, alias="from"), to: str | None = None,
-        db: Session = Depends(database.get_db)) -> MapSummary:
-    """地图页汇总: 行程数 / 总里程 / 总时长 / 起止日期。"""
-    return repository.map_summary(db, _date_range_or_400(frm, to))
+        driver_id: int | None = Query(None),
+        db: Session = Depends(database.get_db),
+        own: Session = Depends(database.get_own_db)) -> MapSummary:
+    """地图页汇总: 行程数 / 总里程 / 总时长 / 起止日期, 可按驾驶员过滤。"""
+    return repository.map_summary(db, own, _date_range_or_400(frm, to), driver_id)
 
 
 @mapapi.get("/tracks")
 def get_tracks(frm: str | None = Query(None, alias="from"),
-               to: str | None = None) -> TracksResponse:
-    """全量粗轨迹 (每条 ~40 点, 两级缓存 + 增量), 可按日期过滤。"""
+               to: str | None = None, driver_id: int | None = Query(None),
+               own: Session = Depends(database.get_own_db)) -> TracksResponse:
+    """全量粗轨迹 (每条 ~40 点, 两级缓存 + 增量), 可按日期/驾驶员过滤。"""
     _date_range_or_400(frm, to)   # 先校验再过滤, 空列表也要拦住坏参数
     tracks = tracks_cache.load_tracks(database.session_factory())
     tracks = tracks_cache.filter_by_date(tracks, frm, to)
+    if driver_id is not None:     # 驾驶员标注在自有库 → 缓存轨迹后置过滤
+        tracks = repository.filter_map_tracks_by_driver(tracks, own, driver_id)
     return TracksResponse(count=len(tracks), tracks=tracks)
 
 

@@ -655,19 +655,47 @@ def _trip_conditions(session: Session,
     return conds
 
 
-def _driver_condition(own: Session, driver_id: int) -> ColumnElement[bool]:
-    """按驾驶员筛选, 与卡片展示同口径: 显式标注的行程; 选默认驾驶员时
-    未标注的也算 (未标注在卡片上就显示默认驾驶员名)。驾驶员不存在 → 空。
+def driver_scope(own: Session,
+                 driver_id: int) -> tuple[set[int], set[int], bool] | None:
+    """按驾驶员筛选的行程 id 口径: (标注它的, 任何标注过的, 是否默认驾驶员)。
+    与卡片展示同口径 —— 选默认驾驶员时未标注的也算 (未标注在卡片上就显示
+    默认驾驶员名)。驾驶员不存在 → None (调用方按空结果处理)。
 
-    标注表在自有库, 与 TeslaMate 库不是同一个连接 —— 先取出 id 列表再
-    下推条件, 不能跨库做子查询。"""
-    marked = own.scalars(
-        select(TripDriver.drive_id).where(TripDriver.driver_id == driver_id)).all()
+    标注表在自有库, 与 TeslaMate 库不是同一个连接 —— 先取 id 集合再下推
+    条件 (SQL 端) 或后置过滤 (轨迹缓存端), 不能跨库做子查询。"""
     driver = own.get(Driver, driver_id)
-    if driver is not None and driver.is_default:
-        all_marked = own.scalars(select(TripDriver.drive_id)).all()
-        return Drive.id.in_(marked) | Drive.id.not_in(all_marked)
-    return Drive.id.in_(marked)
+    if driver is None:
+        return None
+    marked = set(own.scalars(
+        select(TripDriver.drive_id).where(TripDriver.driver_id == driver_id)).all())
+    all_marked = set(own.scalars(select(TripDriver.drive_id)).all())
+    return marked, all_marked, bool(driver.is_default)
+
+
+def _driver_condition(own: Session, driver_id: int) -> ColumnElement[bool]:
+    """按驾驶员筛选 (SQL 端), 口径见 driver_scope。"""
+    scope = driver_scope(own, driver_id)
+    if scope is None:
+        return Drive.id.in_(set())   # 驾驶员不存在 → 空
+    marked, all_marked, is_default = scope
+    cond = Drive.id.in_(marked)
+    if is_default:
+        cond = cond | Drive.id.not_in(all_marked)
+    return cond
+
+
+def filter_map_tracks_by_driver(tracks: list[MapTrack], own: Session,
+                                driver_id: int) -> list[MapTrack]:
+    """缓存轨迹按驾驶员后置过滤 (口径同 _driver_condition)。
+
+    轨迹缓存只从 TeslaMate 库构建, 标注在自有库且会随标/清变动 —— 缓存里
+    不落 driver_id, 每次请求现算 id 集合过滤 (全量轨迹在内存, 代价可忽略)。"""
+    scope = driver_scope(own, driver_id)
+    if scope is None:
+        return []
+    marked, all_marked, is_default = scope
+    return [t for t in tracks
+            if t.id in marked or (is_default and t.id not in all_marked)]
 
 
 def list_trips(session: Session, own: Session, offset: int, limit: int,
@@ -1292,10 +1320,13 @@ def live_status(session: Session) -> LiveStatus:
 # ---------------------------------------------------------------- 地图
 
 
-def map_summary(session: Session, date_range: DateRange | None) -> MapSummary:
-    """地图页汇总: 行程数 / 总里程 / 总时长 / 起止日期。"""
+def map_summary(session: Session, own: Session, date_range: DateRange | None,
+                driver_id: int | None = None) -> MapSummary:
+    """地图页汇总: 行程数 / 总里程 / 总时长 / 起止日期; 驾驶员同轨迹口径。"""
     conds: list[ColumnElement[bool]] = [Drive.distance.is_not(None)]
     conds += _range_conditions(Drive.start_date, date_range)
+    if driver_id is not None:
+        conds.append(_driver_condition(own, driver_id))
     count, distance, duration, first, last = session.execute(
         select(func.count(), func.coalesce(func.sum(Drive.distance), 0.0),
                func.coalesce(func.sum(Drive.duration_min), 0),
