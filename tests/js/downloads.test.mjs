@@ -1,6 +1,7 @@
 /* downloads.js (离线下载纯逻辑) 的 node --test 单元测试。
    覆盖: 能力判定、下载成功 (索引落库 + 状态流转 + 进度回调)、
-   重复下载拒绝、失败不占位、删除 (缓存 + 索引)、下载中条目合并展示。 */
+   重复下载拒绝、失败不占位、删除 (缓存 + 索引)、下载中条目合并展示、
+   大小格式化、用量统计、一键清空、下载中删除 = 取消。 */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -9,14 +10,15 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
-const { downloadsSupported, createDownloads } =
+const { downloadsSupported, createDownloads, formatBytes } =
   require(path.join(dir, "downloads.js"));
 
 const TRACK = { track_id: 7, title: "曲A", artist: "AI机组", album_id: 3,
                 album_title: "甲", duration_seconds: 200, playable: true };
 
 /** 桩适配器: 索引在内存里, 下载体可编排进度, 缓存记录调用。 */
-function stubAdapters({ bodyChunks = [new Uint8Array(10)], failAt = null } = {}) {
+function stubAdapters({ bodyChunks = [new Uint8Array(10)], failAt = null,
+                        sizes = {} } = {}) {
   const calls = { puts: [], deletes: [], indexWrites: 0, progress: [] };
   let index = [];
   return {
@@ -41,10 +43,24 @@ function stubAdapters({ bodyChunks = [new Uint8Array(10)], failAt = null } = {})
         calls.puts.push({ url, size: body.size, contentType });
       },
       async cacheDelete(url) { calls.deletes.push(url); },
+      async cacheSize(url) { return sizes[url] || 0; },
       now: () => 1000,
     },
     calls,
   };
+}
+
+/** 把桩的下载体换成 "一直挂住等信号" 的版本 (测取消; 不主动完成)。 */
+function hangOnSignal(adapters) {
+  adapters.downloadBody = (url, onProgress, signal) => new Promise((resolve, reject) => {
+    const onAbort = () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort);
+  });
 }
 
 test("downloadsSupported: 三个条件齐了才亮", () => {
@@ -183,4 +199,67 @@ test("缺字段的曲目 (只有编号): 展示信息落空串, 不炸", async (
     [entry.title, entry.artist, entry.album_title, entry.album_id,
      entry.duration_seconds],
     ["", "", "", 0, 0]);
+});
+
+test("formatBytes: B 恒整数, KB/MB 百内一位小数, 大数取整, 坏值归 0 B", () => {
+  assert.equal(formatBytes(0), "0 B");
+  assert.equal(formatBytes(-5), "0 B");
+  assert.equal(formatBytes(Number.NaN), "0 B");
+  assert.equal(formatBytes(512), "512 B");
+  assert.equal(formatBytes(1023), "1023 B");
+  assert.equal(formatBytes(1024), "1.0 KB");
+  assert.equal(formatBytes(1536), "1.5 KB");
+  assert.equal(formatBytes(38.2 * 1024 * 1024), "38.2 MB");
+  assert.equal(formatBytes(100 * 1024 * 1024), "100 MB");
+  assert.equal(formatBytes(1.5 * 1024 * 1024 * 1024), "1.5 GB");
+  assert.equal(formatBytes(2048 * 1024 * 1024 * 1024), "2048 GB");   // 到 GB 封顶
+});
+
+test("storageUsage: 每首字节数 + 合计 (缓存丢了的按 0)", async () => {
+  const { adapters } = stubAdapters();
+  const downloads = createDownloads(adapters);
+  await downloads.downloadTrack({ ...TRACK, track_id: 1 });
+  await downloads.downloadTrack({ ...TRACK, track_id: 2 });
+  await downloads.downloadTrack({ ...TRACK, track_id: 3 });
+  adapters.cacheSize = async (url) =>
+    ({ "/music/media/stream/1": 1000, "/music/media/stream/2": 2048 }[url] || 0);
+  const usage = await downloads.storageUsage();
+  assert.equal(usage.totalBytes, 3048);
+  assert.deepEqual(usage.entries.map((row) => [row.track_id, row.bytes]),
+    [[1, 1000], [2, 2048], [3, 0]]);
+});
+
+test("removeDownload 对下载中的歌 = 取消: 掐断下载, 状态清, 索引不落, 不算失败", async () => {
+  const { adapters, calls } = stubAdapters();
+  const downloads = createDownloads(adapters);
+  hangOnSignal(adapters);
+  const inFlight = downloads.downloadTrack({ ...TRACK, track_id: 5 });
+  await new Promise((resolve) => setTimeout(resolve, 0));        // 已进下载态
+  assert.equal(downloads.stateOf(5).status, "downloading");
+  await downloads.removeDownload(5);
+  assert.equal(await inFlight, false);                           // 取消不抛错
+  assert.equal(downloads.stateOf(5), null);
+  assert.equal(downloads.isDownloaded(5), false);
+  assert.deepEqual(downloads.entries(), []);                     // 索引里没有这一首
+  assert.deepEqual(calls.deletes, ["/music/media/stream/5"]);   // 空删一次, 无妨
+});
+
+test("removeAll: 已完成的逐首清缓存 + 索引清空, 下载中的一并取消", async () => {
+  const { adapters, calls } = stubAdapters();
+  const downloads = createDownloads(adapters);
+  await downloads.downloadTrack({ ...TRACK, track_id: 1 });
+  await downloads.downloadTrack({ ...TRACK, track_id: 2 });
+  hangOnSignal(adapters);
+  const inFlight = downloads.downloadTrack({ ...TRACK, track_id: 3 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const notified = [];
+  downloads.onChange(() => notified.push(1));
+  await downloads.removeAll();
+  assert.equal(await inFlight, false);                           // 取消路径先收尾
+  assert.deepEqual([...calls.deletes].sort(),
+    ["/music/media/stream/1", "/music/media/stream/2"]);
+  assert.equal(downloads.isDownloaded(1), false);
+  assert.equal(downloads.isDownloaded(2), false);
+  assert.deepEqual(downloads.entries(), []);                     // 索引空, 在途也清了
+  assert.ok(notified.length >= 1);
 });

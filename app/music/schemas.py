@@ -107,6 +107,7 @@ class TrackBrief(BaseModel):
     artist: str
     album_id: int
     album_title: str
+    artist_id: int = 0       # 专辑的艺人 (长按菜单「进入艺人主页」用; 0 = 没有)
     track_number: int
     disc_number: int
     duration_seconds: float
@@ -214,6 +215,19 @@ class PlaylistBrief(BaseModel):
     name: str
     track_count: int
     duration_seconds: float
+    is_local: bool = False   # 应用内自建 (可增删曲目); Plex 同步的以 Plex 为准
+
+
+class PlaylistCreateRequest(BaseModel):
+    """POST /api/playlists 的请求体 (本地新建列表)。"""
+
+    name: str
+
+
+class PlaylistTrackRequest(BaseModel):
+    """POST /api/playlists/{id}/tracks 的请求体 (往本地列表里加一首)。"""
+
+    track_id: int
 
 
 class PlaylistPageList(BaseModel):

@@ -95,8 +95,8 @@ function browserDownloadAdapters() {
         localStorage.setItem(DOWNLOAD_INDEX_KEY, JSON.stringify(entries));
       } catch (_error) { /* 存满了: 已下的字节还在缓存里, 只是列表丢了 */ }
     },
-    async downloadBody(url, onProgress) {
-      const response = await fetch(url);
+    async downloadBody(url, onProgress, signal) {
+      const response = await fetch(url, { signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const contentType = response.headers.get("Content-Type")
         || "application/octet-stream";
@@ -125,6 +125,11 @@ function browserDownloadAdapters() {
     async cacheDelete(url) {
       const cache = await caches.open(DOWNLOAD_CACHE);
       await cache.delete(url);
+    },
+    async cacheSize(url) {
+      const cache = await caches.open(DOWNLOAD_CACHE);
+      const response = await cache.match(url);
+      return response ? (await response.blob()).size : 0;
     },
     now() { return Date.now() / 1000; },
   };
@@ -271,7 +276,11 @@ function listPlaceholderHTML(message) {
 }
 
 /** 曲目点击 → 开播 (队列 = 所在列表; 不可播提示; 下载标点按 = 下载)。 */
+const trackListBindings = new WeakMap();  // 容器 → tracksOf (长按菜单按所在列表开播)
+let rowForTrackMenu = null;               // 菜单正对着的那行 (播放要它的列表语境)
+
 function bindTrackLists(container, tracksOf) {
+  trackListBindings.set(container, tracksOf);   // 长按菜单按所在列表开播
   container.addEventListener("click", (event) => {
     const mark = event.target.closest("[data-download-track]");
     if (mark) {                          // 下载标优先于整行播放
@@ -295,6 +304,283 @@ function bindTrackLists(container, tracksOf) {
     playerStart(tracks, index);
   });
 }
+
+// ------------------------------------------------------------ 曲目长按菜单
+// 任何界面的曲目行 (含「已下载」栏) 长按 500ms / 桌面右键, 弹出菜单:
+// 播放 (在所在列表的语境里开播) / 进入艺人主页 / 添加到播放列表 / 分享。
+let trackMenuOpenedAt = 0;                // 弹出时刻: 350ms 内的点击当误触吞掉
+let suppressTrackClick = false;           // 长按弹菜单后, 抬手的那次 click 不当播放
+let pickerTrack = null;                   // 正在挑列表往里加的曲目
+
+/** 行 → 曲目对象 (沿 DOM 向上找绑过列表的容器; 已下载栏查下载索引)。 */
+function trackFromRow(row) {
+  const trackId = Number(row.dataset.dlRow || row.dataset.trackRow);
+  if (!trackId) return null;
+  if (row.classList.contains("dl-row")) {
+    return downloads.entries().find((entry) => entry.track_id === trackId)
+      || null;
+  }
+  let scope = row.parentElement;
+  while (scope) {
+    const tracksOf = trackListBindings.get(scope);
+    if (tracksOf) {
+      return (tracksOf() || []).find(
+        (track) => track.track_id === trackId) || null;
+    }
+    scope = scope.parentElement;
+  }
+  return null;
+}
+
+/** 菜单里的「播放」: 与点行同一条路径 (队列 = 所在列表)。 */
+function playTrackFromMenu(track, row) {
+  if (row?.classList.contains("dl-row")) {
+    playDownloadedRow(track.track_id);
+    return;
+  }
+  const tracks = row ? tracksOfRow(row) || [] : [];
+  const index = tracks.findIndex((item) => item.track_id === track.track_id);
+  if (!track.playable) {
+    toast(`浏览器播不了 ${String(track.file_format).toUpperCase()}`);
+    return;
+  }
+  if (index >= 0) playerStart(tracks, index);
+  else playerStart([track], 0);           // 列表没找着 (视图已换): 单曲播
+}
+
+function tracksOfRow(row) {
+  let scope = row.parentElement;
+  while (scope) {
+    const tracksOf = trackListBindings.get(scope);
+    if (tracksOf) return tracksOf() || null;
+    scope = scope.parentElement;
+  }
+  return null;
+}
+
+/** 分享: 有系统分享就发文字 (歌名 - 歌手); 没有 (明文 HTTP) 退化为复制。 */
+async function shareTrack(track) {
+  const text = `${track.title} - ${track.artist}`;
+  if (typeof navigator.share === "function") {
+    try { await navigator.share({ title: track.title, text }); }
+    catch (_error) { /* 用户取消/环境拒绝: 不算失败 */ }
+    return;
+  }
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } else {
+      const input = document.createElement("textarea");
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      copied = document.execCommand("copy");
+      input.remove();
+    }
+  } catch (_error) { /* 复制失败走下面的提示 */ }
+  toast(copied ? "已复制歌名和歌手" : "这个环境分享不了");
+}
+
+function openTrackMenu(row, point) {
+  const track = trackFromRow(row);
+  if (!track || row.classList.contains("busy")
+      || row.classList.contains("disabled")) return;
+  rowForTrackMenu = row;
+  trackMenuOpenedAt = Date.now();
+  suppressTrackClick = true;
+  $("#menu-track-title").textContent = track.title;
+  $("#menu-track-artist").textContent = track.artist;
+  $("#track-menu-artist").hidden = !track.artist_id;   // 老下载索引没存艺人号
+  const menu = $("#track-menu");
+  menu.hidden = false;
+  $("#track-menu-mask").hidden = false;
+  // 定位: 触点下方, 出屏就翻到上方/收边 (fixed 元素, 坐标即视口)
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  const rect = menu.getBoundingClientRect();
+  const margin = 10;
+  const width = document.documentElement.clientWidth;
+  const height = document.documentElement.clientHeight;
+  const x = Math.min(Math.max(point.x - rect.width / 2, margin),
+                     width - rect.width - margin);
+  let y = point.y + 14;
+  if (y + rect.height > height - margin) y = point.y - rect.height - 14;
+  menu.style.left = `${Math.max(margin, Math.round(x))}px`;
+  menu.style.top = `${Math.max(margin, Math.round(y))}px`;
+}
+
+function closeTrackMenu() {
+  $("#track-menu").hidden = true;
+  $("#track-menu-mask").hidden = true;
+  rowForTrackMenu = null;
+}
+
+$("#track-menu-mask").addEventListener("click", closeTrackMenu);
+
+$("#track-menu").addEventListener("click", async (event) => {
+  const action = event.target.closest("[data-track-action]");
+  if (!action) return;
+  if (Date.now() - trackMenuOpenedAt < 350) return;   // 弹出瞬间的抬手误触
+  const row = rowForTrackMenu;             // closeTrackMenu 会清, 先抓住
+  const track = row && trackFromRow(row);
+  closeTrackMenu();
+  if (!track) return;
+  if (action.dataset.trackAction === "play") playTrackFromMenu(track, row);
+  else if (action.dataset.trackAction === "artist") navigate(`artist/${track.artist_id}`);
+  else if (action.dataset.trackAction === "share") shareTrack(track);
+  else if (action.dataset.trackAction === "playlist") openPlaylistPicker(track);
+});
+
+// 长按检测: 指针按下起 500ms 计时, 移动超 10px / 抬起 / 取消都作废;
+// contextmenu (桌面右键 + 安卓长按) 直接开 (计时器先开过就不重复)。
+let trackPressTimer = 0;
+let trackPressPoint = null;
+let trackPressPointerId = null;
+
+function cancelTrackPress(event) {
+  if (event && event.pointerId !== undefined
+      && event.pointerId !== trackPressPointerId) return;
+  clearTimeout(trackPressTimer);
+  trackPressTimer = 0;
+  trackPressPoint = null;
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;  // 右键走 contextmenu
+  const row = event.target.closest("[data-track-row], .dl-row");
+  if (!row || row.classList.contains("disabled")) return;
+  trackPressPoint = { x: event.clientX, y: event.clientY };
+  trackPressPointerId = event.pointerId;
+  clearTimeout(trackPressTimer);
+  trackPressTimer = setTimeout(() => {
+    trackPressTimer = 0;
+    openTrackMenu(row, trackPressPoint);
+  }, 500);
+});
+document.addEventListener("pointermove", (event) => {
+  if (!trackPressTimer || !trackPressPoint) return;
+  if (Math.hypot(event.clientX - trackPressPoint.x,
+                 event.clientY - trackPressPoint.y) > 10) cancelTrackPress(event);
+});
+document.addEventListener("pointerup", cancelTrackPress);
+document.addEventListener("pointercancel", cancelTrackPress);
+document.addEventListener("contextmenu", (event) => {
+  const row = event.target.closest("[data-track-row], .dl-row");
+  if (!row) return;                      // 别处的右键 (选歌词等) 不拦
+  event.preventDefault();
+  cancelTrackPress();
+  if (!$("#track-menu").hidden) return;  // 安卓长按: 计时器可能已经开了
+  openTrackMenu(row, { x: event.clientX, y: event.clientY });
+});
+// 长按开了菜单, 手指抬起补发的 click 会落在行/菜单上 —— 吞掉
+document.addEventListener("click", (event) => {
+  if (!suppressTrackClick) return;
+  suppressTrackClick = false;
+  event.stopPropagation();
+  event.preventDefault();
+}, true);
+
+// ------------------------------------------------ 添加到播放列表 (选择单)
+
+function closePlaylistPicker() {
+  $("#picker-mask").hidden = true;
+  $("#picker-sheet").hidden = true;
+  pickerTrack = null;
+}
+
+function openPlaylistPicker(track) {
+  pickerTrack = track;
+  $("#picker-track-title").textContent = track.title;
+  $("#picker-name").value = "";
+  $("#picker-mask").hidden = false;
+  $("#picker-sheet").hidden = false;
+  renderPlaylistPicker();
+}
+
+/** 本地列表清单 (Plex 同步的只读, 不进选择单); 空态给新建引导。 */
+async function renderPlaylistPicker() {
+  const list = $("#picker-list");
+  list.innerHTML = listPlaceholderHTML("加载中…");
+  let playlists = [];
+  try {
+    playlists = (await fetchJSON("/music/api/playlists")).playlists
+      .filter((playlist) => playlist.is_local);
+  } catch (error) {
+    list.innerHTML = listPlaceholderHTML(`列表没拉到: ${error.message}`);
+    return;
+  }
+  if (!playlists.length) {
+    list.innerHTML = listPlaceholderHTML("还没有自己建的列表; 起个名字新建一个");
+    return;
+  }
+  list.innerHTML = playlists.map((playlist) => `
+    <button class="picker-row" data-picker-playlist="${playlist.playlist_id}">
+      <span class="pl-icon">♫</span>
+      <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
+        <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
+      <span class="picker-del" data-picker-delete="${playlist.playlist_id}"
+            role="button" tabindex="-1" aria-label="删除列表">✕</span>
+    </button>`).join("");
+}
+
+async function addTrackToPlaylist(playlistId, playlistName) {
+  if (!pickerTrack) return;
+  try {
+    await fetchJSON(`/music/api/playlists/${playlistId}/tracks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ track_id: pickerTrack.track_id }),
+    });
+    toast(`已加入「${playlistName}」`);
+    renderPlaylistPicker();               // 刷新计数, 也能接着加别的列表
+  } catch (error) {
+    toast(`没加进去: ${error.message}`);
+  }
+}
+
+$("#picker-list").addEventListener("click", async (event) => {
+  const del = event.target.closest("[data-picker-delete]");
+  if (del) {
+    const playlistId = Number(del.dataset.pickerDelete);
+    const row = del.closest(".picker-row");
+    const name = row?.querySelector("b").textContent || "";
+    if (!window.confirm(`删除播放列表「${name}」?`)) return;
+    try {
+      await fetchJSON(`/music/api/playlists/${playlistId}`, { method: "DELETE" });
+      toast("已删除");
+      renderPlaylistPicker();
+    } catch (error) {
+      toast(`没删掉: ${error.message}`);
+    }
+    return;
+  }
+  const pick = event.target.closest("[data-picker-playlist]");
+  if (pick) await addTrackToPlaylist(Number(pick.dataset.pickerPlaylist),
+                                     pick.querySelector("b").textContent);
+});
+
+$("#picker-create").addEventListener("click", async () => {
+  const input = $("#picker-name");
+  const name = input.value.trim();
+  if (!name) { toast("先给新列表起个名字"); input.focus(); return; }
+  if (!pickerTrack) return;
+  try {
+    const playlist = await fetchJSON("/music/api/playlists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    input.value = "";
+    await addTrackToPlaylist(playlist.playlist_id, playlist.name);
+  } catch (error) {
+    toast(`没建起来: ${error.message}`);
+  }
+});
+
+$("#picker-close").addEventListener("click", closePlaylistPicker);
+$("#picker-mask").addEventListener("click", closePlaylistPicker);
 
 function syncPlayerIndicators() {
   updatePlayButtons();       // 播放器模块的行高亮同步 (换视图后行是新 DOM)
@@ -387,10 +673,21 @@ function bindLibraryBody() {
     if (albumCard) { navigate(`album/${albumCard.dataset.albumId}`); return; }
     const artistRow = event.target.closest("[data-artist-id]");
     if (artistRow) { navigate(`artist/${artistRow.dataset.artistId}`); return; }
+    const clearButton = event.target.closest("#dl-clear-all");
+    if (clearButton) {
+      const count = downloads.entries().filter((entry) => !entry.state).length;
+      if (window.confirm(`删除全部 ${count} 首已下载歌曲?`)) {
+        downloads.removeAll()
+          .then(() => toast("已清空下载"))
+          .catch((error) => toast(`清空失败: ${error.message}`));
+      }
+      return;
+    }
     const removeButton = event.target.closest("[data-dl-remove]");
     if (removeButton) {
+      const cancelling = removeButton.textContent.trim() === "取消";
       downloads.removeDownload(Number(removeButton.dataset.dlRemove))
-        .then(() => toast("已删除下载"))
+        .then(() => toast(cancelling ? "已取消下载" : "已删除下载"))
         .catch((error) => toast(`删除失败: ${error.message}`));
       return;
     }
@@ -423,8 +720,11 @@ function renderLibraryBody() {
   loadListPage(segment);
 }
 
-/** "已下载"段: 本机缓存里的曲目 (明文 HTTP 下没有这一套, 说清楚)。 */
-function renderDownloadsBody(body) {
+let downloadsRenderToken = 0;   // 重铺计数: 让在途的异步统计结果作废
+
+/** "已下载"段 = 下载管理: 合计大小/每首大小/删除与取消/一键清空
+ *  (明文 HTTP 下没有这一套, 说清楚)。 */
+async function renderDownloadsBody(body) {
   if (!downloadsEnabled) {
     body.innerHTML = listPlaceholderHTML(
       "离线下载需要 HTTPS 环境 (当前是明文 HTTP); 局域网在线听不受影响");
@@ -436,7 +736,16 @@ function renderDownloadsBody(body) {
       "还没有下载的歌曲; 曲目行右侧的下载标就是下载");
     return;
   }
-  body.innerHTML = entries.map((entry) => `
+  const token = ++downloadsRenderToken;
+  body.innerHTML = `
+    <div class="dl-stats">
+      <span class="dl-stats-main">
+        <strong id="dl-total">统计中…</strong>
+        <small id="dl-quota"></small>
+      </span>
+      <button class="dl-clear" id="dl-clear-all">全部删除</button>
+    </div>
+    ${entries.map((entry) => `
     <div class="dl-row${entry.state ? " busy" : ""}" data-dl-row="${entry.track_id}">
       <span class="pl-icon sm">♫</span>
       <span class="t-main">
@@ -445,10 +754,30 @@ function renderDownloadsBody(body) {
       </span>
       ${entry.state
         ? `<span class="dl-state">${Math.round(entry.state.progress * 100)}%</span>`
-        : '<span class="dl-state">已下载</span>'}
+        : `<span class="dl-state" data-dl-size="${entry.track_id}">…</span>`}
       <button class="dl-remove" data-dl-remove="${entry.track_id}"
-              aria-label="删除下载">删除</button>
-    </div>`).join("");
+              aria-label="${entry.state ? "取消下载" : "删除下载"}">${entry.state ? "取消" : "删除"}</button>
+    </div>`).join("")}`;
+  if (entries.some((entry) => entry.state)) return;   // 有下载在跑: 等完成再量, 免得白量
+  const usage = await downloads.storageUsage();
+  if (token !== downloadsRenderToken) return;         // 期间又重铺了, 结果作废
+  const total = $("#dl-total");
+  if (total) {
+    total.textContent = `${usage.entries.length} 首 · ${formatBytes(usage.totalBytes)}`;
+  }
+  for (const row of usage.entries) {
+    const size = body.querySelector(`[data-dl-size="${row.track_id}"]`);
+    if (size) size.textContent = formatBytes(row.bytes);
+  }
+  if (navigator.storage && navigator.storage.estimate) {
+    navigator.storage.estimate().then((estimate) => {
+      if (token !== downloadsRenderToken) return;
+      const quota = $("#dl-quota");
+      if (quota && estimate && estimate.quota) {
+        quota.textContent = `占手机存储 ${formatBytes(estimate.usage || 0)}`;
+      }
+    }).catch(() => {});
+  }
 }
 
 async function loadListPage(segment) {

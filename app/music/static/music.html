@@ -349,6 +349,14 @@ main {
 .dl-remove {
   font-size: 13px; color: var(--accent); padding: 6px 8px; flex-shrink: 0;
 }
+.dl-stats {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 0 8px; border-bottom: 1px solid var(--hairline);
+}
+.dl-stats-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dl-stats-main strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.dl-stats-main small { font-size: 11px; color: var(--ink-3); }
+.dl-clear { font-size: 13px; color: #ff3b30; padding: 6px 8px; flex-shrink: 0; }
 
 /* ---------- 迷你播放条 ---------- */
 #mini-player {
@@ -375,7 +383,8 @@ main {
               white-space: nowrap; text-overflow: ellipsis; }
 .mini-txt small { display: block; font-size: 12px; color: var(--ink-2);
                   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#mini-player > button { padding: 10px; color: var(--ink-1); flex-shrink: 0; }
+#mini-player > button { padding: 10px; color: var(--ink-1); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; }
 #mini-play { margin-right: 2px; }
 
 /* ---------- 全屏播放页 (Apple Music 布局: 顶部左标题右圆钮, 中封面) ---------- */
@@ -456,7 +465,8 @@ main {
   position: relative; display: flex; align-items: center; justify-content: center;
   gap: 38px; padding: 18px 0 12px;
 }
-.fp-controls > button { color: var(--ink-1); padding: 6px; }
+.fp-controls > button { color: var(--ink-1); padding: 6px;
+  display: flex; align-items: center; justify-content: center; }
 #fp-play:active { opacity: .6; }
 #fp-shuffle, #fp-repeat { color: var(--ink-3); }
 #fp-shuffle.on, #fp-repeat.on { color: var(--ink-1); }
@@ -496,6 +506,79 @@ main {
 .q-title { font-size: 14px; flex-shrink: 1; overflow: hidden;
            white-space: nowrap; text-overflow: ellipsis; }
 .q-artist { font-size: 12px; color: var(--ink-2); flex-shrink: 0; margin-left: auto; }
+
+/* ---------- 曲目长按菜单 ---------- */
+.track-row, .dl-row {
+  -webkit-touch-callout: none;        /* iOS 长按不弹放大镜/拷贝气泡 */
+  -webkit-user-select: none; user-select: none;
+}
+#track-menu-mask { position: fixed; inset: 0; z-index: 105; background: rgba(0,0,0,.4); }
+#track-menu {
+  position: fixed; z-index: 106; min-width: 212px; padding: 5px;
+  background: rgba(44,44,46,.96);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline); border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5);
+}
+#track-menu .menu-track {
+  padding: 6px 12px 9px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+#track-menu .menu-track b {
+  display: block; font-size: 14px; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+#track-menu .menu-track small { font-size: 12px; color: var(--ink-2); }
+#track-menu [data-track-action] {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 10px 12px; border-radius: 10px; font-size: 14px; text-align: left;
+}
+#track-menu [data-track-action]:active { background: var(--surface-3); }
+#track-menu [data-track-action] svg { flex-shrink: 0; color: var(--ink-2); }
+
+/* ---------- 添加到播放列表 (选择单) ---------- */
+#picker-mask { position: fixed; inset: 0; z-index: 97; background: rgba(0,0,0,.5); }
+#picker-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 98;
+  max-height: 72vh; display: flex; flex-direction: column;
+  background: rgba(28,28,30,.96);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 16px 16px 0 0; border: 1px solid var(--hairline);
+}
+.picker-track {
+  padding: 4px 18px 10px; border-bottom: 1px solid var(--hairline);
+  font-size: 12px; color: var(--ink-3);
+}
+.picker-track b {
+  display: block; font-size: 15px; color: var(--ink-1);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+#picker-list { overflow-y: auto; padding: 4px 12px; min-height: 64px; }
+.picker-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 6px; text-align: left; border-bottom: 1px solid var(--hairline);
+}
+.picker-row .a-main { flex: 1; min-width: 0; }
+.picker-row b { font-size: 14px; }
+.picker-row small { display: block; font-size: 12px; color: var(--ink-2); }
+.picker-del { color: var(--ink-3); padding: 7px; flex-shrink: 0; }
+.picker-del:active { color: #e5484d; }
+.picker-new {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hairline);
+}
+.picker-new input {
+  flex: 1; min-width: 0; background: var(--surface-2); border: 0;
+  border-radius: 10px; padding: 9px 12px; color: var(--ink-1); font-size: 14px;
+}
+.picker-new input::placeholder { color: var(--ink-3); }
+#picker-create {
+  color: var(--accent); font-weight: 600; font-size: 14px;
+  padding: 6px; flex-shrink: 0;
+}
 
 /* ---------- 提示 ---------- */
 #toast {
@@ -552,7 +635,7 @@ main {
     <span class="mini-txt"><b id="mini-title"></b><small id="mini-artist"></small></span>
   </button>
   <button id="mini-play" aria-label="播放/暂停"></button>
-  <button id="mini-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 5.5v13l9-6.5zM16.5 5H19v14h-2.5z" fill="currentColor"/></svg></button>
+  <button id="mini-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M5.5 5.5v13l9-6.5zM16 5h2.5v14h-2.5z" fill="currentColor"/></svg></button>
 </div>
 
 <div id="full-player" hidden>
@@ -574,9 +657,9 @@ main {
   </div>
   <div class="fp-controls">
     <button id="fp-shuffle" aria-label="随机播放"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M19 5.5v13L10 12zM6 5h2.4v14H6z" fill="currentColor"/></svg></button>
+    <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M18.5 5.5v13L9.5 12zM5.5 5h2.4v14h-2.4z" fill="currentColor"/></svg></button>
     <button id="fp-play" aria-label="播放/暂停"></button>
-    <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M6 5.5v13l9-6.5zM16.5 5H19v14h-2.5z" fill="currentColor"/></svg></button>
+    <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M5.5 5.5v13l9-6.5zM16 5h2.5v14h-2.5z" fill="currentColor"/></svg></button>
     <button id="fp-repeat" aria-label="循环模式"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M17 2.5 20.5 6 17 9.5M7 8h9.5a3.5 3.5 0 0 1 3.5 3.5v1M7 21.5 3.5 18 7 14.5M17 16H7.5A3.5 3.5 0 0 1 4 12.5v-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
   <div class="fp-pad"></div>
@@ -589,13 +672,34 @@ main {
   <div id="queue-list"></div>
 </div>
 
+<div id="track-menu-mask" hidden></div>
+<div id="track-menu" hidden>
+  <div class="menu-track"><b id="menu-track-title"></b><small id="menu-track-artist"></small></div>
+  <button data-track-action="play"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6.5 5.5v13l11-6.5z" fill="currentColor"/></svg>播放</button>
+  <button data-track-action="artist" id="track-menu-artist"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 19.5a6.5 6.5 0 0 1 13 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>进入艺人主页</button>
+  <button data-track-action="playlist"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 6h12M4 11h8M4 16h6M17 14v6M14 17h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>添加到播放列表</button>
+  <button data-track-action="share"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.5v11M8.5 7 12 3.5 15.5 7M6 12v6.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>分享</button>
+</div>
+
+<div id="picker-mask" hidden></div>
+<div id="picker-sheet" hidden>
+  <div class="sheet-grab"><div></div></div>
+  <div class="sheet-head"><b>添加到播放列表</b><button id="picker-close">完成</button></div>
+  <div class="picker-track"><b id="picker-track-title"></b><small>选一个列表, 或在下面新建</small></div>
+  <div id="picker-list"></div>
+  <div class="picker-new">
+    <input id="picker-name" placeholder="新列表的名字" maxlength="30" enterkeyhint="done">
+    <button id="picker-create">新建</button>
+  </div>
+</div>
+
 <div id="toast" hidden></div>
 
 <script src="/music/static/lyrics-parser.js?v=1"></script>
 <script src="/music/static/player-queue.js?v=1"></script>
-<script src="/music/static/downloads.js?v=1"></script>
-<script src="/music/static/music-common.js?v=2"></script>
+<script src="/music/static/downloads.js?v=2"></script>
+<script src="/music/static/music-common.js?v=3"></script>
 <script src="/music/static/music-player.js?v=3"></script>
-<script src="/music/static/music.js?v=4"></script>
+<script src="/music/static/music.js?v=6"></script>
 </body>
 </html>

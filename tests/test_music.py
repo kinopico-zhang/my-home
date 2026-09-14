@@ -804,7 +804,7 @@ def test_music_home_page_wiring():
 
 
 def test_music_downloads_wiring():
-    """下载接线: 纯逻辑模块 (node 直测) + SW 拦流 + 已下载段 + 能力门控。"""
+    """下载接线: 纯逻辑模块 (node 直测) + SW 拦流 + 已下载段 + 能力门控 + 下载管理。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     js = (static / "music.js").read_text(encoding="utf-8")
     assert "downloadsSupported" in js and "createDownloads" in js
@@ -812,8 +812,15 @@ def test_music_downloads_wiring():
     assert "isSecureContext" in js                 # 明文 HTTP 整个功能收起
     assert 'segment === "downloads"' in js         # 已下载段不走接口分页
     assert "data-download-track" in js             # 曲目行下载标
+    assert "storageUsage" in js and "formatBytes" in js    # 下载管理: 量大小并显示
+    assert "dl-clear-all" in js and "removeAll" in js      # 一键清空 (confirm 后)
+    assert "navigator.storage.estimate" in js      # 手机存储占用
     downloads_js = (static / "downloads.js").read_text(encoding="utf-8")
     assert "/music/media/stream/" in downloads_js  # 缓存键 = 音频流地址
+    assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
+    html = (static / "music.html").read_text(encoding="utf-8")
+    assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
+    assert "downloads.js?v=2" in html and "music.js?v=6" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1053,6 +1060,134 @@ def test_playlist_endpoints(auth, tmp_path, monkeypatch):
     assert page["playlist"]["track_count"] == 2
     assert page["tracks"][0]["album_title"] == "甲"
     assert auth.get("/music/api/playlists/99999").status_code == 404
+
+
+def test_local_playlist_create_add_delete(tmp_path):
+    """查询层: 本地列表建/加/删; Plex 列表拒绝改; 同步不冲掉本地列表。"""
+    _seed_library()
+    with session_factory()() as session:
+        created = library_playlists.create_local_playlist(session, " 我的日常 ")
+        assert created.name == "我的日常"            # 名字收边
+        assert created.is_local is True
+        assert created.track_count == 0
+        with pytest.raises(ValueError):              # 撞自己的名
+            library_playlists.create_local_playlist(session, "我的日常")
+        with pytest.raises(ValueError):              # 空名
+            library_playlists.create_local_playlist(session, "  ")
+        # 加歌 (种子库第一首是 曲A): 计数/时长跟着走, 详情有序
+        brief = library_playlists.add_track_to_local_playlist(
+            session, created.playlist_id, 1)
+        assert brief.track_count == 1
+        assert brief.duration_seconds == pytest.approx(2.0)
+        page = library_queries.playlist_page(session, created.playlist_id)
+        assert page is not None
+        assert [t.title for t in page.tracks] == ["曲A"]
+        assert page.tracks[0].artist_id == 1         # 艺人号随行走 (长按菜单用)
+        with pytest.raises(KeyError):                # 曲目不在库
+            library_playlists.add_track_to_local_playlist(
+                session, created.playlist_id, 9999)
+        # Plex 来源的列表: 加歌/删除都拒绝
+        session.add(Playlist(name="夜跑", plex_playlist_id=101, track_count=1))
+        session.commit()
+        plex_id = session.execute(select(Playlist.id).where(
+            Playlist.name == "夜跑")).scalar_one()
+        with pytest.raises(ValueError):
+            library_playlists.add_track_to_local_playlist(session, plex_id, 1)
+        with pytest.raises(ValueError):
+            library_playlists.delete_local_playlist(session, plex_id)
+        # 再同步一轮 Plex: 本地列表和成员原样保留 (清单里排最前)
+        result = library_playlists.sync_playlists(session, [
+            library_playlists.PlexPlaylist(
+                plex_playlist_id=101, name="夜跑",
+                member_paths=["AI机组/甲/01.flac"])])
+        assert result.playlists_synced == 1
+        listing = library_queries.list_playlists(session)
+        assert [(p.name, p.is_local) for p in listing.playlists] \
+            == [("我的日常", True), ("夜跑", False)]
+        page = library_queries.playlist_page(session, created.playlist_id)
+        assert page is not None
+        assert [t.title for t in page.tracks] == ["曲A"]
+        # 删本地列表: 连成员一起清
+        library_playlists.delete_local_playlist(session, created.playlist_id)
+        assert library_queries.playlist_page(session, created.playlist_id) is None
+        assert [p.name for p in
+                library_queries.list_playlists(session).playlists] == ["夜跑"]
+        with pytest.raises(KeyError):
+            library_playlists.delete_local_playlist(session, created.playlist_id)
+
+
+def test_local_playlist_endpoints(auth, tmp_path, monkeypatch):
+    """接口层: 新建/加歌/删除; 撞名 409, 改 Plex 列表 409, 不存在 404。"""
+    monkeypatch.setattr(library_playlists, "DEFAULT_PLEX_LIBRARY_DATABASE",
+                        str(tmp_path / "不在.db"))
+    _seed_library()
+    created = auth.post("/music/api/playlists",
+                        json={"name": " 开车听 "}).json()
+    assert created["name"] == "开车听"
+    assert created["is_local"] is True
+    assert auth.post("/music/api/playlists",
+                     json={"name": "开车听"}).status_code == 409
+    assert auth.post("/music/api/playlists",
+                     json={"name": " "}).status_code == 409
+    # 加歌 + 回读: 详情带曲目行, 行里带艺人号
+    added = auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
+                      json={"track_id": 1})
+    assert added.json()["track_count"] == 1
+    page = auth.get(f"/music/api/playlists/{created['playlist_id']}").json()
+    assert page["tracks"][0]["title"] == "曲A"
+    assert page["tracks"][0]["artist_id"] == 1
+    assert auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
+                     json={"track_id": 999}).status_code == 404
+    # Plex 同步出的列表: 接口同样不能改/删
+    plex = tmp_path / "plex.db"
+    _write_plex_database(plex, [("夜跑", ["AI机组/甲/01.flac"])])
+    monkeypatch.setattr(library_playlists, "DEFAULT_PLEX_LIBRARY_DATABASE",
+                        str(plex))
+    assert auth.post("/music/api/playlists/sync").status_code == 200
+    listing = auth.get("/music/api/playlists").json()["playlists"]
+    assert [(p["name"], p["is_local"]) for p in listing] \
+        == [("开车听", True), ("夜跑", False)]
+    plex_id = next(p["playlist_id"] for p in listing if not p["is_local"])
+    assert auth.post(f"/music/api/playlists/{plex_id}/tracks",
+                     json={"track_id": 1}).status_code == 409
+    assert auth.delete(f"/music/api/playlists/{plex_id}").status_code == 409
+    # 本地列表删得掉; 404 路径也走一遍
+    assert auth.delete(
+        f"/music/api/playlists/{created['playlist_id']}").json() == {"ok": True}
+    assert [p["name"] for p in
+            auth.get("/music/api/playlists").json()["playlists"]] == ["夜跑"]
+    assert auth.delete(
+        f"/music/api/playlists/{created['playlist_id']}").status_code == 404
+
+
+def test_music_track_context_menu_wiring():
+    """长按菜单接线: 检测 (500ms/右键/移动作废)、菜单四项、选择单、
+    分享回落都在页面上; 行样式禁掉 iOS 长按气泡。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    for frag in ['id="track-menu"', 'id="track-menu-mask"',
+                 'data-track-action="play"', 'data-track-action="artist"',
+                 'data-track-action="playlist"', 'data-track-action="share"',
+                 'id="track-menu-artist"', 'id="picker-sheet"',
+                 'id="picker-list"', 'id="picker-create"', 'id="picker-name"',
+                 'id="picker-close"', 'id="picker-mask"',
+                 "-webkit-touch-callout: none"]:
+        assert frag in html, f"播放页缺少 {frag}"
+    for frag in ["function openTrackMenu", "function cancelTrackPress",
+                 "function trackFromRow", "function shareTrack",
+                 "function openPlaylistPicker", "trackListBindings",
+                 "trackPressTimer = setTimeout",            # 500ms 长按计时
+                 'document.addEventListener("contextmenu"',
+                 "navigator.share", "execCommand",          # 分享 + 复制回落
+                 "suppressTrackClick",                      # 抬手误触吞掉
+                 "navigate(`artist/${track.artist_id}`)",
+                 'fetchJSON("/music/api/playlists"',
+                 '`/music/api/playlists/${playlistId}/tracks`',
+                 '`/music/api/playlists/${playlistId}`, { method: "DELETE" }']:
+        assert frag in js, f"music.js 缺少 {frag}"
+    # 新版图标/脚本地址随行 (music.js 这次改到 v6)
+    assert "music.js?v=6" in html
 
 
 def test_record_play_counts_and_dedups():
