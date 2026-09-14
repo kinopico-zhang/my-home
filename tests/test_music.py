@@ -820,7 +820,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=6" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=7" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1063,7 +1063,8 @@ def test_playlist_endpoints(auth, tmp_path, monkeypatch):
 
 
 def test_local_playlist_create_add_delete(tmp_path):
-    """查询层: 本地列表建/加/删; Plex 列表拒绝改; 同步不冲掉本地列表。"""
+    """查询层: 本地列表建/加/删; 同步列表也能加歌且再同步保得住;
+    Plex 里删掉的列表, 本地加过歌的转正成自建, 没加过的照旧删。"""
     _seed_library()
     with session_factory()() as session:
         created = library_playlists.create_local_playlist(session, " 我的日常 ")
@@ -1075,7 +1076,7 @@ def test_local_playlist_create_add_delete(tmp_path):
         with pytest.raises(ValueError):              # 空名
             library_playlists.create_local_playlist(session, "  ")
         # 加歌 (种子库第一首是 曲A): 计数/时长跟着走, 详情有序
-        brief = library_playlists.add_track_to_local_playlist(
+        brief = library_playlists.add_track_to_playlist(
             session, created.playlist_id, 1)
         assert brief.track_count == 1
         assert brief.duration_seconds == pytest.approx(2.0)
@@ -1084,26 +1085,52 @@ def test_local_playlist_create_add_delete(tmp_path):
         assert [t.title for t in page.tracks] == ["曲A"]
         assert page.tracks[0].artist_id == 1         # 艺人号随行走 (长按菜单用)
         with pytest.raises(KeyError):                # 曲目不在库
-            library_playlists.add_track_to_local_playlist(
+            library_playlists.add_track_to_playlist(
                 session, created.playlist_id, 9999)
-        # Plex 来源的列表: 加歌/删除都拒绝
-        session.add(Playlist(name="夜跑", plex_playlist_id=101, track_count=1))
-        session.commit()
+        # 第一轮同步: 三个 Plex 列表 (夜跑/散步/删了吧)
+        library_playlists.sync_playlists(session, [
+            library_playlists.PlexPlaylist(
+                plex_playlist_id=101, name="夜跑",
+                member_paths=["AI机组/甲/01.flac", "AI机组/乙/01.flac"]),
+            library_playlists.PlexPlaylist(
+                plex_playlist_id=102, name="散步",
+                member_paths=["AI机组/甲/01.flac"]),
+            library_playlists.PlexPlaylist(
+                plex_playlist_id=103, name="删了吧",
+                member_paths=["老歌手/丙/02.flac"])])
         plex_id = session.execute(select(Playlist.id).where(
             Playlist.name == "夜跑")).scalar_one()
-        with pytest.raises(ValueError):
-            library_playlists.add_track_to_local_playlist(session, plex_id, 1)
+        walk_id = session.execute(select(Playlist.id).where(
+            Playlist.name == "散步")).scalar_one()
+        # 同步列表也能加歌 (本地加的标记 added_locally); 但不能在这边删
+        library_playlists.add_track_to_playlist(session, plex_id, 4)   # 曲C
+        library_playlists.add_track_to_playlist(session, plex_id, 1)   # 重复的曲A
+        library_playlists.add_track_to_playlist(session, walk_id, 2)   # 曲B
         with pytest.raises(ValueError):
             library_playlists.delete_local_playlist(session, plex_id)
-        # 再同步一轮 Plex: 本地列表和成员原样保留 (清单里排最前)
+        # 第二轮同步: 夜跑 Plex 侧添了 无题曲 且 散步/删了吧 撤了
         result = library_playlists.sync_playlists(session, [
             library_playlists.PlexPlaylist(
                 plex_playlist_id=101, name="夜跑",
-                member_paths=["AI机组/甲/01.flac"])])
+                member_paths=["AI机组/甲/01.flac", "AI机组/乙/01.flac",
+                              "老歌手/丙/02.flac"])])
         assert result.playlists_synced == 1
+        assert result.tracks_synced == 3
+        # 夜跑: Plex 份重灌 (含新添的无题曲), 本地加的曲C 接尾;
+        # 本地重复加的曲A Plex 份已有 → 不再重复
+        page = library_queries.playlist_page(session, plex_id)
+        assert page is not None
+        assert [t.title for t in page.tracks] == ["曲A", "Hello", "无题曲", "曲C"]
+        assert page.playlist.track_count == 4
         listing = library_queries.list_playlists(session)
-        assert [(p.name, p.is_local) for p in listing.playlists] \
-            == [("我的日常", True), ("夜跑", False)]
+        assert [(p.name, p.is_local) for p in listing.playlists] == [
+            ("我的日常", True),                       # 自建的排最前
+            ("散步", True),                          # 撤了但加过歌 → 转正
+            ("夜跑", False)]
+        assert "删了吧" not in [p.name for p in listing.playlists]
+        page = library_queries.playlist_page(session, walk_id)
+        assert page is not None
+        assert [t.title for t in page.tracks] == ["曲A", "曲B"]  # 转正不清歌
         page = library_queries.playlist_page(session, created.playlist_id)
         assert page is not None
         assert [t.title for t in page.tracks] == ["曲A"]
@@ -1111,7 +1138,7 @@ def test_local_playlist_create_add_delete(tmp_path):
         library_playlists.delete_local_playlist(session, created.playlist_id)
         assert library_queries.playlist_page(session, created.playlist_id) is None
         assert [p.name for p in
-                library_queries.list_playlists(session).playlists] == ["夜跑"]
+                library_queries.list_playlists(session).playlists] == ["散步", "夜跑"]
         with pytest.raises(KeyError):
             library_playlists.delete_local_playlist(session, created.playlist_id)
 
@@ -1138,7 +1165,7 @@ def test_local_playlist_endpoints(auth, tmp_path, monkeypatch):
     assert page["tracks"][0]["artist_id"] == 1
     assert auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
                      json={"track_id": 999}).status_code == 404
-    # Plex 同步出的列表: 接口同样不能改/删
+    # Plex 同步出的列表: 接口能加歌 (同步后保得住), 不能删 (删了会回来)
     plex = tmp_path / "plex.db"
     _write_plex_database(plex, [("夜跑", ["AI机组/甲/01.flac"])])
     monkeypatch.setattr(library_playlists, "DEFAULT_PLEX_LIBRARY_DATABASE",
@@ -1149,8 +1176,13 @@ def test_local_playlist_endpoints(auth, tmp_path, monkeypatch):
         == [("开车听", True), ("夜跑", False)]
     plex_id = next(p["playlist_id"] for p in listing if not p["is_local"])
     assert auth.post(f"/music/api/playlists/{plex_id}/tracks",
-                     json={"track_id": 1}).status_code == 409
+                     json={"track_id": 3}).json()["track_count"] == 2
     assert auth.delete(f"/music/api/playlists/{plex_id}").status_code == 409
+    # 再同步一轮: Plex 份重灌, 本地加的那首保得住
+    assert auth.post("/music/api/playlists/sync").status_code == 200
+    page = auth.get(f"/music/api/playlists/{plex_id}").json()
+    assert [track["title"] for track in page["tracks"]] == ["曲A", "Hello"]
+    assert page["playlist"]["track_count"] == 2
     # 本地列表删得掉; 404 路径也走一遍
     assert auth.delete(
         f"/music/api/playlists/{created['playlist_id']}").json() == {"ok": True}
@@ -1186,8 +1218,9 @@ def test_music_track_context_menu_wiring():
                  '`/music/api/playlists/${playlistId}/tracks`',
                  '`/music/api/playlists/${playlistId}`, { method: "DELETE" }']:
         assert frag in js, f"music.js 缺少 {frag}"
-    # 新版图标/脚本地址随行 (music.js 这次改到 v6)
-    assert "music.js?v=6" in html
+    # 新版图标/脚本地址随行 (music.js 这次改到 v7); 选择单不筛本地列表
+    assert "music.js?v=7" in html
+    assert "picker-sync" in html and "picker-sync" in js   # 同步列表进选择单
 
 
 def test_record_play_counts_and_dedups():

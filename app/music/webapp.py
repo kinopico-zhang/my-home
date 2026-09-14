@@ -197,15 +197,14 @@ def music_playlist_add_track(request: Request,
                              body: PlaylistTrackRequest,
                              users: Session = Depends(database.get_users_db),
                              library: Session = Depends(get_db)) -> PlaylistBrief:
-    """往本地播放列表末尾加一首 (长按曲目的「添加到播放列表」)。"""
+    """往播放列表末尾加一首 (长按曲目的「添加到播放列表」; Plex 同步的
+    列表也行 —— 加进去的歌下次同步时保留)。"""
     _require_user(request, users)
     try:
-        return library_playlists.add_track_to_local_playlist(
+        return library_playlists.add_track_to_playlist(
             library, playlist_id, body.track_id)
     except KeyError as exc:
         raise HTTPException(404, "播放列表或曲目不存在") from exc
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc
 
 
 @api.delete("/playlists/{playlist_id}", response_model=OkResponse)
@@ -213,7 +212,7 @@ def music_playlist_delete(request: Request,
                           playlist_id: int,
                           users: Session = Depends(database.get_users_db),
                           library: Session = Depends(get_db)) -> OkResponse:
-    """删掉本地播放列表 (连成员; Plex 同步的列表拒绝)。"""
+    """删掉本地播放列表 (连成员); Plex 同步的列表不在这边删 (会回来)。"""
     _require_user(request, users)
     try:
         library_playlists.delete_local_playlist(library, playlist_id)

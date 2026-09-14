@@ -1,4 +1,5 @@
-"""Plex 播放列表同步: 只读拉取 Plex 库 → 灌进本地索引库 (全量替换)。
+"""Plex 播放列表同步: 只读拉取 Plex 库 → 灌进本地索引库 (合并式:
+本地加进来的成员保留, 其余以 Plex 为准 —— 见 sync_playlists)。
 
 服务不依赖 Plex —— 同步只是借 Plex 的库读一次播放列表定义, 拉完即可断;
 Plex 以后下掉, 已同步的播放列表照常能用, 再点同步会得到干净报错。
@@ -82,43 +83,93 @@ def read_plex_playlists(plex_database_path: Path) -> list[PlexPlaylist]:
 
 def sync_playlists(session: Session,
                    plex_playlists: list[PlexPlaylist]) -> PlaylistSyncResponse:
-    """全量替换 Plex 来源的播放列表两表; 应用内自建的 (is_local) 不动,
-    对不上本库的曲目跳过并计数。
+    """把 Plex 播放列表灌进本地库 (合并式: 应用内自建列表 is_local 不动;
+    同步列表里**长按加进来的成员 (added_locally) 也保留** —— Plex 侧改动
+    只替换它自己那份, 本地加的歌接在后面; Plex 侧已含同曲时不再重复)。
 
-    同一曲目在一表里出现两次 (Plex 允许) 保留两次 —— 播放列表本就是有序可重复的。"""
+    同一曲目在一表里出现两次 (Plex 允许) 保留两次 —— 播放列表本就是有序可重复的。
+    Plex 里已删的列表: 带本地加歌的转成自建列表保住, 没有的照旧删掉。"""
     result = PlaylistSyncResponse()
     track_ids = {path: track_id for track_id, path in
                  session.execute(select(Track.id, Track.file_path))}
-    # 只清 Plex 来源的; 本地自建列表 (position=0 排最前) 原样保留
-    plex_ids = list(session.execute(
-        select(Playlist.id).where(Playlist.is_local.is_(False))).scalars())
-    if plex_ids:
-        session.execute(
-            delete(PlaylistItem).where(PlaylistItem.playlist_id.in_(plex_ids)))
-        session.execute(delete(Playlist).where(Playlist.id.in_(plex_ids)))
+    # 库里已有的同步列表, 按 Plex 编号对号 (自建的 is_local 不在此列)
+    existing = {playlist.plex_playlist_id: playlist for playlist in
+                session.execute(select(Playlist).where(
+                    Playlist.is_local.is_(False))).scalars()}
     for position, plex_playlist in enumerate(plex_playlists, start=1):
-        member_track_ids: list[tuple[int, int]] = []
+        plex_items: list[tuple[int, int]] = []   # (position, track_id) Plex 份
         for member_position, member_path in enumerate(plex_playlist.member_paths):
             track_id = track_ids.get(member_path)
             if track_id is None:
                 result.tracks_skipped += 1
                 continue
-            member_track_ids.append((member_position, track_id))
-        if not member_track_ids:
-            continue          # 整表对不上 (整个列表的文件都搬走了) → 不留空壳
-        playlist = Playlist(name=plex_playlist.name, position=position,
-                            plex_playlist_id=plex_playlist.plex_playlist_id,
-                            track_count=len(member_track_ids))
-        session.add(playlist)
-        session.flush()       # 拿 playlist.id
-        session.add_all([PlaylistItem(playlist_id=playlist.id,
-                                      track_id=track_id, position=member_position)
-                         for member_position, track_id in member_track_ids])
+            plex_items.append((member_position, track_id))
+        plex_member_ids = {track_id for _, track_id in plex_items}
+        local_items: list[int] = []              # 本地加的成员 (track_id, 保序)
+        matched = existing.get(plex_playlist.plex_playlist_id)
+        if matched is not None:
+            local_items = [track_id for track_id in session.execute(
+                select(PlaylistItem.track_id).where(
+                    PlaylistItem.playlist_id == matched.id,
+                    PlaylistItem.added_locally)).scalars()
+                if track_id not in plex_member_ids]   # Plex 已含同曲 → 不再重复
+            if not plex_items and not local_items:
+                session.execute(delete(PlaylistItem).where(
+                    PlaylistItem.playlist_id == matched.id))
+                session.delete(matched)   # Plex 份对不上, 本地也没加过 → 不留空壳
+                continue
+        elif not plex_items:
+            continue                      # 新列表整表对不上 → 不留空壳
         result.playlists_synced += 1
-        result.tracks_synced += len(member_track_ids)
+        result.tracks_synced += len(plex_items)
+        if matched is None:
+            playlist = Playlist(name=plex_playlist.name, position=position,
+                                plex_playlist_id=plex_playlist.plex_playlist_id,
+                                track_count=len(plex_items) + len(local_items))
+            session.add(playlist)
+            session.flush()               # 拿 playlist.id
+            playlist_id = playlist.id
+        else:
+            session.execute(delete(PlaylistItem).where(
+                PlaylistItem.playlist_id == matched.id))
+            matched.name = plex_playlist.name
+            matched.position = position
+            matched.track_count = len(plex_items) + len(local_items)
+            playlist_id = matched.id
+        session.add_all([
+            PlaylistItem(playlist_id=playlist_id, track_id=track_id,
+                         position=member_position, added_locally=False)
+            for member_position, track_id in plex_items] + [
+            PlaylistItem(playlist_id=playlist_id, track_id=track_id,
+                         position=len(plex_items) + index + 1, added_locally=True)
+            for index, track_id in enumerate(local_items)])
+    # Plex 里已删的旧列表: 本地加过歌的转正成自建 (Plex 下掉也不丢), 其余删除
+    _convert_or_drop_missing(
+        session, existing,
+        {item.plex_playlist_id for item in plex_playlists})
     session.commit()
     _refresh_playlist_aggregates(session)
     return result
+
+
+def _convert_or_drop_missing(session: Session, existing: dict[int, Playlist],
+                             present_plex_ids: set[int]) -> None:
+    """Plex 侧已不存在的同步列表: 本地加过歌的转正成自建列表保住
+    (position=0 排到自建区), 没加过歌的连同成员一起删掉。"""
+    for plex_playlist_id, playlist in existing.items():
+        if plex_playlist_id in present_plex_ids:
+            continue
+        has_local = session.scalar(select(PlaylistItem.id).where(
+            PlaylistItem.playlist_id == playlist.id,
+            PlaylistItem.added_locally).limit(1)) is not None
+        if has_local:
+            playlist.is_local = True
+            playlist.plex_playlist_id = 0
+            playlist.position = 0          # 转正的排到自建区 (最前)
+        else:
+            session.execute(delete(PlaylistItem).where(
+                PlaylistItem.playlist_id == playlist.id))
+            session.delete(playlist)
 
 
 def _refresh_playlist_aggregates(session: Session) -> None:
@@ -156,21 +207,20 @@ def create_local_playlist(session: Session, name: str) -> PlaylistBrief:
     return _playlist_brief(playlist)
 
 
-def add_track_to_local_playlist(session: Session, playlist_id: int,
-                                track_id: int) -> PlaylistBrief:
-    """往本地列表末尾加一首 (可重复加; Plex 同步的列表拒绝改, 报 ValueError)。"""
+def add_track_to_playlist(session: Session, playlist_id: int,
+                          track_id: int) -> PlaylistBrief:
+    """往列表末尾加一首 (可重复加; 自建的和 Plex 同步的都行 —— 加进同步
+    列表的歌曲标记 added_locally, 下次同步 Plex 只替换它自己那份)。"""
     playlist = session.get(Playlist, playlist_id)
     if playlist is None:
         raise KeyError(playlist_id)
-    if not playlist.is_local:
-        raise ValueError("Plex 同步的播放列表以 Plex 为准, 不能在这里改")
     if session.get(Track, track_id) is None:
         raise KeyError(track_id)
     next_position = (session.scalar(select(func.max(PlaylistItem.position))
                                     .where(PlaylistItem.playlist_id
                                            == playlist_id)) or 0) + 1
     session.add(PlaylistItem(playlist_id=playlist_id, track_id=track_id,
-                             position=next_position))
+                             position=next_position, added_locally=True))
     playlist.track_count += 1
     session.commit()
     _refresh_playlist_aggregates(session)
@@ -179,7 +229,8 @@ def add_track_to_local_playlist(session: Session, playlist_id: int,
 
 
 def delete_local_playlist(session: Session, playlist_id: int) -> None:
-    """删掉本地列表 (连成员一起); Plex 同步的同样拒绝。"""
+    """删掉本地列表 (连成员一起); Plex 同步的拒绝 —— 在这边删了,
+    下次同步它又原样回来, 要删去 Plex 里删。"""
     playlist = session.get(Playlist, playlist_id)
     if playlist is None:
         raise KeyError(playlist_id)
