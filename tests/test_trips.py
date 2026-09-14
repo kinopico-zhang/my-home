@@ -851,12 +851,14 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  "tripMap.setFeatures(tripMap.getFeatures())",
                  "setTimeout(nudgeLabels, 1500)",
                  # 播放动画期间禁止熄屏: 双保险 —— Wake Lock (standalone iOS
-                 # 申请成功也可能不生效) + 1px 循环无声视频 (NoSleep.js 同款,
-                 # 正在播放的媒体 iOS 一定不熄屏); 暂停/播完/关弹层释放,
+                 # 申请成功也可能不生效) + 1px 循环静音视频 (NoSleep.js 同款,
+                 # 正在播放的媒体 iOS 一定不熄屏); 必须静音 —— 不静音就抢
+                 # 音频会话, 掐断别的 app 的声音; 暂停/播完/关弹层释放,
                  # 切后台自动释放回前台重启用
                  'if (!("wakeLock" in navigator)) return;',
                  "holdScreenAwake()", "releaseScreenAwake()",
-                 'v.setAttribute("playsinline", "")', "awakeVideo.play()",
+                 'v.setAttribute("playsinline", "")', "v.muted = true",
+                 "awakeVideo.play()",
                  "AWAKE_VIDEO_WEBM", '["video/webm", AWAKE_VIDEO_WEBM]',
 
                  "postGapFill(it, g, route)", "gcj02ToWgs84"]:
@@ -1238,7 +1240,7 @@ def test_trips_page_group_create_and_groups_page_link(auth):
     assert 'document.referrer.endsWith("/tesla/groups")' in html
     assert "if (cameFromGroups) { history.back(); return; }" in html
 def test_trips_page_export_video(auth):
-    """导出视频: 播放条录制钮 + 成片预览弹层 + 分享存相册链路都挂在页面上。"""
+    """导出视频: 播放条录制钮 + 成片预览弹层 + 存相册链路都挂在页面上。"""
     html = auth.get("/tesla/trips").text
     html += _trips_scripts(auth)
     for frag in ['id="pb-rec"', 'aria-label="导出视频"', 'id="rec-modal"',
@@ -1252,12 +1254,16 @@ def test_trips_page_export_video(auth):
                  "preserveDrawingBuffer: true", "patchGLKeepBuffer();",
                  "此浏览器不支持录制视频", "录制失败 (没有内容)"]:
         assert frag in html, f"行程页缺少导出视频片段 {frag}"
-    # 存储按钮录完一定给 (按 share 存在性门控在 HTTP 部署藏了按钮: share 是
-    # secure context 限定, NAS 常年 HTTP, iPhone Safari 里压根不存在);
-    # 有 share 走分享单, 没有 (或分享失败) 退化为 <a download> 存「文件」
+    # 存储分平台: 苹果触屏没有直写相册的 API, 只能拉系统分享单点「存储
+    # 视频」; 其余平台 (安卓/桌面) <a download> 直接落盘, 不弹面板
+    # (安卓的下载视频进相册)。按钮按 share 存在性给文案。
     assert '$("#rec-save").hidden = false;' in html
     assert '$("#rec-save").textContent = shareOK ? "存到相册" : "保存视频";' in html
     assert 'const shareOK = typeof navigator.share === "function";' in html
+    assert "const IS_APPLE_TOUCH" in html
+    assert "navigator.maxTouchPoints > 1" in html   # iPadOS 13+ 装成 Mac
+    assert '!IS_APPLE_TOUCH || typeof navigator.share !== "function"' in html
+    assert 'toast(/android/i.test(navigator.userAgent) ? "已保存到相册" : "视频已保存")' in html
     assert 'function saveVideoFile()' in html
     assert "a.download = recFile.name;" in html
     assert "rec-hint" not in html   # 提示行已按用户要求撤掉, 别回潮
