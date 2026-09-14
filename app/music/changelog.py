@@ -19,6 +19,7 @@ VERSIONS: Final[list[ChangelogVersion]] = [
                                        " 滑开几秒后自动回到当前句, 也可以点「回到当前句」立刻跳回; 点某一句跳播不变"),
         ChangelogItem(kind="改进", text="资料库收窄成 专辑 / 艺人 / 歌曲 / 已下载 四栏, 播放列表挪去主页, 找东西少翻一层"),
         ChangelogItem(kind="改进", text="下一首提前在后台备好: 一首播完接下一首几乎无缝, 不用等加载转圈"),
+        ChangelogItem(kind="改进", text="应用图标换成红色音符标 (Apple Music 同款风格), 重新添加主屏幕图标后生效"),
         ChangelogItem(kind="修复", text="锁屏界面点歌曲封面会跳到别的应用 —— 需把各应用的主屏幕图标删除后重新添加才生效"),
         ChangelogItem(kind="修复", text="页面底部偶尔冒出一排多余的菜单按钮"),
     ]),

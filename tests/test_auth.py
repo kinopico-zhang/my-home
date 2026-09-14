@@ -18,6 +18,17 @@ ALL_PAGES = ["/", "/login", "/register", "/tesla/charging", "/tesla/stats",
              "/bookkeeping", "/music"]
 
 
+def _png_idat(data: bytes) -> bytes:
+    """拼出 PNG 的全部 IDAT 块。"""
+    pos, idat = 8, b""
+    while pos < len(data):
+        ln, typ = struct.unpack(">I4s", data[pos:pos + 8])
+        if typ == b"IDAT":
+            idat += data[pos + 8:pos + 8 + ln]
+        pos += 12 + ln
+    return idat
+
+
 def _unfilter_png(raw: bytes, w: int, ch: int) -> list[bytearray]:
     """逆 PNG 行滤镜 (8-bit, 滤镜 0-4), 返回每行的 RGB(A) 字节 (不引 Pillow)。"""
     stride = w * ch + 1
@@ -404,9 +415,10 @@ def test_apple_touch_icon_opaque_with_padding():
 
 
 def test_mymoney_app_has_own_icons():
-    """My Money 是独立应用: 自己的图标 (黑底绿 ¥, 不透明全出血方形 ——
+    """My Money 是独立应用: 自己的图标 (Tesla 红底白钱袋, 不透明全出血方形 ——
     iOS 自己圆角, 透明底会被合成纯黑), 不借 My Tesla 的红 T。"""
     base = Path(m.__file__).parent / "bookkeeping" / "static"
+    touch = b""   # apple-touch-icon 的原始字节, 循环里留住
     for fname, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192),
                         ("icon-512.png", 512), ("favicon-32.png", 32)):
         with (base / fname).open("rb") as fh:
@@ -414,14 +426,27 @@ def test_mymoney_app_has_own_icons():
         w, h = struct.unpack(">II", d[16:24])
         assert (w, h) == (size, size), fname
         assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
+        if fname == "apple-touch-icon.png":
+            touch = d
+    rows = _unfilter_png(zlib.decompress(_png_idat(touch)), 180, 3)
+    icon_w = icon_h = 180
+    def px(x, y):
+        return tuple(rows[y][x*3:x*3+3])
+    # 四角 Tesla 红 (#E82127) 满出血; 中心区有白色钱袋笔画
+    for x, y in [(1, 1), (icon_w-2, 1), (1, icon_h-2), (icon_w-2, icon_h-2)]:
+        assert px(x, y) == (232, 33, 39), f"角({x},{y}) {px(x, y)}"
+    whites = sum(1 for yy in range(30, icon_h-30, 3)
+                 for xx in range(30, icon_w-30, 3) if min(px(xx, yy)) > 225)
+    assert whites > 60, f"白色钱袋笔画太少: {whites}"
     tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
     assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
 
 
 def test_mymusic_app_has_own_icons():
-    """My Music 是独立应用: 自己的图标 (黑底红音符, 不透明全出血方形 ——
+    """My Music 是独立应用: 自己的图标 (Apple 红底白音符, 不透明全出血方形 ——
     iOS 自己圆角, 透明底会被合成纯黑), 不借 My Tesla 的红 T。"""
     base = Path(m.__file__).parent / "music" / "static"
+    touch = b""   # apple-touch-icon 的原始字节, 循环里留住
     for fname, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192),
                         ("icon-512.png", 512), ("favicon-32.png", 32)):
         with (base / fname).open("rb") as fh:
@@ -429,6 +454,18 @@ def test_mymusic_app_has_own_icons():
         w, h = struct.unpack(">II", d[16:24])
         assert (w, h) == (size, size), fname
         assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
+        if fname == "apple-touch-icon.png":
+            touch = d
+    rows = _unfilter_png(zlib.decompress(_png_idat(touch)), 180, 3)
+    icon_w = icon_h = 180
+    def px(x, y):
+        return tuple(rows[y][x*3:x*3+3])
+    # 四角 Apple 红 (#ff2f56) 满出血; 中心区有白色音符笔画
+    for x, y in [(1, 1), (icon_w-2, 1), (1, icon_h-2), (icon_w-2, icon_h-2)]:
+        assert px(x, y) == (255, 47, 86), f"角({x},{y}) {px(x, y)}"
+    whites = sum(1 for yy in range(30, icon_h-30, 3)
+                 for xx in range(30, icon_w-30, 3) if min(px(xx, yy)) > 225)
+    assert whites > 60, f"白色音符笔画太少: {whites}"
     tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
     assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
 

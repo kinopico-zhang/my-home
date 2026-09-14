@@ -19,6 +19,8 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="新增", text="记一笔可以改记账时刻, 还能给账目贴标签; 用过的标签会记着, 下次点一下就能选上"),
         ChangelogItem(kind="新增", text="更新日志页 (本页): 记账应用的版本变化在这里看, 不再混在别的应用日志里"),
         ChangelogItem(kind="改进", text="记一笔弹层顶部的把手可以拽下来关闭 (和充电详情一个手势), 点一下把手也能关; 类别图标改成单色, 跟深色界面更搭"),
+        ChangelogItem(kind="改进", text="应用图标换成 Tesla 红的钱袋标, 主屏幕上三个应用一眼就能分清"),
+        ChangelogItem(kind="修复", text="主屏幕点图标可能打开别的应用 —— 修好了; 新图标也要把主屏幕图标删除后重新添加一次才看得到"),
         ChangelogItem(kind="修复", text="记一笔弹层能被左右拖动 (日期备注一行比屏幕宽了一点)"),
     ]),
 ]
