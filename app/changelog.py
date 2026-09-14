@@ -10,6 +10,12 @@ from typing import Final
 from .schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="2.5.1", date="2026-09-14", items=[
+        ChangelogItem(kind="新增", text="加密访问: 网站有了带锁的新地址 kinopico.duckdns.org:8500, 在家、在外打开都一样"),
+        ChangelogItem(kind="改进", text="地址从一串会变的数字换成固定域名 —— 家里宽带 IP 以后再变也照常用, 不用改收藏; 旧的数字地址停用"),
+        ChangelogItem(kind="修复", text="以前登录密码在网上是明文传输的, 现在全程加密;"
+                                       " 第一次用新地址要重新登录一次, 主屏幕图标删掉重新添加"),
+    ]),
     ChangelogVersion(version="2.5.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="多账号: 管理员生成邀请链接发给家人, 注册后各有各的账号; 除账号管理外的功能都能用"),
         ChangelogItem(kind="新增", text="账号管理页 (仅管理员): 看账号列表, 生成 / 撤销注册邀请, 一键复制邀请链接"),
