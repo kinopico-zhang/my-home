@@ -8,10 +8,10 @@ import subprocess as subprocess_module
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import (authentication, config, database, repository,  # pylint: disable=wrong-import-position
-                 settings_store, tracks_cache)
+from app import (authentication, config, database)  # pylint: disable=wrong-import-position
+from app.tesla import repository, settings_store, tracks_cache  # pylint: disable=wrong-import-position
 import app.main as main_module  # pylint: disable=wrong-import-position
-from app.models import Driver  # pylint: disable=wrong-import-position
+from app.tesla.models import Driver  # pylint: disable=wrong-import-position
 from tests.conftest import seed_drive  # pylint: disable=wrong-import-position
 
 

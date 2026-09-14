@@ -18,12 +18,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 # sys.path 注入必须先于 app 导入 (import 位置告警属预期, 按需豁免)
-from app import account_store, authentication, config, database, tracks_cache  # pylint: disable=wrong-import-position
+from app import account_store, authentication, config, database  # pylint: disable=wrong-import-position
+from app.tesla import tracks_cache  # pylint: disable=wrong-import-position
 from app.bookkeeping import store as bookkeeping_store  # pylint: disable=wrong-import-position
 from app.music import service as music_service  # pylint: disable=wrong-import-position
 from app.bookkeeping.store import EntryBase  # pylint: disable=wrong-import-position
-from app.models import (Address, Base, Car, Charge,  # pylint: disable=wrong-import-position
-                        ChargingProcess, Drive, OwnBase, Position, UsersBase)
+from app.models import UsersBase  # pylint: disable=wrong-import-position
+from app.tesla.models import (Address, Base, Car, Charge,  # pylint: disable=wrong-import-position
+                        ChargingProcess, Drive, OwnBase, Position)
 import app.main as m  # pylint: disable=wrong-import-position
 
 

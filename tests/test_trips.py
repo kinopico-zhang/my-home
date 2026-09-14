@@ -4,8 +4,8 @@ import json
 import re
 from datetime import datetime, timedelta
 
-from app import repository
-from app.models import (Address, Drive, Driver, Position, TrackFill,
+from app.tesla import repository
+from app.tesla.models import (Address, Drive, Driver, Position, TrackFill,
                         TripDriver, TripToll)
 from tests.conftest import (seed_addresses, seed_charging, seed_drive,
                             seed_position, seed_positions)

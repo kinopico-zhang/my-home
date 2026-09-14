@@ -5,7 +5,7 @@
 """
 from datetime import datetime
 
-from app.models import Address, Geofence
+from app.tesla.models import Address, Geofence
 from tests.conftest import seed_charge, seed_charging
 
 PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/chargemap", "/tesla/map",

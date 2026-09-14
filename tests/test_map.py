@@ -7,9 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
 import app.main as m
-from app import database, repository, tracks_cache
-from app.models import Driver, TripDriver
-from app.schemas import MapTrack
+from app import database
+from app.tesla import repository, tracks_cache
+from app.tesla.repository import map as map_repository
+from app.tesla.models import Driver, TripDriver
+from app.tesla.schemas import MapTrack
 from tests.conftest import (seed_addresses, seed_drive, seed_position,
                             seed_positions)
 
@@ -329,8 +331,8 @@ def test_window_keep_compiles_integer_stride_on_postgres():
     浮点步长让 ``%`` 永远取不到 0 → 轨迹只剩首末 2 点 (真库回归发现)。
     SQLite 方言不做这个转换所以测不出来, 必须用方言编译产物断言。"""
     # 直接构造窗口子查询检查内部表达式 (白盒: 方言差异无公开入口)
-    inner = repository._position_window().subquery()  # pylint: disable=protected-access
-    keep = repository._window_keep(inner, 40)         # pylint: disable=protected-access
+    inner = map_repository._position_window().subquery()  # pylint: disable=protected-access
+    keep = map_repository._window_keep(inner, 40)         # pylint: disable=protected-access
     sql = str(select(inner.c.rn).where(keep).compile(dialect=postgresql.dialect()))
     assert "AS NUMERIC" not in sql, sql
 
