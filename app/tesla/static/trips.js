@@ -96,6 +96,7 @@ function holdScreenAwake() {
   if (!awakeVideo) {                    // 首次: 建 1px 隐藏循环视频并播放
     const v = document.createElement("video");
     v.setAttribute("playsinline", "");  // iOS 不弹全屏播放器
+    v.muted = true;   // 必须静音: 不静音的视频一播就抢 iOS 音频会话, 把别的 app 正在放的声音掐了
     v.loop = true;
     for (const [type, url] of [["video/webm", AWAKE_VIDEO_WEBM],
                                 ["video/mp4", AWAKE_VIDEO_MP4]]) {
@@ -1178,12 +1179,15 @@ pbSpeed.addEventListener("click", () => {        // 倍速循环 1×→2×→4×
 /* ---------- 导出视频: 播放地图录成视频存相册 ---------- */
 /* 链路: 逐帧把地图各画布与可视区的相交子矩形合成到录制画布 →
    captureStream(30) + MediaRecorder (mp4 优先) → 从头整段重播, 播完自动
-   收片 → 预览弹层 → 有系统分享 (secure context 限定, 即 HTTPS) 走
-   navigator.share({files}) 拉起分享单选「存储视频」入相册; 没有 (NAS 常
-   是 HTTP, iPhone 的 Safari 里 share 压根不存在) 退化为 <a download>
-   存「文件」App, 用户在文件里长按 → 共享 → 存储视频 也能入相册。播放条
-   等覆盖层是 DOM, 不入镜 —— 视频里只有地图本体。 */
+   收片 → 预览弹层。存储分平台: 苹果触屏设备网页没有直写相册的 API,
+   只能拉系统分享单点一下「存储视频」(最短路径, 面板免不了); 其他平台
+   (安卓/桌面) <a download> 直接落盘进相册/下载夹, 不弹任何面板。
+   播放条等覆盖层是 DOM, 不入镜 —— 视频里只有地图本体。 */
 let recFile = null, recURL = null;   // 上次成片 (分享用 / 预览 src 用)
+
+// 苹果触屏设备 (iPhone/iPad): iPadOS 13+ 的 Safari 装成 Mac, 触点数补判
+const IS_APPLE_TOUCH = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 function recMime() {    // Safari 与新版 Chrome 都能直出 mp4, 老内核退 webm
   for (const t of ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"])
@@ -1262,8 +1266,8 @@ function recShowResult(r) {
   $("#rec-video").src = recURL;
   // 存储按钮: 录完一定给 (2026-09-13 二连修: 先按 canShare 门控藏了按钮 ——
   // iOS Safari 没实现 canShare; 改按 share 存在性仍藏 —— share 是 secure
-  // context 限定, HTTP 部署里同样不存在)。有 share = 分享单存相册; 没有 =
-  // 下载存「文件」, 按钮文案随路径切换 (提示行按用户要求撤掉)。
+  // context 限定, HTTP 部署里同样不存在)。按钮文案: 有 share = 「存到相册」
+  // (苹果设备经分享单、其余平台直落); 没有 = 「保存视频」(下载到「文件」App)。
   const shareOK = typeof navigator.share === "function";
   $("#rec-save").hidden = false;
   $("#rec-save").textContent = shareOK ? "存到相册" : "保存视频";
@@ -1290,7 +1294,13 @@ function saveVideoFile() {   // 下载兜底: iOS 存「文件」App (经共享�
 
 $("#rec-save").addEventListener("click", async () => {
   if (!recFile) return;
-  if (typeof navigator.share !== "function") { saveVideoFile(); return; }
+  // 苹果触屏: 只有系统分享单这一条入相册的路 (点「存储视频」);
+  // 其余平台: 直接下载落盘, 不弹面板 —— 安卓的下载视频会进相册。
+  if (!IS_APPLE_TOUCH || typeof navigator.share !== "function") {
+    saveVideoFile();
+    toast(/android/i.test(navigator.userAgent) ? "已保存到相册" : "视频已保存");
+    return;
+  }
   try { await navigator.share({ files: [recFile], title: recFile.name }); }
   catch (e) { if (e.name !== "AbortError") saveVideoFile(); }   // 分享失败 (如不支持文件) 也别让视频白录
 });
