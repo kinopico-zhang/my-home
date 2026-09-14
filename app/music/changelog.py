@@ -12,8 +12,8 @@ VERSIONS: Final[list[ChangelogVersion]] = [
     ChangelogVersion(version="1.3.0", date="2026-09-14", items=[
         ChangelogItem(kind="新增", text="长按任意一首歌弹出菜单: 播放 / 进艺人主页 / 分享 / 添加到播放列表,"
                                        " 主页、资料库、搜索里都能长按 (电脑上是点右键)"),
-        ChangelogItem(kind="新增", text="自己建播放列表: 菜单里「添加到播放列表」可选已有列表或当场新建;"
-                                       " 自建的列表排在主页最上面, Plex 同步不会动它们"),
+        ChangelogItem(kind="新增", text="添加到播放列表: 长按菜单里能选任何列表 (Plex 同步过来的也行) 或当场新建;"
+                                       " 加进同步列表的歌下次同步也保留, 自建的列表排主页最上面"),
         ChangelogItem(kind="新增", text="下载管理: 「已下载」栏顶部多了统计行 —— 几首歌、合计多大,"
                                        " 手机存储总占用也看得见; 「全部删除」一键清空 (删前会再问一次)"),
         ChangelogItem(kind="改进", text="「已下载」栏每首歌行尾直接标着这首歌占多大, 哪首占地大一眼看出"),

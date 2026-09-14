@@ -109,7 +109,8 @@ class Playlist(MusicLibraryBase):
 
 
 class PlaylistItem(MusicLibraryBase):
-    """播放列表成员 (position 是 Plex 的千分步序号)。"""
+    """播放列表成员 (position 是 Plex 的千分步序号; added_locally =
+    应用内长按加进来的 —— 同步时这些成员保留, 其余以 Plex 为准)。"""
 
     __tablename__ = "playlist_items"
 
@@ -119,6 +120,7 @@ class PlaylistItem(MusicLibraryBase):
     track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id"),
                                           index=True)
     position: Mapped[int] = mapped_column(default=0)
+    added_locally: Mapped[bool] = mapped_column(default=False)
 
 
 class PlayStat(MusicLibraryBase):
@@ -230,6 +232,7 @@ _COLUMN_MIGRATIONS: Final[dict[str, dict[str, str]]] = {
     "albums": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
     "artists": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
     "playlists": {"is_local": "BOOLEAN NOT NULL DEFAULT 0"},
+    "playlist_items": {"added_locally": "BOOLEAN NOT NULL DEFAULT 0"},
 }
 
 

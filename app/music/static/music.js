@@ -499,20 +499,19 @@ function openPlaylistPicker(track) {
   renderPlaylistPicker();
 }
 
-/** 本地列表清单 (Plex 同步的只读, 不进选择单); 空态给新建引导。 */
+/** 列表清单 (自建的排前面可删; Plex 同步的带标记); 空态给新建引导。 */
 async function renderPlaylistPicker() {
   const list = $("#picker-list");
   list.innerHTML = listPlaceholderHTML("加载中…");
   let playlists = [];
   try {
-    playlists = (await fetchJSON("/music/api/playlists")).playlists
-      .filter((playlist) => playlist.is_local);
+    playlists = (await fetchJSON("/music/api/playlists")).playlists;
   } catch (error) {
     list.innerHTML = listPlaceholderHTML(`列表没拉到: ${error.message}`);
     return;
   }
   if (!playlists.length) {
-    list.innerHTML = listPlaceholderHTML("还没有自己建的列表; 起个名字新建一个");
+    list.innerHTML = listPlaceholderHTML("还没有播放列表; 起个名字新建一个");
     return;
   }
   list.innerHTML = playlists.map((playlist) => `
@@ -520,8 +519,10 @@ async function renderPlaylistPicker() {
       <span class="pl-icon">♫</span>
       <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
         <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
-      <span class="picker-del" data-picker-delete="${playlist.playlist_id}"
-            role="button" tabindex="-1" aria-label="删除列表">✕</span>
+      ${playlist.is_local
+        ? `<span class="picker-del" data-picker-delete="${playlist.playlist_id}"
+              role="button" tabindex="-1" aria-label="删除列表">✕</span>`
+        : `<span class="picker-sync">同步</span>`}
     </button>`).join("");
 }
 
