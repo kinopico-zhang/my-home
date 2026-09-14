@@ -9,6 +9,12 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.0.1", date="2026-09-14", items=[
+        ChangelogItem(kind="新增", text="加密访问: 网站有了带锁的新地址 kinopico.duckdns.org:8500, 记的账和密码全程加密,"
+                                       " 在家、在外都能用"),
+        ChangelogItem(kind="改进", text="地址换成固定域名 —— 家里宽带 IP 以后再变也照常用, 不用改收藏; 旧的数字地址停用"),
+        ChangelogItem(kind="修复", text="以前记账密码是明文过网的 —— 现在加密; 新地址首次要重新登录, 主屏图标删掉重加一次"),
+    ]),
     ChangelogVersion(version="1.0.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="My Money (记账): 独立小应用, 可单独加到主屏幕; 记一笔支出或收入, 按月看汇总, 每笔都记着是谁记的;"
                                        " 断网也能记, 联网自动同步"),

@@ -9,6 +9,13 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.2.1", date="2026-09-14", items=[
+        ChangelogItem(kind="新增", text="在家也能离线下载了: 新地址是 HTTPS 加密的, 「下载」按钮和「已下载」栏在家里的 Wi-Fi 下不再隐藏"
+                                       " —— 下载好的歌, 人在外面没网也能放"),
+        ChangelogItem(kind="改进", text="地址换成固定域名 kinopico.duckdns.org:8500 (家里宽带 IP 变了也照常用);"
+                                       " 旧的数字地址停用"),
+        ChangelogItem(kind="修复", text="以前账号密码是明文过网的, 现在全程加密; 新地址首次要重新登录、主屏图标删掉重加"),
+    ]),
     ChangelogVersion(version="1.2.0", date="2026-09-14", items=[
         ChangelogItem(kind="新增", text="主页: 打开应用先到这一页, 播放列表和最近播放都在这儿, 常听的一眼就看到"),
         ChangelogItem(kind="新增", text="最近播放: 听过的歌自动记下来排在这里 (一家人各记各的, 互不串台), 想循环刚听过的几首很方便"),

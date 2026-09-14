@@ -8,8 +8,8 @@ from app.bookkeeping import changelog
 def test_versions_wellformed():
     """独立版本线从 1.0.0 起; 每版字段齐全, 文案是用户视角的一句话。"""
     vs = changelog.entries()
-    assert [v.version for v in vs] == ["1.0.0"]
-    assert vs[0].date == "2026-09-13"
+    assert [v.version for v in vs] == ["1.0.1", "1.0.0"]
+    assert vs[0].date == "2026-09-14"
     kinds = {it.kind for it in vs[0].items}
     assert kinds == {"新增", "改进", "修复"}   # 合并批次三类俱全
     for v in vs:
