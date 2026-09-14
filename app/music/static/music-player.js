@@ -1,10 +1,13 @@
 // music-player.js — 播放器: 音频引擎 + 迷你条 + 全屏页 (歌词/队列) + 锁屏控制。
 // 队列状态机在 player-queue.js, 歌词解析在 lyrics-parser.js;
 // 浏览页 (music.js) 只调 playerStart / playerCurrentTrackId / onTrackChange。
+// 听过的歌顺手报给后端 (最近播放), 下一曲在后台预取 (秒切)。
 "use strict";
 /* exported playerStart, openLyricsView, onTrackChange */   // 供 music.js 引用
 
 const PLAYER_STATE_KEY = "music-player-state";
+// 手动滑动歌词后多久自动回到跟唱 (毫秒; Apple Music 同款节奏)
+const LYRICS_FOLLOW_RESUME_MS = 4000;
 
 /** @type {PlayQueue|null} */
 let playQueue = null;
@@ -13,8 +16,17 @@ let lyricsCache = new Map();       // track_id → {synced, lines} | null (没�
 let lyricsActiveIndex = -1;
 let lyricsViewOpen = false;
 let scrubbing = false;
+let playRecorded = false;          // 本曲已报过最近播放 (暂停续播不重复报)
+// 歌词自由滑动: 手动滚过就暂停跟唱, 出"回到当前句"; 静置几秒自动恢复
+let lyricsFollowPaused = false;
+let lyricsLastScrollAt = 0;
+let lyricsAutoScrolling = false;   // 程序定位引发的 scroll 事件不算手动
 /** @type {Array<function(Object|null)>} 曲目切换回调 (列表高亮用) */
 const trackChangeListeners = [];
+
+// 下一曲预取: 单槽 blob (objectURL), 切歌即用即弃
+let prefetched = null;             // {trackId, objectURL} | null
+let prefetchSequence = 0;          // 旧请求回来发现序号变了就丢弃
 
 function audioElement() {
   return $("#audio");
@@ -79,20 +91,69 @@ function advanceToPlayable() {
   loadTrack(track, true);
 }
 
-/** 载入曲目: 音频源 + 迷你条/全屏页/锁屏元数据 + 歌词缓存失效。 */
+/** 载入曲目: 音频源 (预取到位直接用 blob, 秒切) + 迷你条/全屏页/锁屏
+    元数据 + 歌词缓存失效 + 顺手预取下一曲。 */
+let playingObjectURL = "";   // audio 正在用的预取 blob; 换曲时 revoke (一首几十 MB, 攒着会撑爆手机内存)
+
 function loadTrack(track, autoplay) {
   currentTrack = track;
+  playRecorded = false;
   lyricsCache.delete(track.track_id);      // 每次换曲重取 (歌词可能刚扫描进来)
   lyricsActiveIndex = -1;
   const audio = audioElement();
-  audio.src = `/music/media/stream/${track.track_id}`;
+  const prefetchedURL = prefetched && prefetched.trackId === track.track_id
+    ? prefetched.objectURL : "";
+  if (playingObjectURL) URL.revokeObjectURL(playingObjectURL);   // 上一曲用完的预取 blob
+  playingObjectURL = prefetchedURL;
+  if (prefetchedURL) prefetched = null;    // 占位交给 audio, 别再 revoke
+  else discardPrefetch();                  // 其余情况旧预取作废
+  audio.src = prefetchedURL || `/music/media/stream/${track.track_id}`;
   renderPlayerChrome();
   renderQueueSheet();
   if (lyricsViewOpen) loadLyrics();
   updateMediaSession();
   for (const listener of trackChangeListeners) listener(track);
   savePlayerState();
+  prefetchNextTrack();
   if (autoplay) audio.play().catch(() => { /* iOS 偶发拒绝: 保持暂停态 */ });
+}
+
+// ------------------------------------------------------------ 下一曲预取
+
+/** 后台拉下一曲的完整音频进 blob (已下载过的会被 SW 直接回缓存, 更快);
+    单槽: 只留即将播的那首, 旧的 revoke。 */
+function prefetchNextTrack() {
+  if (!playQueue || playQueue.repeat === "one") return;   // 单曲循环没有"下一曲"
+  const next = nextUpcomingTrack();
+  if (!next || !next.playable || next.track_id === playerCurrentTrackId()) return;
+  if (prefetched && prefetched.trackId === next.track_id) return;   // 已就位
+  discardPrefetch();
+  const trackId = next.track_id;
+  const token = prefetchSequence;
+  fetch(`/music/media/stream/${trackId}`)
+    .then((response) => (response.ok ? response.blob()
+      : Promise.reject(new Error(`HTTP ${response.status}`))))
+    .then((blob) => {
+      if (token !== prefetchSequence) return;             // 目标已经变了
+      if (playerCurrentTrackId() === trackId) return;     // 已经切到这首了
+      if (nextUpcomingTrack() !== next) return;           // 不再是下一曲
+      prefetched = { trackId, objectURL: URL.createObjectURL(blob) };
+    })
+    .catch(() => { /* 预取失败: 到时候正常走网络 */ });
+}
+
+/** 下一曲 (不含当前; 队列快播完且不循环时没有)。 */
+function nextUpcomingTrack() {
+  const upcoming = queueUpcoming(playQueue);
+  return upcoming.length > 1 ? upcoming[1] : null;
+}
+
+function discardPrefetch() {
+  prefetchSequence++;              // 在途的旧请求回来也认作过期
+  if (prefetched) {
+    URL.revokeObjectURL(prefetched.objectURL);
+    prefetched = null;
+  }
 }
 
 function playerCurrentTrackId() {
@@ -142,6 +203,7 @@ function playerRestore() {
   updateMediaSession();
   for (const listener of trackChangeListeners) listener(track);
   if (saved.time) audio.currentTime = saved.time;
+  prefetchNextTrack();            // 恢复现场时也把下一曲备好
 }
 
 // ------------------------------------------------------------ 界面渲染
@@ -155,7 +217,6 @@ function renderPlayerChrome() {
   $("#mini-artist").textContent = track.artist;
   $("#fp-title").textContent = track.title;
   $("#fp-artist").textContent = track.artist;
-  $("#fp-album-title").textContent = track.album_title || "";
   const artwork = track.album_id
     ? `/music/media/albums/${track.album_id}/artwork` : PLACEHOLDER_ARTWORK;
   $("#mini-art").src = artwork;
@@ -168,7 +229,7 @@ function renderPlayerChrome() {
 function updatePlayButtons() {
   const playing = playerIsPlaying();
   $("#mini-play").innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
-  $("#fp-play").innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+  $("#fp-play").innerHTML = playing ? ICON_PAUSE_BIG : ICON_PLAY_BIG;
   for (const element of document.querySelectorAll("[data-track-row]")) {
     element.classList.toggle("playing",
       Number(element.dataset.trackRow) === playerCurrentTrackId() && playing);
@@ -207,6 +268,9 @@ function toggleLyricsView() {
   $("#fp-art-wrap").hidden = lyricsViewOpen;
   $("#fp-lyrics").hidden = !lyricsViewOpen;
   $("#fp-lyrics-btn").classList.toggle("on", lyricsViewOpen);
+  $("#full-player").classList.toggle("lyrics", lyricsViewOpen);
+  lyricsFollowPaused = false;         // 开/关歌词都回到跟唱
+  $("#lyrics-resume").hidden = true;
   if (lyricsViewOpen) {
     loadLyrics();
   } else {
@@ -239,27 +303,53 @@ async function loadLyrics() {
     `<div class="lyrics-line" data-time="${line.timeSeconds}">${escapeHTML(line.text)}</div>`
   ).join("");
   lyricsActiveIndex = -1;
-  highlightActiveLyric(true);
+  highlightActiveLyric();
 }
 
-/** timeupdate 驱动: 高亮行变化才滚动 (滚一次全页都在抖)。 */
-function highlightActiveLyric(instant) {
+/** timeupdate 驱动: 高亮行永远跟着歌走; 手动滑过就只亮不滚,
+    静置片刻自动回位。 */
+function highlightActiveLyric() {
   if (!lyricsViewOpen || !currentTrack) return;
   const lyricsDocument = lyricsCache.get(currentTrack.track_id);
   if (!lyricsDocument || !lyricsDocument.synced) return;
   const index = activeLyricIndex(lyricsDocument.lines, audioElement().currentTime);
-  if (index === lyricsActiveIndex) return;
-  lyricsActiveIndex = index;
-  const container = $("#fp-lyrics");
-  const lines = container.children;
-  for (let position = 0; position < lines.length; position++) {
-    lines[position].classList.toggle("active", position === index);
+  if (index !== lyricsActiveIndex) {
+    lyricsActiveIndex = index;
+    const container = $("#fp-lyrics");
+    const lines = container.children;
+    for (let position = 0; position < lines.length; position++) {
+      lines[position].classList.toggle("active", position === index);
+    }
+    if (!lyricsFollowPaused && index >= 0 && lines[index]) {
+      scrollLyricsTo(lines[index]);
+    }
   }
-  if (index >= 0 && lines[index]) {
-    lines[index].scrollIntoView({
-      block: "center",
-      behavior: instant ? "auto" : "smooth",
-    });
+  if (lyricsFollowPaused) maybeResumeLyricsFollow();
+}
+
+/** 歌词容器滚动定位到某行居中 (不用 scrollIntoView: smooth 动画的
+    中间态会和"手动滑动"判定打架, 这里直接设 scrollTop + 短窗豁免)。 */
+function scrollLyricsTo(lineElement) {
+  const container = $("#fp-lyrics");
+  lyricsAutoScrolling = true;
+  container.scrollTop = lineElement.offsetTop - container.clientHeight / 2
+    + lineElement.offsetHeight / 2;
+  setTimeout(() => { lyricsAutoScrolling = false; }, 120);
+}
+
+/** 手动滑过歌词后静置够了就回到跟唱。 */
+function maybeResumeLyricsFollow() {
+  if (!lyricsFollowPaused) return;
+  if (Date.now() - lyricsLastScrollAt < LYRICS_FOLLOW_RESUME_MS) return;
+  resumeLyricsFollow();
+}
+
+function resumeLyricsFollow() {
+  lyricsFollowPaused = false;
+  $("#lyrics-resume").hidden = true;
+  const lines = $("#fp-lyrics").children;
+  if (lyricsActiveIndex >= 0 && lines[lyricsActiveIndex]) {
+    scrollLyricsTo(lines[lyricsActiveIndex]);
   }
 }
 
@@ -362,6 +452,15 @@ function bindPlayerEvents() {
   $("#fp-queue-btn").addEventListener("click", openQueueSheet);
   $("#queue-close").addEventListener("click", closeQueueSheet);
   $("#queue-mask").addEventListener("click", closeQueueSheet);
+  $("#lyrics-resume").addEventListener("click", resumeLyricsFollow);
+
+  // 手动滑歌词 (程序定位引发的 scroll 不算) → 暂停跟唱 + 出"回到当前句"
+  $("#fp-lyrics").addEventListener("scroll", () => {
+    if (lyricsAutoScrolling) return;
+    lyricsFollowPaused = true;
+    lyricsLastScrollAt = Date.now();
+    $("#lyrics-resume").hidden = false;
+  });
 
   $("#queue-list").addEventListener("click", (event) => {
     const row = event.target.closest("[data-queue-track-id]");
@@ -398,6 +497,16 @@ function bindPlayerEvents() {
   scrubber.addEventListener("change", applyScrub);
   scrubber.addEventListener("touchend", applyScrub);
 
+  audio.addEventListener("playing", () => {
+    // 真正出声了才算"听过" (恢复现场直接暂停的不算); 暂停续播不重复报
+    if (playRecorded || !currentTrack) return;
+    playRecorded = true;
+    fetch("/music/api/plays", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ track_id: currentTrack.track_id }),
+    }).catch(() => { /* 记不上不挡听歌 */ });
+  });
   audio.addEventListener("play", updatePlayButtons);
   audio.addEventListener("pause", () => {
     updatePlayButtons();
@@ -424,7 +533,7 @@ function bindPlayerEvents() {
       scrubber.style.setProperty("--fill", `${Math.round(progress * 100)}%`);
       $("#fp-time-cur").textContent = formatPlaybackTime(audio.currentTime);
     }
-    highlightActiveLyric(false);
+    highlightActiveLyric();
   });
   audio.addEventListener("ended", () => {
     if (playQueue && playQueue.repeat === "one") {   // 单曲循环: 回开头重播

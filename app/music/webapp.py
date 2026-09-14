@@ -15,14 +15,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .. import account_store, database
-from ..schemas import ChangelogVersion
+from ..models import User
+from ..schemas import ChangelogVersion, OkResponse
 from . import (changelog, library_media, library_playlists,
                library_queries, service)
 from .library_database import (Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
                       LibraryStats, LyricsResponse, MusicStatusResponse,
-                      PlaylistPage, PlaylistPageList, PlaylistSyncResponse,
+                      PlayRecordRequest, PlaylistPage, PlaylistPageList,
+                      PlaylistSyncResponse, RecentPlaysResponse,
                       RescanResponse, SearchResult, TrackPageList)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -54,11 +56,13 @@ def _page(file_name: str, directory: Path | None = None) -> FileResponse:
     return response
 
 
-def _require_user(request: Request, users: Session) -> None:
-    """登录校验 (中间件已拦, 这里兜底)。"""
-    if account_store.user_for_cookie(
-            request.cookies.get("auth", ""), users) is None:
+def _require_user(request: Request, users: Session) -> User:
+    """登录校验 (中间件已拦, 这里兜底); 返回账号 (播放记录按人记)。"""
+    user = account_store.user_for_cookie(
+        request.cookies.get("auth", ""), users)
+    if user is None:
         raise HTTPException(401, "未登录")
+    return user
 
 
 def _validate_language(language: str) -> str:
@@ -78,6 +82,18 @@ def music_page() -> FileResponse:
 def music_login_page() -> FileResponse:
     """听歌应用 scope 内的登录页 (门厅那张): 会话过期 302 过来不越界。"""
     return _page("login.html", directory=HOME_STATIC_DIR)
+
+
+@music_app.get("/sw.js")
+def music_service_worker() -> FileResponse:
+    """离线播放的 Service Worker (scope /music): 只拦曲目流, 其他走网。
+
+    放行不需要登录 —— SW 的更新检查不带 cookie, 302 到登录页会让注册
+    失败; 脚本本身没有数据。"""
+    response = FileResponse(STATIC_DIR / "sw.js",
+                            media_type="text/javascript")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @music_app.get("/changelog")
@@ -239,6 +255,29 @@ def music_tracks(
     _require_user(request, users)
     return library_queries.list_tracks(library, _validate_language(language),
                                        offset, limit)
+
+
+@api.post("/plays", response_model=OkResponse)
+def music_record_play(body: PlayRecordRequest, request: Request,
+                      users: Session = Depends(database.get_users_db),
+                      library: Session = Depends(get_db)) -> OkResponse:
+    """记一次播放 (最近播放的原料, 按人记; 曲目不在库里 404)。"""
+    user = _require_user(request, users)
+    if not library_queries.record_play(library, user.uuid, body.track_id):
+        raise HTTPException(404, "曲目不存在")
+    return OkResponse(ok=True)
+
+
+@api.get("/plays/recent", response_model=RecentPlaysResponse)
+def music_recent_plays(
+        request: Request,
+        limit: int = Query(default=30, ge=1, le=100),
+        users: Session = Depends(database.get_users_db),
+        library: Session = Depends(get_db)) -> RecentPlaysResponse:
+    """本人的最近播放 (时刻倒序, 同一首只一行)。"""
+    user = _require_user(request, users)
+    return RecentPlaysResponse(
+        tracks=library_queries.recent_plays(library, user.uuid, limit))
 
 
 @api.get("/search", response_model=SearchResult)

@@ -189,17 +189,28 @@ export default [
   },
 
   // 音乐应用 (app/music/static): 按脚本分层声明跨文件全局 (定义者与
-  // 使用者分开, 避免同文件 no-redeclare)。加载顺序: 纯逻辑模块 →
-  // 公共小件 → 播放器 → 浏览页。
+  // 使用者分开, 避免同文件 no-redeclare)。加载顺序: 纯逻辑模块
+  // (lyrics-parser / player-queue / downloads) → 公共小件 → 播放器 → 浏览页。
   {
     files: ["app/music/static/lyrics-parser.js",
             "app/music/static/player-queue.js",
+            "app/music/static/downloads.js",
             "app/music/static/music-common.js"],
     ...pageScript,
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
       globals: { ...globals.browser, module: "readonly" },
+    },
+  },
+  {
+    // Service Worker: 独立线程, 全局是 self/caches (不碰页面 DOM)
+    files: ["app/music/static/sw.js"],
+    ...pageScript,
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: { ...globals.serviceworker },
     },
   },
   {
@@ -220,6 +231,7 @@ export default [
         $: "readonly", escapeHTML: "readonly", fetchJSON: "readonly",
         toast: "readonly", PLACEHOLDER_ARTWORK: "readonly",
         ICON_PLAY: "readonly", ICON_PAUSE: "readonly", ICON_BARS: "readonly",
+        ICON_PLAY_BIG: "readonly", ICON_PAUSE_BIG: "readonly",
       },
     },
   },
@@ -237,11 +249,12 @@ export default [
         toast: "readonly", albumArtworkURL: "readonly",
         artistArtworkURL: "readonly", PLACEHOLDER_ARTWORK: "readonly",
         describeDuration: "readonly", formatAddedDate: "readonly",
-        ICON_BARS: "readonly",
+        ICON_BARS: "readonly", ICON_DOWNLOAD: "readonly",
         ICON_ACTION_PLAY: "readonly", ICON_ACTION_SHUFFLE: "readonly",
         playerStart: "readonly", updatePlayButtons: "readonly",
         openFullPlayer: "readonly", openLyricsView: "readonly",
         onTrackChange: "readonly", playerCurrentTrackId: "readonly",
+        downloadsSupported: "readonly", createDownloads: "readonly",
       },
     },
   },

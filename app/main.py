@@ -117,6 +117,8 @@ _PUBLIC_PATHS = frozenset((
     # 各应用 scope 内的登录页 (2026-09-14 起 scope 收窄, 登录页跟进去,
     # 会话过期 302 不越出 scope, 全屏 App 不弹回 Safari 露地址栏)
     "/tesla/login", "/music/login", "/bookkeeping/login",
+    # SW 脚本: 更新检查不带 cookie, 必须 200 (无数据, 放行无妨)
+    "/music/sw.js",
     "/api/login", "/api/logout",
     "/api/register", "/api/invite-status",
     "/bookkeeping/api/logout", "/music/api/logout"))
