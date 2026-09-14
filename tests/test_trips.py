@@ -11,6 +11,14 @@ from tests.conftest import (seed_addresses, seed_charging, seed_drive,
                             seed_position, seed_positions)
 
 
+# 行程页脚本按域拆成了四个文件 (format / trip-playback / trips-list / trips):
+# 页面片段断言可能落在其中任何一个, 全部拼起来查子串 (含 "not in" 守卫,
+# 残留在哪个文件都算回潮)
+def _trips_scripts(auth):
+    return "".join(auth.get(f"/tesla/static/{name}").text for name in
+                   ("format.js", "trip-playback.js", "trips-list.js", "trips.js"))
+
+
 # ---------------------------------------------------------------- 列表
 def test_trips_sessions_paginates(auth, db):
     seed_addresses(db)
@@ -804,7 +812,7 @@ def test_gap_fill_spliced_into_merged_stream_too(auth, db):
 def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
     """页面片段: 流式边下边播 / 随速变焦 / 断档回传一应俱全。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ["function loadMergedStream(", "sess.append(d.pts, d.ts)",
                  "sess.more = false", "正在下载轨迹", "等待后续轨迹",
                  # 首段开播前也扫路预取 (矢量), 后续段靠环形前瞻容器边播边覆盖
@@ -828,8 +836,8 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  # 就开始拉近 (不等停稳才动); 窗口随播放位置现算无状态, 开播/
                  # 拖进度天然干净; 曲线基线 12.5~15.3 (原 13.5~16.3 过近, 拉远一档)
                  "ZOOM_PAST_MS = 2000", "ZOOM_FUT_MS = 5000",
-                 "TrackUtil.animAt(vt, t, dur)",
-                 "speedZoom(vSum / ZOOM_SAMPLES)",
+                 "TrackUtil.animAt(vt, tw, dur)",
+                 "const zt = speedZoom(TripPlayback.windowMeanSpeed(vt, pts, s.playT, dur));",
                  "Math.min(15.3, 15.3 - v / 46)", "Math.max(12.5,",
                  "(km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11)",
                  # 速度色分段线/断档虚线圆头端帽: 换色处两段共享端点, butt 端帽
@@ -865,7 +873,7 @@ def test_trips_page_time_menu_and_filter_row(auth):
     """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行 (起终点省市区级联, 里程档),
     全部编码进 URL, 且与 ?id=/ ?ids= 深链共存。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
@@ -896,7 +904,7 @@ def test_trips_page_sheet_grab_drag_close(auth):
     """轨迹弹层手柄: 点一下关, 拖 >90px 松手也关 (pointer 统一触摸/鼠标,
     跟手 + 回弹); 拖过 8px 抑制随后的 click, 不把刚弹回的弹层又关掉。"""
     html = auth.get("/tesla/trips").text
-    js = auth.get("/tesla/static/trips.js?v=1").text
+    js = _trips_scripts(auth)
     both = html + js
     for frag in ['id="grab"', "touch-action: none", ".grab::before",   # 整行命中区
                  'window.addEventListener("pointermove", move)',
@@ -913,7 +921,7 @@ def test_trips_page_sheet_grab_drag_close(auth):
 def test_trips_page_has_playbar_and_single_column(auth):
     """播放控制条 + 单列列表 都在页面上; 统计格不占地图高度。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="playbar"', 'id="pb-toggle"', 'id="pb-seek"', 'id="pb-speed"',
                  'id="sh-cell-pw"', 'id="sh-pw-lb"', "ICON_REPLAY",
                  # 播放条是贴弹层底部的浮层玻璃胶囊 (不占一整行), 地图
@@ -945,7 +953,7 @@ def test_trips_page_has_playbar_and_single_column(auth):
 def test_trips_page_consumption_and_driver_filter(auth):
     """卡片与弹层显示总电耗/平均电耗; 筛选行有驾驶员菜单且请求带驾驶员参数。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in [
         'id="sh-cell-kwh"', 'id="sh-cell-avg"',       # 弹层: 总电耗/平均电耗格
         'class="ct-cells"',                            # 卡片统计瓷砖 (量): 里程/时长/总电耗
@@ -964,12 +972,12 @@ def test_trips_page_consumption_and_driver_filter(auth):
 def test_trips_page_live_energy_and_standalone(auth):
     """播放中电耗/平均电耗按能耗模型动态累积; 桌面图标全屏 meta。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in [
         # 能耗模型: 每公里 = 滚阻 + 风阻·v², 全程定标到整体 kWh
-        "const ekW = v => 1 + 3 * Math.pow(v / 100, 2);",
-        "const enerStep = i => (cum[i] - cum[i - 1])",
-        "ecum.push(ecum[i - 1] + enerStep(i));",
+        "const energyWeightKm = v => 1 + 3 * Math.pow(v / 100, 2);",
+        "function energyStep(pts, cum, i) {",
+        "ecum.push(ecum[i - 1] + TripPlayback.energyStep(pts, cum, i));",
         # setLive: 两格都随模型走 (流式追加段也延伸权重)
         "const kwhNow = it.kwh * eNow / ecum[N - 1];",
         'num(kwhNow / kmNow * 1000, 0) + "</span><small>Wh/km</small>"',
@@ -987,7 +995,7 @@ def test_trips_page_live_energy_and_standalone(auth):
 def test_trips_page_playback_pacing_and_nowrap(auth):
     """超长轨迹不再 12 秒放完: 时长含里程分量 + 0.5× 慢速档; 统计值不折行。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in [   # 时长公式在 animDurMs (预载扫路共用, 口径一致)
                  "Math.min(Math.max(n / 300, 3 + km * 1.4), 300)",
                  "PB_SPEEDS = [0.5, 1, 2, 4, 8]",
@@ -1007,7 +1015,7 @@ def test_trips_page_playback_fixed_width_cells(auth):
     setOfficial/fillSheetHeader 定格共三处写法都要带盒 (漏一处会在开弹层或
     收尾时跳一次宽度)。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in [
         ".sh-cell .val .n { display: inline-block; text-align: right; }",
         "#sh-km .n, #sh-kwh .n { min-width: 4.5ch; }",
@@ -1026,7 +1034,7 @@ def test_trips_page_playback_fixed_width_cells(auth):
 def test_trips_page_has_url_deeplink(auth):
     """打开行程地址栏变 ?id=X / 合并 ?ids=a,b: pushState/popstate 同步 + 分享直开。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ["urlTripKey", "openByKey", "history.pushState",
                  "addEventListener(\"popstate\"",
                  "/tesla/trips/api/sessions/${",
@@ -1047,7 +1055,7 @@ def test_trips_page_preloads_tiles(auth):
     矢量模式没有可抄的瓦片 URL → 扫路预取 (相机沿路线按未来档位扫一遍灌
     TileCache, 收尾补整轨拉远视野); 时长公式抽 animDurMs 与播放同口径。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ["function followZoom(", "async function tileTemplate(", "function tileUrl(",
                  "function preloadTiles(", "正在预载地图", "TrackUtil.lngLatToTile",
                  "appmaptile", "playTrack(c.pts, c.ts || [], it, zoom)",
@@ -1055,8 +1063,8 @@ def test_trips_page_preloads_tiles(auth):
                  # 矢量扫路预取 (隐藏图拉过不认, 只能驱动主图自己扫)
                  "async function preloadVectorTrack(",
                  "const animDurMs = (n, km) =>",
-                 "let dur = animDurMs(N, cum[N - 1]);",
-                 "dur = animDurMs(N, cum[N - 1]);",
+                 "let dur = TripPlayback.animDurMs(N, cum[N - 1]);",
+                 "dur = TripPlayback.animDurMs(N, cum[N - 1]);",
                  "tripMap.setZoomAndCenter(z, p, true)",
                  # 环形前瞻: 容器四周扩出 (wrap 裁掉可视区不变), 播放中四周
                  # 瓦片提前 4~13s 进缓存 = 真正的边播边下; logo 推回可视区
@@ -1072,8 +1080,9 @@ def test_trips_page_preloads_tiles(auth):
                  "tripMap.setFitView([whole], true, FIT_AVOID);",
                  "VECTOR_PRELOAD_STEP_MS = 400, VECTOR_PRELOAD_CAP_MS = 4000,",
                  "VECTOR_PRELOAD_STEP_FRAC = 0.85, VECTOR_PRELOAD_BRACKET_MS = 150;",
-                 "return speedZoom(vSum / ZOOM_SAMPLES);",
-                 "if (Math.abs(zt - hystZoom) > 0.6) hystZoom = Math.round(zt);",
+                 "return speedZoom(TripPlayback.windowMeanSpeed("
+                 "vt, pts, dur * vt[i] / vtTotal, dur));",
+                 "hystZoom = TripPlayback.hysteresisZoom(curveZoomAt(i), hystZoom);",
                  # 跨界预取: 档位边界过渡步把曲线档也扫一眼 (变焦跨档那刻
                  # 新档瓦片已在手, 地名不再等取数)
                  "const zTarget = Math.round(curveZoomAt(idx));",
@@ -1088,7 +1097,7 @@ def test_trips_page_style_block_balanced(auth):
     吞进未闭合的规则 (ct-drv 接缝曾丢 }, 弹层/底栏/选中态全体裸奔,
     且控制台无任何报错, 只有页面悄悄变丑)。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     m = re.search(r"<style>(.*?)</style>", html, re.S)
     assert m is not None, "页面缺 <style> 块"
     style = m.group(1)
@@ -1098,7 +1107,7 @@ def test_trips_page_style_block_balanced(auth):
 def test_trips_page_has_multiselect(auth):
     """多选连续行程: 长按卡片进选择模式 + 底栏 (全选/上限提示) + 合并接口直开。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="selbar"', 'id="sel-go"', 'id="sel-cancel"',
                  'id="sel-count"', 'id="sel-all"', 'id="sel-cap"', "MERGE_MAX = 100",
                  "body.selecting", "pickCard", "enterSelect", "exitSelect",
@@ -1186,7 +1195,7 @@ def test_trip_group_validation(auth, db):
 def test_trips_page_has_toll_tools(auth):
     """高速费: 打开行程自动估价 + 弹层 chip (批量入口/面板已按需求撤掉)。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="sh-toll"', "function calcTripToll(", "function autoCalcToll(",
                  "TOLL_WAYPOINTS", "/toll`", "无高速费"]:
         assert frag in html, f"行程页缺少高速费片段 {frag}"
@@ -1198,7 +1207,7 @@ def test_trips_page_has_toll_tools(auth):
 def test_trips_page_has_driver_picker(auth):
     """行程页驾驶员标注: 弹层选择行 + 卡片 pill + 标注接口都挂在页面上。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="sh-drv"', 'id="sh-drv-sel"', "setupDriverPicker",
                  'class="ct-drv${it.driver_id != null ? "" : " def"}"',
                  ".ct-drv.def", "/tesla/api/drivers",
@@ -1214,7 +1223,7 @@ def test_trips_page_group_create_and_groups_page_link(auth):
     """分组管理已搬去独立分组页 (/tesla/groups), 行程页只留创建入口:
     多选 → 存为分组; 分组面板 (入口按钮/CSS/DOM) 不许回来。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="gp-btn"', "存为分组", 'id="gp-name"', 'id="gp-save"',
                  "api/groups", "function toast(", 'id="toast"',
                  "$(\"#sel-go\").addEventListener"]:
@@ -1231,7 +1240,7 @@ def test_trips_page_group_create_and_groups_page_link(auth):
 def test_trips_page_export_video(auth):
     """导出视频: 播放条录制钮 + 成片预览弹层 + 分享存相册链路都挂在页面上。"""
     html = auth.get("/tesla/trips").text
-    html += auth.get("/tesla/static/trips.js?v=1").text
+    html += _trips_scripts(auth)
     for frag in ['id="pb-rec"', 'aria-label="导出视频"', 'id="rec-modal"',
                  'id="rec-video"', 'id="rec-save"', 'id="rec-close"',
                  "playsinline", "存到相册", "function recMime(",

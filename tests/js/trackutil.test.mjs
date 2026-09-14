@@ -341,7 +341,7 @@ test("lngLatToTile: 纬度超出墨卡托范围被钳制, 不产生 NaN", () => 
 test("浏览器挂载: 无 module 时挂到 self (window.TrackUtil)", () => {
   const src = readFileSync(path.join(
     path.dirname(fileURLToPath(import.meta.url)), "..", "..",
-    "app", "static", "trackutil.js"), "utf8");
+    "app", "tesla", "static", "trackutil.js"), "utf8");
   const fakeSelf = {};
   new Function("module", "exports", "self", src)(undefined, undefined, fakeSelf);
   assert.equal(typeof fakeSelf.TrackUtil.splitGaps, "function");
@@ -351,7 +351,7 @@ test("浏览器挂载: 无 module 时挂到 self (window.TrackUtil)", () => {
 test("self 也未定义 (Worker 等): 兜底 this (= globalThis) 挂载", () => {
   const src = readFileSync(path.join(
     path.dirname(fileURLToPath(import.meta.url)), "..", "..",
-    "app", "static", "trackutil.js"), "utf8");
+    "app", "tesla", "static", "trackutil.js"), "utf8");
   new Function("module", "exports", "self", src)(undefined, undefined, undefined);
   assert.equal(typeof globalThis.TrackUtil.splitGaps, "function");
   delete globalThis.TrackUtil;

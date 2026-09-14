@@ -7,6 +7,12 @@ from datetime import datetime
 
 from tests.conftest import seed_addresses, seed_charge, seed_charging
 
+
+# 充电记录/统计页共用格式化拆去了 format.js: 页面片段断言把先加载的
+# format.js 一并拼进来查子串
+def _page_scripts(auth, *names):
+    return "".join(auth.get(f"/tesla/static/{name}").text for name in names)
+
 PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/chargemap", "/tesla/map",
          "/tesla/trips", "/tesla/groups", "/tesla/live", "/tesla/settings"]
 
@@ -86,7 +92,7 @@ def test_dimensions_empty_db(auth, db):
 def test_stats_page_skeleton(auth):
     """统计页: 统计卡行 + 七张图表卡 (每张图表/表格切换), 菜单高亮充电统计。"""
     html = auth.get("/tesla/stats").text
-    html += auth.get("/tesla/static/stats.js?v=1").text
+    html += _page_scripts(auth, "format.js", "stats.js")
     for frag in [
         "<title>充电统计 · My Tesla</title>",
         '<a class="on" href="/tesla/stats">充电统计</a>',
@@ -120,7 +126,7 @@ def test_stats_page_skeleton(auth):
 def test_charging_page_records_only(auth):
     """充电页只留记录列表: 统计卡/图表卡搬去统计页, 详情弹层的曲线图表保留。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in ['id="masonry"',                             # 记录列表
                  'id="chart-soc"', 'id="chart-pw"',          # 详情弹层图表仍在
                  ".mini-seg {", "renderPwChart"]:

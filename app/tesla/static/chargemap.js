@@ -53,7 +53,7 @@ if (range0 === "all") {
 const timeSel = { v: range0, from: cFrom0, to: cTo0 };
 let view = VIEWS[qs0.get("view")] ? qs0.get("view") : "energy";
 
-let map = null, heatmap = null, pickMark = null, selected = null, locations = [];
+let map = null, heatmap = null, pickMark = null, locations = [];
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -131,7 +131,6 @@ function pickNearest(ev) {
 }
 
 function selectLocation(loc) {
-  selected = loc;
   $("#sh-name").textContent = loc.name;
   $("#sh-city").textContent = loc.city || "—";
   $("#sh-sessions").textContent = loc.sessions;
@@ -143,7 +142,6 @@ function selectLocation(loc) {
   $("#sheet").classList.add("show");
 }
 function closeSheet() {
-  selected = null;
   hidePick();
   $("#backdrop").classList.remove("show");
   $("#sheet").classList.remove("show");

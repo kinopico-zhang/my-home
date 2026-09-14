@@ -192,7 +192,7 @@ def test_live_page_layout_bombproof(auth):
     assert "if (s.now_utc != null) serverSkew = s.now_utc - Date.now() / 1000;" in js
     assert "Date.now() / 1000 + serverSkew - s.started_utc" in js
     # 历史轨迹: 速度着色 (行程回放同套色阶) + 末端连线接到车当前位置
-    assert '<script src="/tesla/static/trackutil.js?v=1"></script>' in html
+    assert '<script src="/tesla/static/trackutil.js?v=8"></script>' in html
     assert "TrackUtil.speedLines(t.pts)" in js
     assert "TrackUtil.SPEED_COLORS[TrackUtil.speedBucket(" in js
     assert "tailLine.setPath([trackEnd, p])" in js

@@ -7,6 +7,12 @@ from tests.conftest import (seed_addresses, seed_car, seed_charge,
                             seed_charging)
 
 
+# 充电记录/统计页共用格式化拆去了 format.js: 页面片段断言把先加载的
+# format.js 一并拼进来查子串
+def _page_scripts(auth, *names):
+    return "".join(auth.get(f"/tesla/static/{name}").text for name in names)
+
+
 # ---------------------------------------------------------------- 转换语义 (repository)
 def test_session_fields_and_price(db):
     seed_addresses(db)
@@ -244,7 +250,7 @@ def test_session_detail_no_coords(auth, db):
 def test_charging_detail_nav_button(auth):
     """详情「导航到充电站」: 先弹选单让用户挑地图 App, 点一个只拉一个。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in [
         'id="nav-go"', "🧭 导航到充电站",
         'id="nav-bd"', 'id="nav-apps"', 'id="nav-cancel"',     # 选单
@@ -264,7 +270,7 @@ def test_charging_detail_nav_button(auth):
         assert frag in html, f"充电详情导航缺少 {frag}"
     # 不自动探测连环拉起: iOS 拉 scheme 前先弹「在 xx 中打开」确认框,
     # 确认前页面不切后台, 探测窗口一过就把装了的 App 连环拉起 (用户实测)
-    js = auth.get("/tesla/static/index.js?v=1").text
+    js = _page_scripts(auth, "format.js", "index.js")
     for gone in ["NAV_PROBE_MS", "visibilitychange", "uri.amap.com/navigation"]:
         assert gone not in js, f"自动探测链残留: {gone}"
     # 坐标换算库要先于页面脚本加载
@@ -368,7 +374,7 @@ def test_cost_patch_rounds_to_two_decimals(auth, db):
 def test_charging_page_single_column_and_lazy_chain(auth):
     """充电列表单列 (手机优先, 对齐行程页) + Chrome 懒加载修复 (装载后链式续载)。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in ['id="masonry"', "flex-direction: column", "PRELOAD_PX = 800",
                  'rootMargin: PRELOAD_PX + "px"',
                  "getBoundingClientRect().top < window.innerHeight + PRELOAD_PX",
@@ -381,7 +387,7 @@ def test_charging_page_single_column_and_lazy_chain(auth):
 def test_charging_page_unrecorded_cost_red(auth):
     """没记费用的充电记录红标醒目: 卡片红色"添加费用"胶囊 + 详情费用格红字。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in [
         '<button class="cs-cost none" data-cost>＋ 添加费用</button>',
         ".cs-cost.none {", "background: #e5484d",   # 红色实心胶囊
@@ -396,7 +402,7 @@ def test_charging_page_soc_axis_fixed_and_dense(auth):
     """SOC 轴固定 0-100% 量程: 标签按真实百分比定位 (贴边的 space-between 读起来像自适应);
     电量与费用并入一行, 收紧卡片纵向留白。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     assert "soc-lbl" not in html                 # 贴边标签行已删
     assert 'class="sa-lb"' in html               # 轴标签钉在真实位置
     assert "Math.min(it.start_soc, 93)" in html  # 左标签左缘 = 充电起点
@@ -408,7 +414,7 @@ def test_charging_page_soc_labels_merge_on_short_charges(auth):
     """短充电 (起止差 < 15%) 两端标签钉真实百分比会叠字: 并成一个 "起 → 终"
     标签居中钉在轨迹中点, 中点钳 15~85% (标签再宽也不出卡)。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     assert "it.end_soc - it.start_soc >= 15" in html   # 阈值: 起止差 ≥15% 仍钉两端
     assert "Math.min(Math.max((it.start_soc + it.end_soc) / 2, 15), 85)" in html
     assert "transform:translateX(-50%)" in html        # 合并标签按中心定位
@@ -474,7 +480,7 @@ def test_charging_sessions_filters_by_region(auth, db):
 def test_charging_page_time_menu_calendar_and_region_filter(auth):
     """顶栏时间下拉 (快捷档 + 自定义日历) + 筛选行省市区级联, 筛选写进 URL。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
@@ -513,7 +519,7 @@ def test_charging_sheet_grab_drag_close(auth):
     (用户实测拉不动), move/up 挂 window 级不捕获 —— 手指出界照样收,
     各端行为一致 (2026-09-13 修)。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in ['id="grab-zone"', "touch-action: none",
                  'window.addEventListener("pointermove", move)',
                  'window.addEventListener("pointerup", release)',
@@ -529,7 +535,7 @@ def test_charging_sheet_grab_drag_close(auth):
 def test_charging_page_cost_filter_menu(auth):
     """费用筛选下拉 (全部/已记录/未记录): 与类型筛选同款收起式, 写进 URL。"""
     html = auth.get("/tesla/charging").text
-    html += auth.get("/tesla/static/index.js?v=1").text
+    html += _page_scripts(auth, "format.js", "index.js")
     for frag in ['id="cost-menu"', 'id="cost-opts"', 'id="cost-lb"',
                  'data-v="recorded"', 'data-v="missing"', "已记录费用", "未记录费用",
                  "COST_LABELS", '$("#cost-opts").addEventListener',

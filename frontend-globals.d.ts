@@ -11,4 +11,11 @@ interface Navigator {
 interface Window {
   GCJ02: object;
   TrackUtil: object;
+  FormatUtil: object;     // format.js (三页共用格式化)
+  TripPlayback: object;   // trip-playback.js (行程播放纯逻辑)
 }
+
+// trip-playback.js 的 UMD 头在 node 分支 require("./trackutil.js"):
+// types:[] 排除了 @types/node, 这里补 require 的最小声明 (any 即可,
+// 精确类型走工厂内 import() 断言拿到)
+declare function require(moduleId: string): any;

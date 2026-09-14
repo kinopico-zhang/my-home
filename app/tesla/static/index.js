@@ -15,28 +15,13 @@ document.addEventListener("click", e => {
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const pad = n => String(n).padStart(2, "0");
+/* 页面共用格式化 (format.js 先加载): 顶部解构, 下文沿用裸名 */
+const { pad, fmtCardDate, fmtDur, num } = FormatUtil;
 
-/* "2026-09-07 23:50" → 本地 Date (服务端已转北京时间; 手动解析, 兼容 iOS Safari) */
-function parseLocal(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s || "");
-  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : new Date(s);
-}
-const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
-function fmtCardDate(s) {
-  const d = parseLocal(s);
-  return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEK[d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function fmtDur(min) {
-  if (min == null) return "—";
-  const h = Math.floor(min / 60), m = min % 60;
-  return h ? `${h}时${m ? m + "分" : ""}` : `${m}分钟`;   // 紧凑格式, 窄屏不折行
-}
 function fmtMinAxis(v) {
   if (v >= 60) { const h = Math.floor(v / 60), m = Math.round(v % 60); return m ? `${h}h${m}m` : `${h}h`; }
   return `${Math.round(v)}m`;
 }
-const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
 const money = v => v == null ? "—" : "¥" + Number(v).toFixed(2).replace(/\.?0+$/, "");
 
 async function getJSON(url) {
