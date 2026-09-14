@@ -94,7 +94,8 @@ class Track(MusicLibraryBase):
 
 
 class Playlist(MusicLibraryBase):
-    """播放列表 (Plex 同步过来的; 全量替换式, 本地不编辑)。"""
+    """播放列表: Plex 同步的 (is_local=False, 全量替换) + 应用内自建的
+    (is_local=True, 同步不动它们, 只有接口能增删)。"""
 
     __tablename__ = "playlists"
 
@@ -104,6 +105,7 @@ class Playlist(MusicLibraryBase):
     track_count: Mapped[int] = mapped_column(default=0)
     duration_seconds: Mapped[float] = mapped_column(default=0.0)
     plex_playlist_id: Mapped[int] = mapped_column(default=0)   # 源库 id (溯源/幂等)
+    is_local: Mapped[bool] = mapped_column(default=False)  # 应用内自建 (同步保留)
 
 
 class PlaylistItem(MusicLibraryBase):
@@ -227,6 +229,7 @@ _COLUMN_MIGRATIONS: Final[dict[str, dict[str, str]]] = {
                "search_keys": "TEXT NOT NULL DEFAULT ''"},
     "albums": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
     "artists": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
+    "playlists": {"is_local": "BOOLEAN NOT NULL DEFAULT 0"},
 }
 
 

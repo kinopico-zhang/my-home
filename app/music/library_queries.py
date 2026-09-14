@@ -82,11 +82,14 @@ def _artist_name_expression() -> ColumnElement[str]:
     return func.coalesce(func.nullif(Artist.name, ""), Artist.directory)
 
 
-def track_brief(track: Track, album_title: str) -> TrackBrief:
-    """曲目行 → API 模型 (可播性 / 语种分组在这里定)。"""
+def track_brief(track: Track, album_title: str,
+                artist_id: int = 0) -> TrackBrief:
+    """曲目行 → API 模型 (可播性 / 语种分组在这里定)。
+
+    artist_id 是专辑的艺人 (长按菜单「进入艺人主页」用; 默认 0 = 不给)。"""
     return TrackBrief(
         track_id=track.id, title=track.title, artist=track.artist,
-        album_id=track.album_id, album_title=album_title,
+        album_id=track.album_id, album_title=album_title, artist_id=artist_id,
         track_number=track.track_number, disc_number=track.disc_number,
         duration_seconds=track.duration_seconds,
         file_format=track.file_format,
@@ -140,7 +143,7 @@ def album_page(session: Session, album_id: int) -> AlbumPage | None:
         select(Track).where(Track.album_id == album_id)
         .order_by(Track.disc_number, Track.track_number, Track.id)).scalars()
     return AlbumPage(album=album_card(album, artist_name),
-                     tracks=[track_brief(track, album.title)
+                     tracks=[track_brief(track, album.title, album.artist_id)
                              for track in tracks])
 
 
@@ -187,15 +190,16 @@ def list_tracks(session: Session, language: str = "全部", offset: int = 0,
                 limit: int = 100) -> TrackPageList:
     """全曲列表 (最近添加的专辑在前; 歌曲视图用, 必须分页)。"""
     condition = _script_condition(language)
-    statement = (select(Track, Album.title)
+    statement = (select(Track, Album.title, Album.artist_id)
                  .join(Album, Track.album_id == Album.id)
                  .order_by(*_TRACK_ORDER).offset(offset).limit(limit))
     total_statement = select(func.count()).select_from(Track)
     if condition is not None:
         statement = statement.where(condition)
         total_statement = total_statement.where(condition)
-    tracks = [track_brief(track, album_title)
-              for track, album_title in session.execute(statement)]
+    tracks = [track_brief(track, album_title, artist_id)
+              for track, album_title, artist_id
+              in session.execute(statement)]
     total = session.scalar(total_statement) or 0
     return TrackPageList(tracks=tracks, total_count=total,
                          offset=offset, limit=limit)
@@ -206,7 +210,8 @@ def list_playlists(session: Session) -> PlaylistPageList:
     playlists = [PlaylistBrief(
         playlist_id=playlist.id, name=playlist.name,
         track_count=playlist.track_count,
-        duration_seconds=playlist.duration_seconds)
+        duration_seconds=playlist.duration_seconds,
+        is_local=playlist.is_local)
         for playlist in session.execute(
             select(Playlist).order_by(Playlist.position, Playlist.id)).scalars()]
     return PlaylistPageList(playlists=playlists)
@@ -217,9 +222,9 @@ def playlist_page(session: Session, playlist_id: int) -> PlaylistPage | None:
     playlist = session.get(Playlist, playlist_id)
     if playlist is None:
         return None
-    tracks = [track_brief(track, album_title)
-              for track, album_title in session.execute(
-                  select(Track, Album.title)
+    tracks = [track_brief(track, album_title, artist_id)
+              for track, album_title, artist_id in session.execute(
+                  select(Track, Album.title, Album.artist_id)
                   .join(PlaylistItem, PlaylistItem.track_id == Track.id)
                   .join(Album, Track.album_id == Album.id)
                   .where(PlaylistItem.playlist_id == playlist_id)
@@ -228,7 +233,8 @@ def playlist_page(session: Session, playlist_id: int) -> PlaylistPage | None:
         playlist=PlaylistBrief(
             playlist_id=playlist.id, name=playlist.name,
             track_count=playlist.track_count,
-            duration_seconds=playlist.duration_seconds),
+            duration_seconds=playlist.duration_seconds,
+            is_local=playlist.is_local),
         tracks=tracks)
 
 
@@ -264,13 +270,14 @@ def recent_plays(session: Session, user_uuid: str, limit: int = 30
                 ) -> list[TrackBrief]:
     """最近播放 (本人的, 时刻倒序; 同一首只一行, 排的是最近那次)。"""
     rows = session.execute(
-        select(Track, Album.title)
+        select(Track, Album.title, Album.artist_id)
         .join(PlayStat, PlayStat.track_id == Track.id)
         .join(Album, Track.album_id == Album.id)
         .where(PlayStat.user_uuid == user_uuid)
         .order_by(PlayStat.last_played_at.desc(), PlayStat.track_id)
         .limit(limit))
-    return [track_brief(track, album_title) for track, album_title in rows]
+    return [track_brief(track, album_title, artist_id)
+            for track, album_title, artist_id in rows]
 
 
 def _matching_lyric_line(lyrics: str, query: str) -> str:
@@ -316,15 +323,15 @@ def search_library(session: Session, query: str,
     album_condition = _album_language_condition(language)
 
     track_statement = (
-        select(Track, Album.title)
+        select(Track, Album.title, Album.artist_id)
         .join(Album, Track.album_id == Album.id)
         .where(_text_match(Track.search_keys, Track.title, Track.artist,
                            patterns=patterns))
         .order_by(*_TRACK_ORDER).limit(SEARCH_TRACK_LIMIT))
     if script_condition is not None:
         track_statement = track_statement.where(script_condition)
-    result.tracks = [track_brief(track, album_title)
-                     for track, album_title in
+    result.tracks = [track_brief(track, album_title, artist_id)
+                     for track, album_title, artist_id in
                      session.execute(track_statement)]
 
     album_statement = (
@@ -350,7 +357,7 @@ def search_library(session: Session, query: str,
             .limit(SEARCH_ARTIST_LIMIT)).scalars()]
 
     lyric_statement = (
-        select(Track, Album.title)
+        select(Track, Album.title, Album.artist_id)
         .join(Album, Track.album_id == Album.id)
         .where(Track.lyrics != "",
                _any_like(Track.lyrics, patterns))
@@ -358,7 +365,8 @@ def search_library(session: Session, query: str,
     if script_condition is not None:
         lyric_statement = lyric_statement.where(script_condition)
     result.lyric_hits = [
-        LyricHit(track=track_brief(track, album_title),
+        LyricHit(track=track_brief(track, album_title, artist_id),
                  line_text=_matching_lyric_line(track.lyrics, query))
-        for track, album_title in session.execute(lyric_statement)]
+        for track, album_title, artist_id
+        in session.execute(lyric_statement)]
     return result

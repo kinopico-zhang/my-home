@@ -18,7 +18,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from .library_database import Playlist, PlaylistItem, Track
-from .schemas import PlaylistSyncResponse
+from .schemas import PlaylistBrief, PlaylistSyncResponse
 
 DEFAULT_PLEX_LIBRARY_DATABASE = (
     os.environ.get("MYTESLA_PLEX_LIBRARY_DB")
@@ -82,14 +82,20 @@ def read_plex_playlists(plex_database_path: Path) -> list[PlexPlaylist]:
 
 def sync_playlists(session: Session,
                    plex_playlists: list[PlexPlaylist]) -> PlaylistSyncResponse:
-    """全量替换本地播放列表两表; 对不上本库的曲目跳过并计数。
+    """全量替换 Plex 来源的播放列表两表; 应用内自建的 (is_local) 不动,
+    对不上本库的曲目跳过并计数。
 
     同一曲目在一表里出现两次 (Plex 允许) 保留两次 —— 播放列表本就是有序可重复的。"""
     result = PlaylistSyncResponse()
     track_ids = {path: track_id for track_id, path in
                  session.execute(select(Track.id, Track.file_path))}
-    session.execute(delete(PlaylistItem))
-    session.execute(delete(Playlist))
+    # 只清 Plex 来源的; 本地自建列表 (position=0 排最前) 原样保留
+    plex_ids = list(session.execute(
+        select(Playlist.id).where(Playlist.is_local.is_(False))).scalars())
+    if plex_ids:
+        session.execute(
+            delete(PlaylistItem).where(PlaylistItem.playlist_id.in_(plex_ids)))
+        session.execute(delete(Playlist).where(Playlist.id.in_(plex_ids)))
     for position, plex_playlist in enumerate(plex_playlists, start=1):
         member_track_ids: list[tuple[int, int]] = []
         for member_position, member_path in enumerate(plex_playlist.member_paths):
@@ -122,4 +128,64 @@ def _refresh_playlist_aggregates(session: Session) -> None:
             func.sum(Track.duration_seconds), 0.0)).where(
             PlaylistItem.playlist_id == Playlist.id,
             PlaylistItem.track_id == Track.id).scalar_subquery()))
+    session.commit()
+
+
+# ------------------------------------------------ 本地播放列表 (应用内自建)
+
+def _playlist_brief(playlist: Playlist) -> PlaylistBrief:
+    return PlaylistBrief(playlist_id=playlist.id, name=playlist.name,
+                         track_count=playlist.track_count,
+                         duration_seconds=playlist.duration_seconds,
+                         is_local=playlist.is_local)
+
+
+def create_local_playlist(session: Session, name: str) -> PlaylistBrief:
+    """新建空的本地播放列表 (position=0: 在清单里排在 Plex 同步列表前面)。
+
+    名字撞车 (不管是撞 Plex 的还是撞本地建的) 报 ValueError, 由路由层转 409。"""
+    cleaned = name.strip()
+    if not cleaned:
+        raise ValueError("播放列表的名字不能是空的")
+    if session.scalar(select(Playlist).where(Playlist.name == cleaned)) is not None:
+        raise ValueError("已经有叫这个名字的播放列表了")
+    playlist = Playlist(name=cleaned, position=0, plex_playlist_id=0,
+                        is_local=True)
+    session.add(playlist)
+    session.commit()
+    return _playlist_brief(playlist)
+
+
+def add_track_to_local_playlist(session: Session, playlist_id: int,
+                                track_id: int) -> PlaylistBrief:
+    """往本地列表末尾加一首 (可重复加; Plex 同步的列表拒绝改, 报 ValueError)。"""
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise KeyError(playlist_id)
+    if not playlist.is_local:
+        raise ValueError("Plex 同步的播放列表以 Plex 为准, 不能在这里改")
+    if session.get(Track, track_id) is None:
+        raise KeyError(track_id)
+    next_position = (session.scalar(select(func.max(PlaylistItem.position))
+                                    .where(PlaylistItem.playlist_id
+                                           == playlist_id)) or 0) + 1
+    session.add(PlaylistItem(playlist_id=playlist_id, track_id=track_id,
+                             position=next_position))
+    playlist.track_count += 1
+    session.commit()
+    _refresh_playlist_aggregates(session)
+    session.expire(playlist, ["track_count", "duration_seconds"])
+    return _playlist_brief(playlist)   # 聚合 SQL 刚更新过, 定向失效取库里的新值
+
+
+def delete_local_playlist(session: Session, playlist_id: int) -> None:
+    """删掉本地列表 (连成员一起); Plex 同步的同样拒绝。"""
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise KeyError(playlist_id)
+    if not playlist.is_local:
+        raise ValueError("Plex 同步的播放列表以 Plex 为准, 不能在这里删")
+    session.execute(
+        delete(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id))
+    session.delete(playlist)
     session.commit()

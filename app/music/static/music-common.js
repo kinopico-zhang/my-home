@@ -78,13 +78,15 @@ function describeDuration(totalSeconds, trackCount) {
 }
 
 // ---------- 图标 (播放器与列表共用) ----------
-const ICON_PLAY = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+// 三角一律包围盒中心对准 24 格的正中 (x=12): 图标光心 = 按键中心,
+// 播放↔暂停切换不左右跳位 (2026-09-14 前的三角右偏 2 格, 一切换肉眼可见地歪)。
+const ICON_PLAY = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6.5 5.5v13l11-6.5z" fill="currentColor"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.4z" fill="currentColor"/></svg>';
 // 全屏播放页的大号播放/暂停 (Apple Music 风: 素图标, 无圆底)
-const ICON_PLAY_BIG = '<svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M8 4.5v15l12-7.5z" fill="currentColor"/></svg>';
+const ICON_PLAY_BIG = '<svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M6 4.5v15l12-7.5z" fill="currentColor"/></svg>';
 const ICON_PAUSE_BIG = '<svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z" fill="currentColor"/></svg>';
 const ICON_BARS = '<span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>';
 // 下载 (曲目行右侧; 已下载时 music.js 换成勾)
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17.5v1.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-const ICON_ACTION_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+const ICON_ACTION_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6.5 5.5v13l11-6.5z" fill="currentColor"/></svg>';
 const ICON_ACTION_SHUFFLE = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
