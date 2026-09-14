@@ -565,8 +565,6 @@ main {
 .picker-row small { display: block; font-size: 12px; color: var(--ink-2); }
 .picker-del { color: var(--ink-3); padding: 7px; flex-shrink: 0; }
 .picker-del:active { color: #e5484d; }
-.picker-sync { color: var(--ink-3); font-size: 11px; border: 1px solid var(--ink-3);
-  border-radius: 4px; padding: 2px 5px; flex-shrink: 0; }
 .picker-new {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 18px calc(12px + env(safe-area-inset-bottom));
@@ -611,7 +609,6 @@ main {
       <div class="menu">
         <button id="stats-link">统计</button>
         <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
-        <button id="sync-playlists" title="把 Plex 里建的播放列表同步过来 (服务启动时也会自动同步)">同步 Plex 播放列表</button>
         <a href="/music/changelog">更新日志</a>
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
@@ -702,6 +699,6 @@ main {
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/music-common.js?v=3"></script>
 <script src="/music/static/music-player.js?v=3"></script>
-<script src="/music/static/music.js?v=7"></script>
+<script src="/music/static/music.js?v=8"></script>
 </body>
 </html>

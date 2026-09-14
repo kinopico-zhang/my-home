@@ -499,7 +499,7 @@ function openPlaylistPicker(track) {
   renderPlaylistPicker();
 }
 
-/** 列表清单 (自建的排前面可删; Plex 同步的带标记); 空态给新建引导。 */
+/** 列表清单 (新建的排前面; 全都能加歌也都能删); 空态给新建引导。 */
 async function renderPlaylistPicker() {
   const list = $("#picker-list");
   list.innerHTML = listPlaceholderHTML("加载中…");
@@ -519,10 +519,8 @@ async function renderPlaylistPicker() {
       <span class="pl-icon">♫</span>
       <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
         <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
-      ${playlist.is_local
-        ? `<span class="picker-del" data-picker-delete="${playlist.playlist_id}"
-              role="button" tabindex="-1" aria-label="删除列表">✕</span>`
-        : `<span class="picker-sync">同步</span>`}
+      <span class="picker-del" data-picker-delete="${playlist.playlist_id}"
+            role="button" tabindex="-1" aria-label="删除列表">✕</span>
     </button>`).join("");
 }
 
@@ -614,7 +612,7 @@ async function loadHomePlaylists() {
   if (!element || currentRoute().view !== "home") return;   // 已切走
   element.innerHTML = playlists && playlists.length
     ? playlists.map(playlistRowHTML).join("")
-    : listPlaceholderHTML("还没有播放列表 (菜单里可从 Plex 同步)");
+    : listPlaceholderHTML("还没有播放列表; 长按任意歌曲就能新建一个");
 }
 
 async function loadHomeRecent() {
@@ -1233,18 +1231,6 @@ function bindGlobalEvents() {
   $("#stats-link").addEventListener("click", () => {
     closeBrandMenu();
     navigate("stats");
-  });
-  $("#sync-playlists").addEventListener("click", async () => {
-    closeBrandMenu();
-    try {
-      const result = await fetchJSON("/music/api/playlists/sync",
-                                    { method: "POST" });
-      toast(`同步了 ${result.playlists_synced} 个播放列表`
-        + (result.tracks_skipped ? `, ${result.tracks_skipped} 首没对上` : ""));
-      if (currentRoute().view === "home") loadHomePlaylists();  // 主页当场刷新
-    } catch (error) {
-      toast(error.message);
-    }
   });
   $("#logout").addEventListener("click", async () => {
     try { await fetch("/music/api/logout", { method: "POST" }); }

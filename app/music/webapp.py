@@ -24,7 +24,7 @@ from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
                       LibraryStats, LyricsResponse, MusicStatusResponse,
                       PlayRecordRequest, PlaylistBrief, PlaylistCreateRequest,
-                      PlaylistPage, PlaylistPageList, PlaylistSyncResponse,
+                      PlaylistPage, PlaylistPageList,
                       PlaylistTrackRequest, RecentPlaysResponse,
                       RescanResponse, SearchResult, TrackPageList)
 
@@ -160,7 +160,7 @@ def music_rescan(request: Request,
 def music_playlists(request: Request,
                     users: Session = Depends(database.get_users_db),
                     library: Session = Depends(get_db)) -> PlaylistPageList:
-    """播放列表清单 (Plex 同步过来的)。"""
+    """播放列表清单 (按排序位, 新建的在前)。"""
     _require_user(request, users)
     return library_queries.list_playlists(library)
 
@@ -183,10 +183,10 @@ def music_playlist_create(request: Request,
                           body: PlaylistCreateRequest,
                           users: Session = Depends(database.get_users_db),
                           library: Session = Depends(get_db)) -> PlaylistBrief:
-    """新建本地播放列表 (应用内自建, Plex 同步不覆盖; 名字撞车 409)。"""
+    """新建播放列表 (应用内自管; 名字撞车 409)。"""
     _require_user(request, users)
     try:
-        return library_playlists.create_local_playlist(library, body.name)
+        return library_playlists.create_playlist(library, body.name)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
@@ -197,8 +197,7 @@ def music_playlist_add_track(request: Request,
                              body: PlaylistTrackRequest,
                              users: Session = Depends(database.get_users_db),
                              library: Session = Depends(get_db)) -> PlaylistBrief:
-    """往播放列表末尾加一首 (长按曲目的「添加到播放列表」; Plex 同步的
-    列表也行 —— 加进去的歌下次同步时保留)。"""
+    """往播放列表末尾加一首 (长按曲目的「添加到播放列表」)。"""
     _require_user(request, users)
     try:
         return library_playlists.add_track_to_playlist(
@@ -212,30 +211,13 @@ def music_playlist_delete(request: Request,
                           playlist_id: int,
                           users: Session = Depends(database.get_users_db),
                           library: Session = Depends(get_db)) -> OkResponse:
-    """删掉本地播放列表 (连成员); Plex 同步的列表不在这边删 (会回来)。"""
+    """删掉播放列表 (连成员)。"""
     _require_user(request, users)
     try:
-        library_playlists.delete_local_playlist(library, playlist_id)
+        library_playlists.delete_playlist(library, playlist_id)
     except KeyError as exc:
         raise HTTPException(404, "没有这个播放列表") from exc
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc
     return OkResponse(ok=True)
-
-
-@api.post("/playlists/sync", response_model=PlaylistSyncResponse)
-def music_playlist_sync(request: Request,
-                        users: Session = Depends(database.get_users_db),
-                        library: Session = Depends(get_db)
-                        ) -> PlaylistSyncResponse:
-    """从 Plex 同步播放列表 (只读 Plex 库; Plex 不在就 503, 本地列表不受影响)。"""
-    _require_user(request, users)
-    try:
-        plex_playlists = library_playlists.read_plex_playlists(
-            Path(library_playlists.DEFAULT_PLEX_LIBRARY_DATABASE))
-    except FileNotFoundError as exc:
-        raise HTTPException(503, "找不到 Plex (以后可能被下掉), 已同步的列表还能用") from exc
-    return library_playlists.sync_playlists(library, plex_playlists)
 
 
 @api.get("/albums", response_model=AlbumPageList)

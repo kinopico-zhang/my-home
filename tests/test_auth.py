@@ -349,7 +349,7 @@ def test_unauthed_apis_return_401_json(client):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
-    for method, path in ((client.post, "/music/api/playlists/sync"),
+    for method, path in ((client.post, "/music/api/playlists"),
                          (client.post, "/music/api/plays"),
                          (client.post, "/bookkeeping/api/sync")):
         r = method(path, json={"entries": []})
@@ -672,7 +672,7 @@ def test_mymusic_topbar_is_own_app(auth):
     assert 'class="logout-row" id="logout"' in html
     assert "重新扫描曲库" in html
     assert 'id="stats-link"' in html            # 统计收进下拉菜单
-    assert 'id="sync-playlists"' in html        # Plex 播放列表手动同步入口
+    assert 'id="sync-playlists"' not in html   # Plex 同步入口已撤 (2026-09-15)
     assert '<button id="search-btn"' in html    # 顶栏最右是搜索不是刷新
     assert 'id="refresh-btn"' not in html
     assert 'id="tabbar"' not in html            # 底栏已撤
