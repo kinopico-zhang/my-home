@@ -14,12 +14,13 @@ from typing import Callable
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 import app.main as m
-from app import config
+from app import account_store, config
 from app.music import service
-from app.music.library_database import (Album, Artist, Playlist, Track,
-                                        session_factory)
+from app.music.library_database import (Album, Artist, PlayStat, Playlist,
+                                        Track, session_factory)
 from app.music.library_languages import (detect_script, language_for_script,
                                          scripts_for_language)
 from app.music.library_media import parse_range_header
@@ -781,18 +782,52 @@ def test_music_stats_page_wiring():
     assert 'navigate("stats")' in js                      # 菜单按钮直通统计页
 
 
-def test_music_playlists_page_wiring():
-    """播放列表接线: 资料库第五段 + 详情路由 + 菜单同步按钮 (E2E 再验真数据)。"""
+def test_music_home_page_wiring():
+    """主页接线: 页头主页/资料库页签 + 播放列表/最近播放两段 +
+    播放列表详情路由 (E2E 再验真数据)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
-    assert 'id="sync-playlists"' in html
-    assert "playlist-row" in html          # 行样式在
+    assert 'id="view-tabs"' in html
+    assert 'data-view-tab="home"' in html and 'data-view-tab="library"' in html
+    assert 'id="sync-playlists"' in html          # 主页空列表的提示指向它
+    assert "playlist-row" in html                  # 行样式在
     js = (static / "music.js").read_text(encoding="utf-8")
-    assert '["playlists", "播放列表"]' in js
+    assert "function renderHomeView()" in js
+    assert '"/music/api/plays/recent?limit=20"' in js
+    assert '"/music/api/playlists"' in js          # 主页播放列表段
     assert 'if (name === "playlist" && argument)' in js
     assert "function renderPlaylistView(" in js
-    assert '"/music/api/playlists"' in js
     assert "playlistRowHTML" in js
+    # 默认进主页; 旧段名 (recent/playlists) 收窄后回落专辑
+    assert 'history.replaceState(null, "", "#home")' in js
+    assert '["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"]' in js
+
+
+def test_music_downloads_wiring():
+    """下载接线: 纯逻辑模块 (node 直测) + SW 拦流 + 已下载段 + 能力门控。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    js = (static / "music.js").read_text(encoding="utf-8")
+    assert "downloadsSupported" in js and "createDownloads" in js
+    assert '"/music/sw.js"' in js                  # SW 注册
+    assert "isSecureContext" in js                 # 明文 HTTP 整个功能收起
+    assert 'segment === "downloads"' in js         # 已下载段不走接口分页
+    assert "data-download-track" in js             # 曲目行下载标
+    downloads_js = (static / "downloads.js").read_text(encoding="utf-8")
+    assert "/music/media/stream/" in downloads_js  # 缓存键 = 音频流地址
+    sw = (static / "sw.js").read_text(encoding="utf-8")
+    assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
+    assert "caches.open" in sw and "206" in sw
+    assert "music-shell" in sw                     # 应用壳也进缓存 (断网打得开)
+    assert "clients.claim" in sw                   # 装完立刻接管已开的页面
+
+
+def test_music_service_worker_endpoint(client):
+    """SW 脚本: 无需登录 200 (SW 更新检查不带 cookie), JS 类型, 可缓存校验。"""
+    response = client.get("/music/sw.js")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/javascript")
+    assert "music-downloads-v1" in response.text
+    assert response.headers["cache-control"] == "no-cache"
 
 
 def test_music_rescan_full_flow(auth, tmp_path):
@@ -1018,6 +1053,53 @@ def test_playlist_endpoints(auth, tmp_path, monkeypatch):
     assert page["playlist"]["track_count"] == 2
     assert page["tracks"][0]["album_title"] == "甲"
     assert auth.get("/music/api/playlists/99999").status_code == 404
+
+
+def test_record_play_counts_and_dedups():
+    """查询层: user+track 一行, 重播只加次数; 曲目不在库里不记。"""
+    _seed_library()
+    with session_factory()() as session:
+        assert library_queries.record_play(session, "u-1", 1) is True
+        assert library_queries.record_play(session, "u-1", 1) is True
+        assert library_queries.record_play(session, "u-1", 999) is False
+        stat = session.execute(select(PlayStat)).scalar_one()
+        assert stat.play_count == 2
+        assert [t.title for t in
+                library_queries.recent_plays(session, "u-1")] == ["曲A"]
+        assert library_queries.recent_plays(session, "别人") == []
+
+
+def test_play_record_endpoints_per_user(auth, usersdb):
+    """播放记录接口: 重播把曲子顶回最前, 账号之间互不可见, 没登录 401。"""
+    _seed_library()
+    anon = TestClient(m.app)
+    assert anon.post("/music/api/plays",
+                     json={"track_id": 1}).status_code == 401
+    assert anon.get("/music/api/plays/recent").status_code == 401
+
+    assert auth.post("/music/api/plays", json={"track_id": 1}).status_code == 200
+    time.sleep(0.002)
+    assert auth.post("/music/api/plays", json={"track_id": 2}).status_code == 200
+    time.sleep(0.002)
+    assert auth.post("/music/api/plays", json={"track_id": 1}).status_code == 200
+    assert auth.post("/music/api/plays",
+                     json={"track_id": 9999}).status_code == 404
+    recent = auth.get("/music/api/plays/recent").json()["tracks"]
+    assert [t["title"] for t in recent] == ["曲A", "曲B"]   # 最近那次排前
+    assert recent[0]["album_title"] == "甲"
+
+    # 另一个账号: 各记各的, 看不见管理员的记录
+    account_store.create_user(usersdb, "试听乙", "password123")
+    yi = TestClient(m.app)
+    assert yi.post("/api/login",
+                   json={"user": "试听乙", "password": "password123"}
+                   ).status_code == 200
+    assert yi.get("/music/api/plays/recent").json()["tracks"] == []
+    assert yi.post("/music/api/plays", json={"track_id": 3}).status_code == 200
+    assert [t["title"] for t in
+            yi.get("/music/api/plays/recent").json()["tracks"]] == ["Hello"]
+    assert [t["title"] for t in
+            auth.get("/music/api/plays/recent").json()["tracks"]] == ["曲A", "曲B"]
 
 
 def test_startup_chain_syncs_playlists_and_survives_plex_gone(

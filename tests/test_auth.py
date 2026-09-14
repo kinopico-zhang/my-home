@@ -331,6 +331,7 @@ def test_unauthed_apis_return_401_json(client):
                  "/tesla/changelog/api/entries",
                  "/music/api/albums", "/music/api/status",
                  "/music/api/playlists", "/music/api/playlists/1",
+                 "/music/api/plays/recent",
                  "/music/changelog/api/entries",
                  "/bookkeeping/changelog/api/entries",
                  "/api/me", "/api/account/name", "/accounts/api/users"):
@@ -338,6 +339,7 @@ def test_unauthed_apis_return_401_json(client):
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
     for method, path in ((client.post, "/music/api/playlists/sync"),
+                         (client.post, "/music/api/plays"),
                          (client.post, "/bookkeeping/api/sync")):
         r = method(path, json={"entries": []})
         assert r.status_code == 401

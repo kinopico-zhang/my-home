@@ -93,6 +93,15 @@ header {
 }
 #search-btn:active { background: var(--surface-3); }
 
+/* ---------- 主页/资料库页签 (header 第二行, 只在两个根视图亮) ---------- */
+#view-tabs { max-width: 860px; margin: 9px auto 0; display: flex; justify-content: center; }
+.vt-track { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 2px; }
+.vt-track button {
+  min-width: 110px; padding: 5px 18px; border-radius: 7px;
+  font-size: 13px; font-weight: 500; color: var(--ink-2);
+}
+.vt-track button.on { background: var(--surface-3); color: var(--ink-1); font-weight: 600; }
+
 /* ---------- 扫描进度条 ---------- */
 #scan-strip {
   display: flex; align-items: center; gap: 8px;
@@ -221,6 +230,16 @@ main {
 }
 .t-time { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
+/* 下载标 (曲目行右侧, 点按 = 下载; 已下载变勾; 明文 HTTP 下整列不渲染) */
+.t-dl {
+  width: 26px; height: 26px; flex-shrink: 0; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--ink-3); border-radius: 50%; margin: -4px -6px -4px 0;
+}
+.t-dl:active { color: var(--ink-1); background: var(--surface-2); }
+.t-dl.done { color: var(--ink-1); }
+.dl-pct { font-size: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
 /* 播放中的动条 (替掉序号) */
 .bars { display: none; align-items: flex-end; gap: 2px; height: 14px; }
 .bars i { width: 3px; background: var(--accent); border-radius: 1px;
@@ -316,6 +335,20 @@ main {
   box-shadow: 0 10px 34px rgba(0,0,0,.55);
 }
 .playlist-row .chev { color: var(--ink-3); font-size: 18px; }
+.pl-icon.sm { width: 44px; height: 44px; font-size: 18px; border-radius: 8px; }
+
+/* ---------- 已下载栏 ---------- */
+.dl-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px 0; text-align: left; border-bottom: 1px solid var(--hairline);
+}
+.dl-row:active { background: rgba(255,255,255,.04); }
+.dl-row.busy { opacity: .6; }
+.dl-state { font-size: 12px; color: var(--ink-3); flex-shrink: 0;
+            font-variant-numeric: tabular-nums; }
+.dl-remove {
+  font-size: 13px; color: var(--accent); padding: 6px 8px; flex-shrink: 0;
+}
 
 /* ---------- 迷你播放条 ---------- */
 #mini-player {
@@ -345,7 +378,7 @@ main {
 #mini-player > button { padding: 10px; color: var(--ink-1); flex-shrink: 0; }
 #mini-play { margin-right: 2px; }
 
-/* ---------- 全屏播放页 ---------- */
+/* ---------- 全屏播放页 (Apple Music 布局: 顶部左标题右圆钮, 中封面) ---------- */
 #full-player {
   position: fixed; inset: 0; z-index: 90; background: #000;
   display: flex; flex-direction: column;
@@ -355,12 +388,25 @@ main {
 .fp-bg { position: absolute; inset: -60px; overflow: hidden; }
 .fp-bg img { width: 100%; height: 100%; object-fit: cover;
              filter: blur(70px) brightness(.38) saturate(1.4); }
+#full-player.lyrics .fp-bg img { filter: blur(70px) brightness(.22) saturate(1.35); }
 .fp-top {
-  position: relative; display: flex; align-items: center; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top) + 12px) 18px 0;
+  position: relative; display: flex; align-items: center; gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 0;
 }
-.fp-top button { color: var(--ink-1); padding: 6px; opacity: .9; }
-.fp-title-sm { font-size: 12px; color: var(--ink-2); font-weight: 600; }
+.fp-top > button { color: var(--ink-1); padding: 6px; opacity: .9; flex-shrink: 0; }
+.fp-now { flex: 1; min-width: 0; }
+.fp-now b { display: block; font-size: 17px; font-weight: 700;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fp-now small { display: block; font-size: 13px; color: var(--ink-2); margin-top: 1px;
+                overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fp-round {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid var(--hairline); color: var(--ink-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600;
+}
+.fp-round:active { color: var(--ink-1); border-color: var(--ink-2); }
+.fp-round.on { color: var(--accent); border-color: var(--accent); }
 .fp-body {
   position: relative; flex: 1; min-height: 0;
   display: flex; align-items: center; justify-content: center;
@@ -371,34 +417,27 @@ main {
 #fp-art { width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
           background: var(--surface-2); box-shadow: 0 18px 50px rgba(0,0,0,.6); }
 #fp-lyrics {
-  position: absolute; inset: 0; overflow-y: auto;
+  position: absolute; inset: 0; overflow-y: auto; z-index: 2;
   -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
   mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
-  padding: 30% 28px; scroll-behavior: smooth;
+  padding: 30% 28px;
+}
+#lyrics-resume {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 3; padding: 7px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--ink-1);
+  background: rgba(44,44,46,.9); border: 1px solid var(--hairline);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
 }
 .lyrics-line {
-  font-size: 19px; font-weight: 600; color: var(--ink-3);
-  padding: 9px 0; line-height: 1.35; text-align: left;
-  transition: color .25s, font-size .25s;
+  font-size: 22px; font-weight: 700; color: rgba(255,255,255,.36);
+  padding: 12px 0; line-height: 1.32; text-align: left;
+  transition: color .25s;
 }
-.lyrics-line.active { color: var(--ink-1); font-size: 22px; }
+.lyrics-line.active { color: #fff; font-size: 25px; }
 .lyrics-empty { position: absolute; inset: 0; display: flex; align-items: center;
                 justify-content: center; color: var(--ink-3); }
-.fp-info {
-  position: relative; display: flex; align-items: flex-start; gap: 10px;
-  padding: 0 28px;
-}
-.fp-titles { flex: 1; min-width: 0; }
-.fp-titles b { display: block; font-size: 18px; overflow: hidden;
-               white-space: nowrap; text-overflow: ellipsis; }
-.fp-titles small { display: block; font-size: 14px; color: var(--ink-2); margin-top: 2px;
-                   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#fp-lyrics-btn {
-  font-size: 13px; font-weight: 600; color: var(--ink-2);
-  border: 1px solid var(--hairline); border-radius: 999px;
-  padding: 4px 12px; margin-top: 4px;
-}
-#fp-lyrics-btn.on { color: var(--accent); border-color: var(--accent); }
 .fp-scrub { position: relative; padding: 14px 28px 0; }
 #fp-scrub { width: 100%; appearance: none; -webkit-appearance: none;
             height: 22px; background: none; }
@@ -415,15 +454,10 @@ main {
             padding: 2px 28px 0; }
 .fp-controls {
   position: relative; display: flex; align-items: center; justify-content: center;
-  gap: 34px; padding: 18px 0 12px;
+  gap: 38px; padding: 18px 0 12px;
 }
 .fp-controls > button { color: var(--ink-1); padding: 6px; }
-#fp-play {
-  width: 64px; height: 64px; border-radius: 50%; background: var(--ink-1);
-  color: #000; display: flex; align-items: center; justify-content: center;
-  padding: 0;
-}
-#fp-play:active { transform: scale(.94); }
+#fp-play:active { opacity: .6; }
 #fp-shuffle, #fp-repeat { color: var(--ink-3); }
 #fp-shuffle.on, #fp-repeat.on { color: var(--ink-1); }
 #fp-repeat.one::after {
@@ -499,6 +533,12 @@ main {
     </details>
     <button id="search-btn" aria-label="搜索"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   </div>
+  <div id="view-tabs" hidden>
+    <div class="vt-track">
+      <button data-view-tab="home">主页</button>
+      <button data-view-tab="library">资料库</button>
+    </div>
+  </div>
 </header>
 
 <div id="scan-strip" hidden><span class="dot"></span><span id="scan-text">曲库扫描中</span></div>
@@ -519,16 +559,14 @@ main {
   <div class="fp-bg"><img id="fp-bg-img" alt=""></div>
   <div class="fp-top">
     <button id="fp-close" aria-label="收起播放页"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 9.5 12 15.5 18 9.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    <span class="fp-title-sm" id="fp-album-title"></span>
-    <button id="fp-queue-btn" aria-label="播放队列"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 6h16M4 11h10M4 16h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 13.5v6l4-3z" fill="currentColor"/></svg></button>
+    <div class="fp-now"><b id="fp-title"></b><small id="fp-artist"></small></div>
+    <button id="fp-queue-btn" class="fp-round" aria-label="播放队列"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 6h16M4 11h10M4 16h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 13.5v6l4-3z" fill="currentColor"/></svg></button>
+    <button id="fp-lyrics-btn" class="fp-round" aria-label="歌词">词</button>
   </div>
   <div class="fp-body">
     <div id="fp-art-wrap"><img id="fp-art" alt=""></div>
     <div id="fp-lyrics" hidden></div>
-  </div>
-  <div class="fp-info">
-    <div class="fp-titles"><b id="fp-title"></b><small id="fp-artist"></small></div>
-    <button id="fp-lyrics-btn" aria-label="歌词">词</button>
+    <button id="lyrics-resume" hidden>回到当前句</button>
   </div>
   <div class="fp-scrub">
     <input type="range" id="fp-scrub" min="0" max="1000" step="1" value="0" aria-label="进度">
@@ -550,22 +588,14 @@ main {
   <div class="sheet-head"><b>播放队列</b><button id="queue-close">完成</button></div>
   <div id="queue-list"></div>
 </div>
-      <div class="menu">
-        <button id="stats-link">统计</button>
-        <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
-        <button id="sync-playlists" title="把 Plex 里建的播放列表同步过来 (服务启动时也会自动同步)">同步 Plex 播放列表</button>
-        <a href="/music/changelog">更新日志</a>
-        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
-      </div>
-    </details>
-    <button id="search-btn" aria-label="搜索"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
 
 <div id="toast" hidden></div>
 
 <script src="/music/static/lyrics-parser.js?v=1"></script>
 <script src="/music/static/player-queue.js?v=1"></script>
-<script src="/music/static/music-common.js?v=1"></script>
-<script src="/music/static/music-player.js?v=1"></script>
-<script src="/music/static/music.js?v=3"></script>
+<script src="/music/static/downloads.js?v=1"></script>
+<script src="/music/static/music-common.js?v=2"></script>
+<script src="/music/static/music-player.js?v=3"></script>
+<script src="/music/static/music.js?v=4"></script>
 </body>
 </html>

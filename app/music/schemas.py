@@ -237,6 +237,22 @@ class PlaylistSyncResponse(BaseModel):
     tracks_skipped: int = 0       # Plex 里有但本库对不上 (文件删了/还没扫)
 
 
+# ---------------------------------------------------------------- 播放记录
+
+class PlayRecordRequest(BaseModel):
+    """POST /api/plays 的请求体 (播一次报一次)。"""
+
+    track_id: int
+
+
+class RecentPlaysResponse(BaseModel):
+    """GET /api/plays/recent 的应答 (本人的最近播放, 每首只一行)。"""
+
+    tracks: list[TrackBrief] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------- 歌词
+
 class LyricsResponse(BaseModel):
     """单曲歌词原文 (前端解析时间轴)。"""
 

@@ -9,6 +9,19 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.2.0", date="2026-09-14", items=[
+        ChangelogItem(kind="新增", text="主页: 打开应用先到这一页, 播放列表和最近播放都在这儿, 常听的一眼就看到"),
+        ChangelogItem(kind="新增", text="最近播放: 听过的歌自动记下来排在这里 (一家人各记各的, 互不串台), 想循环刚听过的几首很方便"),
+        ChangelogItem(kind="新增", text="离线下载: 点曲目行右侧的下载标, 整首歌存进手机, 没网也能放; 资料库新增「已下载」一栏, 能删能整栏连播"
+                                       " (需要 HTTPS 环境才能用, 局域网明文访问时此项自动隐藏)"),
+        ChangelogItem(kind="新增", text="播放页按 Apple Music 重排: 歌名歌手挪到左上角, 大封面居中更突出, 播放键改成干净的大图标"),
+        ChangelogItem(kind="新增", text="歌词页能自由滑动了: 上下滑动快速前后浏览, 唱到哪行哪行照样放大标白;"
+                                       " 滑开几秒后自动回到当前句, 也可以点「回到当前句」立刻跳回; 点某一句跳播不变"),
+        ChangelogItem(kind="改进", text="资料库收窄成 专辑 / 艺人 / 歌曲 / 已下载 四栏, 播放列表挪去主页, 找东西少翻一层"),
+        ChangelogItem(kind="改进", text="下一首提前在后台备好: 一首播完接下一首几乎无缝, 不用等加载转圈"),
+        ChangelogItem(kind="修复", text="锁屏界面点歌曲封面会跳到别的应用 —— 需把各应用的主屏幕图标删除后重新添加才生效"),
+        ChangelogItem(kind="修复", text="页面底部偶尔冒出一排多余的菜单按钮"),
+    ]),
     ChangelogVersion(version="1.1.0", date="2026-09-14", items=[
         ChangelogItem(kind="新增", text="搜索会认拼音: 打 liudehua 或 ldh 都能搜到刘德华, 不用切中文输入法;"
                                        " 多打少打空格也不影响"),

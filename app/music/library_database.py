@@ -2,13 +2,15 @@
 
 曲库本体 (/share/Media/Music) 始终只读 —— 这里只存扫描出来的索引:
 艺人 / 专辑 / 曲目三级, 附歌词全文 (服务端 LIKE 搜歌词) 与 script 语言标记
-(MusicBrainz 刮削自带, 没有就按标题文字检测)。默认路径可用环境变量覆盖。
+(MusicBrainz 刮削自带, 没有就按标题文字检测); 另有每人自己的播放记录
+(play_stats, 最近播放的原料)。默认路径可用环境变量覆盖。
 """
 import os
 from pathlib import Path
 from typing import Final, Iterator
 
-from sqlalchemy import ForeignKey, String, create_engine, text
+from sqlalchemy import (ForeignKey, String, UniqueConstraint, create_engine,
+                        text)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
                             sessionmaker)
@@ -115,6 +117,22 @@ class PlaylistItem(MusicLibraryBase):
     track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id"),
                                           index=True)
     position: Mapped[int] = mapped_column(default=0)
+
+
+class PlayStat(MusicLibraryBase):
+    """一个人的播放记录 (user+track 一行, 重播只推进时刻/次数)。
+
+    最近播放按人算 —— 账号体系全站共享, 这里只存 uuid 不建外键
+    (账号库是另一个文件, 跨库不 JOIN)。"""
+
+    __tablename__ = "play_stats"
+    __table_args__ = (UniqueConstraint("user_uuid", "track_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_uuid: Mapped[str] = mapped_column(index=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id"), index=True)
+    last_played_at: Mapped[float] = mapped_column(default=0.0)  # epoch 秒
+    play_count: Mapped[int] = mapped_column(default=1)
 
 
 class _EngineState:

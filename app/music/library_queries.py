@@ -1,16 +1,17 @@
-"""曲库索引的查询层: SQL → pydantic 模型 (浏览 / 搜索 / 歌词)。
+"""曲库索引的查询层: SQL → pydantic 模型 (浏览 / 搜索 / 歌词 / 播放记录)。
 
 路由层 (webapp.py) 只做参数解析和鉴权, 数据组装都在这里;
 语种筛选统一走曲目的 script 码 (刮削标签或文字检测来的), 专辑/艺人靠
 "旗下有该语种曲目" 的 EXISTS 关联。
 """
 import re
+import time
 
 from sqlalchemy import ColumnElement, exists, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from .library_database import (BROWSER_PLAYABLE_FORMATS, Album, Artist,
-                               Playlist, PlaylistItem, Track)
+                               PlayStat, Playlist, PlaylistItem, Track)
 from .library_search_keys import query_patterns
 from .library_languages import language_for_script, scripts_for_language
 from .schemas import (AlbumCard, AlbumPage, AlbumPageList, ArtistBrief,
@@ -238,6 +239,38 @@ def lyrics_for_track(session: Session, track_id: int) -> LyricsResponse | None:
         return None
     return LyricsResponse(track_id=track.id, lyrics=track.lyrics,
                           lyrics_synced=track.lyrics_synced)
+
+
+def record_play(session: Session, user_uuid: str, track_id: int) -> bool:
+    """记一次播放 (user+track 一行, 重播只推进时刻/次数); 曲目不在库里 False。"""
+    if session.get(Track, track_id) is None:
+        return False
+    stat = session.execute(
+        select(PlayStat).where(PlayStat.user_uuid == user_uuid,
+                               PlayStat.track_id == track_id)
+    ).scalar_one_or_none()
+    now = time.time()
+    if stat is None:
+        session.add(PlayStat(user_uuid=user_uuid, track_id=track_id,
+                             last_played_at=now))
+    else:
+        stat.last_played_at = now
+        stat.play_count += 1
+    session.commit()
+    return True
+
+
+def recent_plays(session: Session, user_uuid: str, limit: int = 30
+                ) -> list[TrackBrief]:
+    """最近播放 (本人的, 时刻倒序; 同一首只一行, 排的是最近那次)。"""
+    rows = session.execute(
+        select(Track, Album.title)
+        .join(PlayStat, PlayStat.track_id == Track.id)
+        .join(Album, Track.album_id == Album.id)
+        .where(PlayStat.user_uuid == user_uuid)
+        .order_by(PlayStat.last_played_at.desc(), PlayStat.track_id)
+        .limit(limit))
+    return [track_brief(track, album_title) for track, album_title in rows]
 
 
 def _matching_lyric_line(lyrics: str, query: str) -> str:

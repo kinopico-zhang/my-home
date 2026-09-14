@@ -1,7 +1,7 @@
 {
   // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / format /
   // trip-playback (Tesla) / lastpage / bookkeeping-merge (记账同步纯逻辑) /
-  // lyrics-parser + player-queue (音乐)。页面脚本 (trips.js 等) 依赖
+  // lyrics-parser + player-queue + downloads (音乐)。页面脚本 (trips.js 等) 依赖
   // 高德/echarts 宿主对象, 类型声明成本高, 由 ESLint 把关。
   // types:[] — 不自动引入 node_modules/@types (共享目录里有别的包声明)
   "compilerOptions": {
@@ -21,6 +21,7 @@
     "app/bookkeeping/static/bookkeeping-merge.js",
     "app/music/static/lyrics-parser.js",
     "app/music/static/player-queue.js",
+    "app/music/static/downloads.js",
     "frontend-globals.d.ts"
   ]
 }
