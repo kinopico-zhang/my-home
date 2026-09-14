@@ -15,14 +15,9 @@ document.addEventListener("click", e => {
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const pad = n => String(n).padStart(2, "0");
+/* 页面共用格式化 (format.js 先加载): 顶部解构, 下文沿用裸名 */
+const { pad, parseLocal, num } = FormatUtil;
 
-/* "2026-09-07 23:50" → 本地 Date (服务端已转北京时间; 手动解析, 兼容 iOS Safari) */
-function parseLocal(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s || "");
-  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : new Date(s);
-}
-const num = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d).replace(/\.0+$/, "");
 const money = v => v == null ? "—" : "¥" + Number(v).toFixed(2).replace(/\.?0+$/, "");
 const moneyInt = v => v == null ? "—" : "¥" + Math.round(v).toLocaleString("zh-CN");
 const thousands = v => Math.round(v).toLocaleString("zh-CN");
@@ -439,7 +434,6 @@ async function loadAll() {
 }
 
 async function refetch() { await loadAll(); }
-function showErr(e) { $("#errmsg").textContent = "数据加载失败: " + e.message; $("#errbox").hidden = false; }
 
 /* ============================ 时间筛选 ============================ */
 function timeLabel() {

@@ -10,7 +10,6 @@ document.addEventListener("click", e => {
   });
 });
 const $ = s => document.querySelector(s);
-const PAGE_V = "v1";
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -23,8 +22,8 @@ async function getJSON(url) {
 const POLL_MS = 5000, TRACK_MS = 20000, STALE_AFTER_S = 120;
 let cur = null;            // 最近一次 status (driving=true)
 let driveId = null;        // 当前在渲染的行程 id
-let pollTimer = null, trackTimer = null;
-let map = null, mapFailed = false, carMarker = null, routeLine = null;
+let trackTimer = null;
+let map = null, carMarker = null, routeLine = null;
 let trackEnd = null, tailLine = null;   // 轨迹末端 → 车当前位置的连线 (见 setCar)
 let serverSkew = 0;        // 服务器时钟 - 手机时钟 (秒): 手机时间不准时走秒仍按服务器算
 
@@ -185,7 +184,6 @@ async function initMap() {
       refreshTrack();
     }
   } catch (e) {
-    mapFailed = true;
     $("#map-fallback").hidden = false;
   }
 }
@@ -209,4 +207,4 @@ $("#logout").addEventListener("click", async () => {
 
 initMap();
 poll();
-pollTimer = setInterval(poll, POLL_MS);
+setInterval(poll, POLL_MS);

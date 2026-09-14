@@ -1,8 +1,8 @@
 {
-  // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / lastpage /
-  // bookkeeping-merge (记账同步纯逻辑) / lyrics-parser + player-queue (音乐)。
-  // 页面脚本 (trips.js 等) 依赖高德/echarts 宿主对象, 类型声明成本高,
-  // 由 ESLint 把关; 这三个文件是坐标/轨迹核心算法, 类型收益最大。
+  // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / format /
+  // trip-playback (Tesla) / lastpage / bookkeeping-merge (记账同步纯逻辑) /
+  // lyrics-parser + player-queue (音乐)。页面脚本 (trips.js 等) 依赖
+  // 高德/echarts 宿主对象, 类型声明成本高, 由 ESLint 把关。
   // types:[] — 不自动引入 node_modules/@types (共享目录里有别的包声明)
   "compilerOptions": {
     "allowJs": true,
@@ -15,6 +15,8 @@
   "include": [
     "app/tesla/static/gcj02.js",
     "app/tesla/static/trackutil.js",
+    "app/tesla/static/format.js",
+    "app/tesla/static/trip-playback.js",
     "app/tesla/static/lastpage.js",
     "app/bookkeeping/static/bookkeeping-merge.js",
     "app/music/static/lyrics-parser.js",
