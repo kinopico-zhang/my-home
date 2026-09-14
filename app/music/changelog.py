@@ -9,6 +9,24 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.4.0", date="2026-09-15", items=[
+        ChangelogItem(kind="新增", text="播放列表能换自定义封面: 列表页点「设置封面」传一张图 (PNG / JPG / WebP),"
+                                       " 主页、列表页和加歌选择单里都看得到; 不想要了就「移除封面」"),
+        ChangelogItem(kind="新增", text="设置页 (菜单里): 能改音乐库的目录、开关「联网补歌词」、改歌词接口地址"
+                                       " (这些只有管理员能改); 换了曲库目录会立刻重扫"),
+        ChangelogItem(kind="新增", text="联网补歌词: 库里没歌词的歌第一次播放时上网求一遍, 求到的写回曲库 ——"
+                                       " 以后没网也能看; 求不到的下次再试"),
+        ChangelogItem(kind="新增", text="每月蜂窝流量记账: 用手机流量听歌, 每个月总共耗了多少自动记在设置页里"
+                                       " (安卓 Chrome 自动记; iPhone 的 Safari 认不出网络类型, 那部分记不上)"),
+        ChangelogItem(kind="新增", text="播放列表里的每首歌都带上歌自带的封面 (从歌的元数据里读), 没有封面的给音符占位"),
+        ChangelogItem(kind="改进", text="曲库自动增量扫描: 服务器每隔几分钟自己扫一轮, 新拷进来的专辑过一会儿自动出现,"
+                                       " 不用再手动按扫描; 手动扫描也只扫有变化的部分, 快很多"),
+        ChangelogItem(kind="改进", text="播放界面的控制键照 Apple Music 重新设计: 白色大圆钮居中、上一首下一首两边,"
+                                       " 圆润饱满, 按下去有反馈"),
+        ChangelogItem(kind="改进", text="歌词页面: 正在唱的一句略微放大、变清晰, 其余的模糊退后;"
+                                       " 滚动换成丝滑的缓动动画, 自己用手指滚时动画立刻让位"),
+        ChangelogItem(kind="改进", text="菜单顶部显示当前登录的账号 (三个应用一致, 管理员带标记)"),
+    ]),
     ChangelogVersion(version="1.3.0", date="2026-09-15", items=[
         ChangelogItem(kind="新增", text="长按任意一首歌弹出菜单: 播放 / 进艺人主页 / 分享 / 添加到播放列表,"
                                        " 主页、资料库、搜索里都能长按 (电脑上是点右键)"),

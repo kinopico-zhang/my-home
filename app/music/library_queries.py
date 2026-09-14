@@ -12,8 +12,10 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from .library_database import (BROWSER_PLAYABLE_FORMATS, Album, Artist,
                                PlayStat, Playlist, PlaylistItem, Track)
+from .library_lyrics_api import fetch_lyrics
 from .library_search_keys import query_patterns
 from .library_languages import language_for_script, scripts_for_language
+from .library_tags import looks_like_synced_lyrics
 from .schemas import (AlbumCard, AlbumPage, AlbumPageList, ArtistBrief,
                       ArtistPage, ArtistPageList, FormatCount, LibraryStats,
                       LyricHit, LyricsResponse, PlaylistBrief, PlaylistPage,
@@ -95,6 +97,8 @@ def track_brief(track: Track, album_title: str,
         file_format=track.file_format,
         playable=track.file_format in BROWSER_PLAYABLE_FORMATS,
         lyrics_available=bool(track.lyrics),
+        has_artwork=track.has_artwork,
+        mtime=track.file_mtime,
         language=language_for_script(track.script))
 
 
@@ -211,7 +215,8 @@ def list_playlists(session: Session) -> PlaylistPageList:
         playlist_id=playlist.id, name=playlist.name,
         track_count=playlist.track_count,
         duration_seconds=playlist.duration_seconds,
-        is_local=playlist.is_local)
+        is_local=playlist.is_local,
+        cover_version=playlist.cover_version)
         for playlist in session.execute(
             select(Playlist).order_by(Playlist.position, Playlist.id)).scalars()]
     return PlaylistPageList(playlists=playlists)
@@ -234,15 +239,30 @@ def playlist_page(session: Session, playlist_id: int) -> PlaylistPage | None:
             playlist_id=playlist.id, name=playlist.name,
             track_count=playlist.track_count,
             duration_seconds=playlist.duration_seconds,
-            is_local=playlist.is_local),
+            is_local=playlist.is_local,
+            cover_version=playlist.cover_version),
         tracks=tracks)
 
 
-def lyrics_for_track(session: Session, track_id: int) -> LyricsResponse | None:
-    """单曲歌词原文 (前端解析时间轴)。"""
+def lyrics_for_track(session: Session, track_id: int,
+                     lyrics_api: tuple[bool, str] | None = None
+                     ) -> LyricsResponse | None:
+    """单曲歌词原文 (前端解析时间轴)。
+
+    库里没有且给了歌词 API 配置时, 联网求一遍并写回索引 —— 下次离线也有,
+    搜索歌词也搜得到; 求不到保持空。"""
     track = session.get(Track, track_id)
     if track is None:
         return None
+    if not track.lyrics and lyrics_api and lyrics_api[0]:
+        album_title = session.scalar(
+            select(Album.title).where(Album.id == track.album_id)) or ""
+        fetched = fetch_lyrics(lyrics_api[1], track.title, track.artist,
+                               album_title)
+        if fetched:
+            track.lyrics = fetched
+            track.lyrics_synced = looks_like_synced_lyrics(fetched)
+            session.commit()
     return LyricsResponse(track_id=track.id, lyrics=track.lyrics,
                           lyrics_synced=track.lyrics_synced)
 

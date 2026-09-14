@@ -819,7 +819,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=9" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=10" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1028,10 +1028,100 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行 (music.js 这次改到 v9); Plex 同步全撤了
-    assert "music.js?v=9" in html
+    assert "music.js?v=10" in html
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
+
+
+def test_music_settings_view_wiring():
+    """设置页接线: 菜单入口 + 表单三件 (曲库路径/歌词开关/API 地址) +
+    流量月账; 管理员专属的说明也在。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    assert '<button id="settings-link">设置</button>' in html
+    assert ".settings-block" in html and ".switch" in html and ".month-row" in html
+    assert 'if (name === "settings") return { view: "settings" };' in js
+    assert "function renderSettingsView()" in js
+    assert 'fetchJSON("/music/api/settings")' in js
+    assert "music_directory" in js and "lyrics_api_enabled" in js \
+        and "lyrics_api_base" in js
+    assert "monthRowHTML" in js and "cellular_months" in js   # 月账一段
+    assert "只有管理员能改" in js                              # 非管理员的落地面
+
+
+def test_music_cellular_wiring():
+    """蜂窝流量接线: 纯逻辑模块 (node 直测) + 安卓 connection.type 判定 +
+    keepalive 上报 + onHide 兜底 (切后台/离页都报)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    assert "cellular-usage.js?v=1" in html                     # 模块加载
+    assert "createCellularMonitor" in js
+    assert 'connection.type === "cellular"' in js              # 只有认得出的才记
+    assert '"/music/api/cellular-usage"' in js and "keepalive: true" in js
+    assert "pagehide" in js and "visibilitychange" in js       # 离页/切后台兜底
+
+
+def test_music_playlist_cover_and_track_art_wiring():
+    """封面接线: 详情页设置/换/移除封面 + 隐藏文件选择器; 列表行/选择单/
+    主页播放列表带封面; 曲目行带元数据封面 (没封面给音符占位)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    common = (static / "music-common.js").read_text(encoding="utf-8")
+    assert 'id="cover-file"' in html \
+        and 'accept="image/png,image/jpeg,image/webp"' in html
+    assert ".cover-chip" in html and ".t-art" in html \
+        and ".pl-icon.art" in html                             # 行样式
+    assert "function uploadPlaylistCover" in js
+    assert 'id="cover-change"' in js and 'id="cover-remove"' in js
+    assert '`/music/api/playlists/${playlistId}/cover`' in js  # PUT/DELETE 两个口
+    assert "trackArtHTML" in js and "has_artwork" in js        # 曲目封面 (含占位)
+    assert "function trackArtworkURL" in common and "artwork?v=" in common
+    assert "function playlistCoverURL" in common \
+        and "playlists/${playlist.playlist_id}/cover" in common
+
+
+def test_music_lyrics_animation_wiring():
+    """歌词滚动动画接线: 当前行放大清晰/其余模糊退后 (CSS 缓动) +
+    rAF 逐帧缓动滚动, 手指一按就让位 (JS)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    player = (static / "music-player.js").read_text(encoding="utf-8")
+    assert ".lyrics-line {" in html and "filter: blur(3px)" in html   # 其余模糊
+    assert ".lyrics-line.active" in html and "font-size: 26px" in html \
+        and "blur(0)" in html                                          # 当前行放大清晰
+    assert "transition: filter .5s" in html                            # 状态切换也缓动
+    for frag in ["function scrollLyricsTo", "function lyricsScrollFrame",
+                 "function cancelLyricsScroll", "lyricsScrollRaf",
+                 '"pointerdown", cancelLyricsScroll']:   # 手动滚动优先于动画
+        assert frag in player, f"music-player.js 缺少 {frag}"
+
+
+def test_music_controls_apple_style_wiring():
+    """播放控制按钮 Apple Music 风格: 白色实心圆主钮 + 按压缩放反馈;
+    图标包围盒中心对准圆心的不变量在 player-icons.test.mjs。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    assert "width: 68px; height: 68px" in html                # 饱满的大圆钮
+    assert "border-radius: 50%; background: #fff; color: #000" in html
+    assert "#fp-play:active { transform: scale(.93)" in html  # 按压反馈
+    assert "gap: 22px" in html                                # 上一首/下一首间距
+
+
+def test_music_scan_polling_wiring():
+    """增量扫描接线: 页面 30 秒问一次状态; 在扫出进度条, 收尾动过库
+    (changed) 才静默刷新, 手动触发的才出提示, 重复一轮不再响应。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    js = (static / "music.js").read_text(encoding="utf-8")
+    assert "SCAN_POLL_INTERVAL_MS = 30000" in js
+    assert "function checkScanStatus" in js and "function digestScanSettled" in js
+    assert "lastScanSignature" in js          # finished_at+changed 签名去重
+    assert "document.hidden" in js            # 后台页签不空转
+    assert "userRescanPending" in js          # 手动扫完才有提示
+    assert "!manual && !scan.changed" in js   # 后台扫没变化: 不打扰
 
 
 def test_record_play_counts_and_dedups():
@@ -1308,3 +1398,37 @@ def test_music_webapp_fallbacks(auth):
     assert auth.get("/music/api/tracks/99999/lyrics").status_code == 404
     response = auth.post("/music/api/logout")     # 登出清 cookie, 放最后
     assert response.status_code == 200 and response.json() == {"ok": True}
+
+
+# ------------------------------------------------------------ 自动重扫
+# (设置/歌词 API/蜂窝流量/自定义封面的用例在 test_music_settings.py
+#  和 test_music_covers.py; 这里留共享的曲库小助手)
+# 封面用 PNG 魔数够了 (服务端只认魔数不解码), 字节即所传即所得
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"p" * 32
+
+
+def _write_plain_track(root: Path, relative_path: str, title: str,
+                       mtime: float = 1000.0) -> None:
+    """放一首无歌词无封面的 FLAC (设置/自动重扫用例的最小曲库)。"""
+    _write_audio(root, relative_path,
+                 {"TITLE": title, "ARTIST": "A乐队", "ALBUMARTIST": "A乐队",
+                  "ALBUM": title + "的专辑", "DATE": "2001"}, mtime=mtime)
+
+
+def test_auto_rescan_picks_up_new_albums(auth, tmp_path, monkeypatch):
+    """自动增量重扫: 到点起一轮, 新放进曲库的专辑不用手动按扫描。"""
+    root = tmp_path / "music-library"
+    _write_plain_track(root, "A乐队/2001 甲 [aaaa1111]/01 曲A.flac", "曲A")
+    assert auth.post("/music/api/rescan").json() == {"started": True}
+    _wait_scan_done(auth)
+    assert auth.get("/music/api/status").json()["track_count"] == 1
+
+    monkeypatch.setattr(service, "_AUTO_RESCAN_SECONDS", 0.2)
+    service._start_auto_rescan()                # noqa: SLF001 短间隔看门线程
+    _write_plain_track(root, "B乐队/2002 乙 [bbbb2222]/01 曲B.flac", "曲B")
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if auth.get("/music/api/status").json()["track_count"] == 2:
+            break
+        time.sleep(0.1)
+    assert auth.get("/music/api/status").json()["track_count"] == 2

@@ -40,6 +40,7 @@ node node_modules/c8/bin/c8.js \
   --include 'app/music/static/lyrics-parser.js' \
   --include 'app/music/static/player-queue.js' \
   --include 'app/music/static/downloads.js' \
+  --include 'app/music/static/cellular-usage.js' \
   --check-coverage --lines 95 --branches 95 --functions 95 \
   --reporter text node --test tests/js/ || rc=1
 

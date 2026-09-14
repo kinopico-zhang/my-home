@@ -55,6 +55,7 @@ class ScanStatus(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: str = ""
+    changed: bool = False              # 上一轮扫有没有动库 (前端决定要不要刷新)
 
 
 class ScanSummary(BaseModel):
@@ -114,6 +115,8 @@ class TrackBrief(BaseModel):
     file_format: str
     playable: bool
     lyrics_available: bool
+    has_artwork: bool = False    # 这一首文件里自己嵌了封面 (播放列表行用)
+    mtime: float = 0.0           # 文件 mtime (单曲封面 URL 的 ?v= 版本号)
     language: str                      # 语种分组名 (中文/日文/英文/韩文/俄文/其他)
 
 
@@ -216,6 +219,7 @@ class PlaylistBrief(BaseModel):
     track_count: int
     duration_seconds: float
     is_local: bool = False   # 应用内列表 (2026-09-15 起全量如此, 历史同步列表也已转正)
+    cover_version: int = 0   # 自定义封面版本 (0 = 没传过)
 
 
 class PlaylistCreateRequest(BaseModel):
@@ -264,3 +268,37 @@ class LyricsResponse(BaseModel):
     track_id: int
     lyrics: str
     lyrics_synced: bool
+
+
+# ---------------------------------------------------------------- 设置 / 流量
+
+class MusicSettingsState(BaseModel):
+    """设置页状态: 各字段现值 + 默认值参照 (空 = 用默认)。"""
+
+    music_directory: str = ""
+    music_directory_default: str = ""
+    lyrics_api_enabled: bool = True
+    lyrics_api_base: str = ""
+    lyrics_api_default: str = ""
+    cellular_months: list["CellularMonth"] = Field(default_factory=list)
+
+
+class MusicSettingsUpdate(BaseModel):
+    """POST /api/settings 的请求体 (缺字段 = 不动那项)。"""
+
+    music_directory: str | None = None
+    lyrics_api_enabled: bool | None = None
+    lyrics_api_base: str | None = None
+
+
+class CellularMonth(BaseModel):
+    """一个月的蜂窝流量账。"""
+
+    month: str               # "2026-09"
+    bytes: int = 0
+
+
+class CellularUsageReport(BaseModel):
+    """POST /api/cellular-usage 的请求体 (一次上报的字节量)。"""
+
+    bytes: int = Field(ge=0, le=1_073_741_824)   # 单次上限 1 GB, 灌水也灌不爆

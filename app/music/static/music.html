@@ -336,6 +336,69 @@ main {
 }
 .playlist-row .chev { color: var(--ink-3); font-size: 18px; }
 .pl-icon.sm { width: 44px; height: 44px; font-size: 18px; border-radius: 8px; }
+/* 传过自定义封面的列表: 原图直出 (img 复用同一组尺寸类) */
+.pl-icon.art { object-fit: cover; }
+img.pl-icon { display: block; }
+
+/* 播放列表详情的封面管理行 (换封面 / 移除) */
+.cover-row { display: flex; gap: 10px; justify-content: center; margin: 10px 0 4px; }
+.cover-chip {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--ink-2); padding: 7px 16px;
+  border-radius: 999px; background: var(--surface-2);
+}
+.cover-chip:active { background: var(--surface-3); color: var(--ink-1); }
+
+/* 播放列表里每首歌自己的封面 (元数据内嵌图, 44px 小方图替掉序号) */
+.t-art {
+  width: 44px; height: 44px; border-radius: 6px; object-fit: cover;
+  background: var(--surface-2); flex-shrink: 0; display: block;
+}
+span.t-art { display: flex; align-items: center; justify-content: center;
+             color: var(--ink-3); font-size: 16px; }
+.t-lead.art { width: auto; }
+
+/* ---------- 设置页 ---------- */
+.settings-block {
+  background: var(--surface-2); border-radius: 12px;
+  padding: 4px 14px; margin-bottom: 14px;
+}
+.settings-title {
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  padding: 12px 0 2px;
+}
+.settings-field { padding: 10px 0 12px; border-bottom: 1px solid var(--hairline); }
+.settings-block .settings-field:last-child { border-bottom: 0; }
+.settings-field > label { display: block; font-size: 14px; font-weight: 500; }
+.settings-field > input {
+  width: 100%; margin-top: 8px; padding: 9px 12px;
+  background: var(--surface-3); border: 0; border-radius: 10px;
+  color: var(--ink-1); font: inherit; font-size: 13px;
+}
+.settings-field > input:focus { outline: 1px solid var(--accent); }
+.settings-field > small { display: block; font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; }
+.switch {
+  position: relative; width: 46px; height: 28px; border-radius: 999px;
+  background: var(--surface-3); flex-shrink: 0; transition: background .2s;
+}
+.switch i {
+  position: absolute; top: 2px; left: 2px; width: 24px; height: 24px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  transition: transform .2s cubic-bezier(.32,.72,0,1);
+}
+.switch.on { background: var(--accent); }
+.switch.on i { transform: translateX(18px); }
+.set-save-row { display: flex; justify-content: center; margin: 4px 0 18px; }
+.month-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--hairline); font-size: 14px;
+}
+.settings-block .month-row:last-of-type { border-bottom: 0; }
+.month-row b { font-variant-numeric: tabular-nums; }
+.month-row small { color: var(--ink-3); font-size: 12px; }
+.settings-note { display: block; font-size: 11px; color: var(--ink-3); padding: 10px 0 12px; }
 
 /* ---------- 已下载栏 ---------- */
 .dl-row {
@@ -440,11 +503,15 @@ main {
   backdrop-filter: blur(20px) saturate(180%);
 }
 .lyrics-line {
-  font-size: 22px; font-weight: 700; color: rgba(255,255,255,.36);
-  padding: 12px 0; line-height: 1.32; text-align: left;
-  transition: color .25s;
+  font-size: 21px; font-weight: 700; color: rgba(255,255,255,.32);
+  padding: 12px 0; line-height: 1.34; text-align: left;
+  filter: blur(3px); will-change: filter;
+  transition: filter .5s cubic-bezier(.22,.61,.36,1),
+              color .5s cubic-bezier(.22,.61,.36,1),
+              font-size .5s cubic-bezier(.22,.61,.36,1);
 }
-.lyrics-line.active { color: #fff; font-size: 25px; }
+/* 正在唱的一句: 放大 + 清晰; 其余的模糊退后 (滚动动画在 music-player.js) */
+.lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0); }
 .lyrics-empty { position: absolute; inset: 0; display: flex; align-items: center;
                 justify-content: center; color: var(--ink-3); }
 .fp-scrub { position: relative; padding: 14px 28px 0; }
@@ -463,11 +530,20 @@ main {
             padding: 2px 28px 0; }
 .fp-controls {
   position: relative; display: flex; align-items: center; justify-content: center;
-  gap: 38px; padding: 18px 0 12px;
+  gap: 22px; padding: 20px 0 12px;
 }
-.fp-controls > button { color: var(--ink-1); padding: 6px;
-  display: flex; align-items: center; justify-content: center; }
-#fp-play:active { opacity: .6; }
+.fp-controls > button {
+  color: var(--ink-1); padding: 8px;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .16s ease, opacity .16s ease;
+}
+.fp-controls > button:active { transform: scale(.86); opacity: .75; }
+/* 播放/暂停: 白色实心圆钮 (Apple Music 参考图, 圆润饱满) */
+#fp-play {
+  width: 68px; height: 68px; padding: 0; margin: 0 12px;
+  border-radius: 50%; background: #fff; color: #000;
+}
+#fp-play:active { transform: scale(.93); opacity: 1; background: #d6d6d8; }
 #fp-shuffle, #fp-repeat { color: var(--ink-3); }
 #fp-shuffle.on, #fp-repeat.on { color: var(--ink-1); }
 #fp-repeat.one::after {
@@ -606,6 +682,7 @@ main {
       <summary>My Music<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
         <button id="stats-link">统计</button>
+        <button id="settings-link">设置</button>
         <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
         <a href="/music/changelog">更新日志</a>
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
@@ -654,9 +731,9 @@ main {
   </div>
   <div class="fp-controls">
     <button id="fp-shuffle" aria-label="随机播放"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M18.5 5.5v13L9.5 12zM5.5 5h2.4v14h-2.4z" fill="currentColor"/></svg></button>
+    <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M18.5 5.5v13L9.5 12zM5.5 5h2.4v14h-2.4z" fill="currentColor"/></svg></button>
     <button id="fp-play" aria-label="播放/暂停"></button>
-    <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M5.5 5.5v13l9-6.5zM16 5h2.5v14h-2.5z" fill="currentColor"/></svg></button>
+    <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M5.5 5.5v13l9-6.5zM16 5h2.5v14h-2.5z" fill="currentColor"/></svg></button>
     <button id="fp-repeat" aria-label="循环模式"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M17 2.5 20.5 6 17 9.5M7 8h9.5a3.5 3.5 0 0 1 3.5 3.5v1M7 21.5 3.5 18 7 14.5M17 16H7.5A3.5 3.5 0 0 1 4 12.5v-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
   <div class="fp-pad"></div>
@@ -692,11 +769,16 @@ main {
 
 <div id="toast" hidden></div>
 
+<!-- 播放列表换封面: 选中文件后 JS 直接把字节 PUT 上去 (不用表单) -->
+<input type="file" id="cover-file" accept="image/png,image/jpeg,image/webp" hidden>
+
+<script src="/static/menu-user.js?v=1"></script>
 <script src="/music/static/lyrics-parser.js?v=1"></script>
 <script src="/music/static/player-queue.js?v=1"></script>
 <script src="/music/static/downloads.js?v=2"></script>
-<script src="/music/static/music-common.js?v=3"></script>
-<script src="/music/static/music-player.js?v=3"></script>
-<script src="/music/static/music.js?v=9"></script>
+<script src="/music/static/cellular-usage.js?v=1"></script>
+<script src="/music/static/music-common.js?v=4"></script>
+<script src="/music/static/music-player.js?v=4"></script>
+<script src="/music/static/music.js?v=10"></script>
 </body>
 </html>

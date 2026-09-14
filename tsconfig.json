@@ -22,6 +22,7 @@
     "app/music/static/lyrics-parser.js",
     "app/music/static/player-queue.js",
     "app/music/static/downloads.js",
+    "app/music/static/cellular-usage.js",
     "frontend-globals.d.ts"
   ]
 }
