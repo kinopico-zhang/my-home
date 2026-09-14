@@ -19,7 +19,7 @@ from tests.test_music import _wait_scan_done, _write_plain_track
 
 
 def test_settings_permissions_and_cellular_ledger(auth, usersdb):
-    """设置接口: 管理员可读写, 普通用户 403 / 未登录 401; 流量月账按月累加。"""
+    """设置接口: 普通用户能读不能写, 未登录 401; 流量月账按月累加。"""
     anon = TestClient(m.app)
     assert anon.get("/music/api/settings").status_code == 401
     account_store.create_user(usersdb, "试听丙", "password123")
@@ -27,7 +27,9 @@ def test_settings_permissions_and_cellular_ledger(auth, usersdb):
     assert other.post("/api/login",
                       json={"user": "试听丙", "password": "password123"}
                       ).status_code == 200
-    assert other.get("/music/api/settings").status_code == 403
+    # 普通账号: 看得到现值 (前端只读渲染), 保存被拒
+    visible = other.get("/music/api/settings").json()
+    assert visible["music_directory_default"]
     assert other.post("/music/api/settings", json={}).status_code == 403
 
     # 现值: 全默认 (没改过 = 空, 前端拿 *_default 作占位)
