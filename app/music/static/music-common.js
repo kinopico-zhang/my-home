@@ -5,7 +5,7 @@
    PLACEHOLDER_ARTWORK, describeDuration, formatAddedDate,
    ICON_PLAY, ICON_PAUSE, ICON_BARS, ICON_DOWNLOAD,
    ICON_PLAY_BIG, ICON_PAUSE_BIG,
-   ICON_ACTION_PLAY, ICON_ACTION_SHUFFLE */   // 供 music-player.js / music.js 引用
+   ICON_ACTION_PLAY, ICON_ACTION_SHUFFLE, ICON_ACTION_TRASH */   // 供 music-player.js / music.js 引用
 
 function $(selector) {
   return document.querySelector(selector);
@@ -90,3 +90,4 @@ const ICON_BARS = '<span class="bars" aria-hidden="true"><i></i><i></i><i></i></
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17.5v1.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 const ICON_ACTION_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6.5 5.5v13l11-6.5z" fill="currentColor"/></svg>';
 const ICON_ACTION_SHUFFLE = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_ACTION_TRASH = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.7 12.5h9.6l.7-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';

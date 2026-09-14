@@ -62,6 +62,7 @@ test("播放/暂停图标: 包围盒中心在正中 (切换不跳位)", () => {
   centered("ICON_PLAY_BIG", iconPath("ICON_PLAY_BIG"));
   centered("ICON_PAUSE_BIG", iconPath("ICON_PAUSE_BIG"));
   centered("ICON_ACTION_PLAY (行内播放角标)", iconPath("ICON_ACTION_PLAY"));
+  centered("ICON_ACTION_TRASH (列表删除)", iconPath("ICON_ACTION_TRASH"));
 });
 
 test("上一首/下一首 (全屏 + 迷你条): 居中且彼此镜像", () => {
