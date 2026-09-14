@@ -172,8 +172,10 @@ def music_rescan(request: Request,
 def music_settings(request: Request,
                    users: Session = Depends(database.get_users_db),
                    library: Session = Depends(get_db)) -> MusicSettingsState:
-    """设置页状态: 曲库路径 / 歌词 API 现值 + 蜂窝流量月账 (仅管理员)。"""
-    _require_admin(request, users)
+    """设置页状态: 曲库路径 / 歌词 API 现值 + 蜂窝流量月账。
+
+    谁登录都能看 (普通账号只读); 改要走 POST (管理员专属)。"""
+    _require_user(request, users)
     return library_settings.settings_state(library)
 
 

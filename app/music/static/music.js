@@ -260,11 +260,13 @@ function trackRowHTML(track, leadHTML, leadClass) {
     </button>`;
 }
 
-/** 曲目自己的小封面 (元数据内嵌图; 没有的给音符占位块)。 */
+/** 曲目自己的小封面 (元数据内嵌图; 没有的给音符占位块)。
+    接口万一抽不出图 (404) 也退回占位块, 别给用户看裂图。 */
 function trackArtHTML(track) {
   return track.has_artwork
     ? `<img class="t-art" loading="lazy" decoding="async" alt=""
-            src="${trackArtworkURL(track)}">`
+            src="${trackArtworkURL(track)}"
+            onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'t-art',textContent:'♪'}))">`
     : '<span class="t-art">♪</span>';
 }
 
@@ -1233,8 +1235,9 @@ function formatRowHTML(row, totalCount) {
 }
 
 // ------------------------------------------------------------ 设置页
-// 曲库路径 / 联网补歌词开关与地址 / 蜂窝流量月账。设置只有管理员能改
-// (普通账号进来只看到说明); 曲库路径改了服务器会立刻重新扫描整个曲库。
+// 曲库路径 / 联网补歌词开关与地址 / 蜂窝流量月账。谁登录都能看;
+// 改 (路径/开关/地址/保存) 只有管理员 —— 普通账号进来是只读的。
+// 曲库路径改了服务器会立刻重新扫描整个曲库。
 
 async function renderSettingsView() {
   $("#main").innerHTML = '<div id="settings-body">'
@@ -1244,17 +1247,18 @@ async function renderSettingsView() {
   try {
     settings = await fetchJSON("/music/api/settings");
   } catch (error) {
-    const message = String(error.message).includes("管理员")
-      ? "设置只有管理员能改" : `设置拿不到: ${error.message}`;
-    body.innerHTML = `<p class="stat-empty">${escapeHTML(message)}</p>`;
+    body.innerHTML = `<p class="stat-empty">设置拿不到: ${escapeHTML(error.message)}</p>`;
     return;
   }
+  const me = await fetchJSON("/api/me").catch(() => null);
+  const editable = !!(me && me.is_admin);        // 管理员才出得起保存钮
+  const lock = editable ? "" : " disabled";
   body.innerHTML = `
     <div class="settings-block">
       <div class="settings-title">音乐库</div>
       <div class="settings-field">
         <label for="set-dir">曲库路径</label>
-        <input id="set-dir" spellcheck="false" autocomplete="off"
+        <input id="set-dir" spellcheck="false" autocomplete="off"${lock}
                placeholder="${escapeHTML(settings.music_directory_default)}"
                value="${escapeHTML(settings.music_directory)}">
         <small>服务器上存放音乐的目录 (留空用默认); 改了会立刻重新扫描整个曲库</small>
@@ -1265,20 +1269,20 @@ async function renderSettingsView() {
       <div class="settings-field switch-row">
         <label>库里没歌词时上网求一遍</label>
         <button class="switch${settings.lyrics_api_enabled ? " on" : ""}"
-                id="set-lyrics-on" role="switch"
+                id="set-lyrics-on" role="switch"${lock}
                 aria-checked="${settings.lyrics_api_enabled}"><i></i></button>
       </div>
       <div class="settings-field">
         <label for="set-lyrics-base">歌词 API 地址</label>
-        <input id="set-lyrics-base" spellcheck="false" autocomplete="off" inputmode="url"
+        <input id="set-lyrics-base" spellcheck="false" autocomplete="off" inputmode="url"${lock}
                placeholder="${escapeHTML(settings.lyrics_api_default)}"
                value="${escapeHTML(settings.lyrics_api_base)}">
         <small>LRCLIB 兼容接口; 求到的歌词会写回曲库, 离线也能看</small>
       </div>
     </div>
-    <div class="set-save-row">
-      <button class="action primary" id="set-save">保存设置</button>
-    </div>
+    ${editable
+      ? `<div class="set-save-row"><button class="action primary" id="set-save">保存设置</button></div>`
+      : '<p class="settings-note">仅管理员可修改设置, 普通账号只读。</p>'}
     <div class="settings-block">
       <div class="settings-title">蜂窝流量 · 听歌消耗</div>
       ${settings.cellular_months.length
@@ -1288,32 +1292,34 @@ async function renderSettingsView() {
         iPhone 的 Safari 认不出网络类型, 那部分记不上。</small>
     </div>`;
   const toggle = $("#set-lyrics-on");
-  toggle.addEventListener("click", () => {
-    const on = toggle.getAttribute("aria-checked") !== "true";
-    toggle.setAttribute("aria-checked", String(on));
-    toggle.classList.toggle("on", on);
-  });
-  $("#set-save").addEventListener("click", async () => {
-    const button = $("#set-save");
-    button.disabled = true;
-    try {
-      await fetchJSON("/music/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          music_directory: $("#set-dir").value.trim(),
-          lyrics_api_enabled: toggle.getAttribute("aria-checked") === "true",
-          lyrics_api_base: $("#set-lyrics-base").value.trim(),
-        }),
-      });
-      toast("设置已保存");
-      checkScanStatus();      // 曲库路径换过的话, 扫描已起: 进度条接上
-    } catch (error) {
-      toast(`没保存上: ${error.message}`);
-    } finally {
-      button.disabled = false;
-    }
-  });
+  if (editable) {
+    toggle.addEventListener("click", () => {
+      const on = toggle.getAttribute("aria-checked") !== "true";
+      toggle.setAttribute("aria-checked", String(on));
+      toggle.classList.toggle("on", on);
+    });
+    $("#set-save").addEventListener("click", async () => {
+      const button = $("#set-save");
+      button.disabled = true;
+      try {
+        await fetchJSON("/music/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            music_directory: $("#set-dir").value.trim(),
+            lyrics_api_enabled: toggle.getAttribute("aria-checked") === "true",
+            lyrics_api_base: $("#set-lyrics-base").value.trim(),
+          }),
+        });
+        toast("设置已保存");
+        checkScanStatus();      // 曲库路径换过的话, 扫描已起: 进度条接上
+      } catch (error) {
+        toast(`没保存上: ${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
 }
 
 /** 流量月账一行: "2026年9月" + 友好字节数。 */

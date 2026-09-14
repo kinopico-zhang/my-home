@@ -9,6 +9,14 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.4.1", date="2026-09-15", items=[
+        ChangelogItem(kind="修复", text="列表里 mp3 等格式歌曲自带的封面裂图修好了 ——"
+                                       " 原先只有 FLAC 格式读得出封面, 其他格式明明有封面却显示不出;"
+                                       " 现在连万一读不出也给音符占位, 不再裂图"),
+        ChangelogItem(kind="改进", text="设置页普通账号也能看了 (只读):"
+                                       " 音乐库目录、歌词开关、流量月账都看得见,"
+                                       " 只是开关和输入框锁着, 改还是要管理员"),
+    ]),
     ChangelogVersion(version="1.4.0", date="2026-09-15", items=[
         ChangelogItem(kind="新增", text="播放列表能换自定义封面: 列表页点「设置封面」传一张图 (PNG / JPG / WebP),"
                                        " 主页、列表页和加歌选择单里都看得到; 不想要了就「移除封面」"),

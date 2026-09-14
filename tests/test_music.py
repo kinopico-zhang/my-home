@@ -1036,7 +1036,7 @@ def test_music_track_context_menu_wiring():
 
 def test_music_settings_view_wiring():
     """设置页接线: 菜单入口 + 表单三件 (曲库路径/歌词开关/API 地址) +
-    流量月账; 管理员专属的说明也在。"""
+    流量月账; 普通账号只读 (开关/输入框锁着, 保存钮不出)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
@@ -1045,10 +1045,12 @@ def test_music_settings_view_wiring():
     assert 'if (name === "settings") return { view: "settings" };' in js
     assert "function renderSettingsView()" in js
     assert 'fetchJSON("/music/api/settings")' in js
+    assert 'fetchJSON("/api/me")' in js and "editable" in js   # 按管理员分叉
     assert "music_directory" in js and "lyrics_api_enabled" in js \
         and "lyrics_api_base" in js
     assert "monthRowHTML" in js and "cellular_months" in js   # 月账一段
-    assert "只有管理员能改" in js                              # 非管理员的落地面
+    assert 'const lock = editable ? "" : " disabled"' in js    # 只读锁
+    assert "仅管理员可修改" in js                              # 非管理员的落地面
 
 
 def test_music_cellular_wiring():
@@ -1079,6 +1081,7 @@ def test_music_playlist_cover_and_track_art_wiring():
     assert 'id="cover-change"' in js and 'id="cover-remove"' in js
     assert '`/music/api/playlists/${playlistId}/cover`' in js  # PUT/DELETE 两个口
     assert "trackArtHTML" in js and "has_artwork" in js        # 曲目封面 (含占位)
+    assert 'onerror="this.replaceWith(' in js   # 封面取不到退回音符占位, 不裂图
     assert "function trackArtworkURL" in common and "artwork?v=" in common
     assert "function playlistCoverURL" in common \
         and "playlists/${playlist.playlist_id}/cover" in common
@@ -1324,7 +1327,7 @@ def test_music_service_lifecycle(auth, tmp_path):
 
 
 def test_media_edge_cases(auth, tmp_path):
-    """媒体边界: DSF 抽不出封面 404 / 封面缓存命中 / 海报缺失 / 源文件被删。"""
+    """媒体边界: DSF 的 APIC 封面抽得出 / 封面缓存命中 / 海报缺失 / 源文件被删。"""
     from app.music.library_media import _file_slice  # noqa: SLF001
     root = tmp_path / "music-library"
     _make_library(root)
@@ -1336,9 +1339,10 @@ def test_media_edge_cases(auth, tmp_path):
 
     albums = {album["title"]: album["album_id"]
               for album in auth.get("/music/api/albums").json()["albums"]}
-    # DSF 专辑有内嵌 APIC 但只支持抽 FLAC → 抽取失败 404
+    # DSF 的封面走 ID3 APIC, 一样抽得出 (1.4.1 起不止 FLAC)
     assert auth.get(
-        f"/music/media/albums/{albums['DSD专辑']}/artwork").status_code == 404
+        f"/music/media/albums/{albums['DSD专辑']}/artwork"
+    ).content == PICTURE_BYTES
     assert auth.get("/music/media/albums/99999/artwork").status_code == 404
 
     # 甲的封面: 第一次抽取落缓存, 第二次直接命中缓存文件
