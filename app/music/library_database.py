@@ -95,7 +95,10 @@ class Track(MusicLibraryBase):
 
 class Playlist(MusicLibraryBase):
     """播放列表 (2026-09-15 起全在应用内建管; is_local 是同步时代的
-    遗留列, 存量行已全部转 True, 新建恒 True)。"""
+    遗留列, 存量行已全部转 True, 新建恒 True)。
+
+    cover_version: 自定义封面的版本号, 0 = 没传过; 每次换封面 +1,
+    封面 URL 带 ?v={版本} 长缓存, 换图即换址。"""
 
     __tablename__ = "playlists"
 
@@ -106,6 +109,7 @@ class Playlist(MusicLibraryBase):
     duration_seconds: Mapped[float] = mapped_column(default=0.0)
     plex_playlist_id: Mapped[int] = mapped_column(default=0)   # 源库 id (溯源/幂等)
     is_local: Mapped[bool] = mapped_column(default=False)  # 同步时代遗留, 恒 True
+    cover_version: Mapped[int] = mapped_column(default=0)  # 自定义封面版本 (0 = 无)
 
 
 class PlaylistItem(MusicLibraryBase):
@@ -139,11 +143,35 @@ class PlayStat(MusicLibraryBase):
     play_count: Mapped[int] = mapped_column(default=1)
 
 
+class MusicSetting(MusicLibraryBase):
+    """运行时设置 (恒单行 id=1): 曲库路径 / 歌词 API。
+
+    空字段 = 回落 env 默认; 改曲库路径由服务层换扫描根目录并全量重扫。"""
+
+    __tablename__ = "music_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    music_directory: Mapped[str] = mapped_column(default="")     # 曲库根目录 (空 = 默认)
+    lyrics_api_enabled: Mapped[bool] = mapped_column(default=True)
+    lyrics_api_base: Mapped[str] = mapped_column(default="")     # 空 = LRCLIB 默认
+
+
+class CellularUsage(MusicLibraryBase):
+    """蜂窝流量月账 (一月一行): 客户端认得出蜂窝网络时按月上报,
+    设置页看这几个月听歌走了多少流量。"""
+
+    __tablename__ = "cellular_usage"
+
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)   # "2026-09"
+    bytes: Mapped[int] = mapped_column(default=0)
+
+
 class _EngineState:
     """进程级引擎持有者 (避免 global 语句)。"""
 
     engine: Engine | None = None
     session_factory: sessionmaker[Session] | None = None
+    database_url: str = ""
     music_directory: Path | None = None
     artwork_cache_directory: Path | None = None
 
@@ -170,6 +198,7 @@ def init_engine(url: str | None = None,
         Path(url.removeprefix("sqlite:///")).parent.mkdir(
             parents=True, exist_ok=True)
     _engine.artwork_cache_directory = artwork_cache_directory_for(url)
+    _engine.database_url = url
     _engine.music_directory = library_directory or Path(DEFAULT_MUSIC_DIRECTORY)
     _engine.engine = create_engine(url, connect_args={"check_same_thread": False})
     _engine.session_factory = sessionmaker(_engine.engine,
@@ -182,6 +211,7 @@ def dispose_engine() -> None:
         _engine.engine.dispose()
     _engine.engine = None
     _engine.session_factory = None
+    _engine.database_url = ""
     _engine.music_directory = None
     _engine.artwork_cache_directory = None
 
@@ -191,6 +221,13 @@ def engine() -> Engine:
     if _engine.engine is None:
         raise RuntimeError("曲库引擎未初始化 (init_engine 未调用)")
     return _engine.engine
+
+
+def database_url() -> str:
+    """当前库 URL (换曲库目录时同库重装配用)。"""
+    if _engine.engine is None:
+        raise RuntimeError("曲库引擎未初始化 (init_engine 未调用)")
+    return _engine.database_url
 
 
 def music_directory() -> Path:
@@ -225,13 +262,15 @@ def create_all() -> None:
     MusicLibraryBase.metadata.create_all(engine())
 
 
-# 老库升级要补的列: 列名 → 列定义 (create_all 只建新表, 不 ALTER 旧表)
+# 老库升级要补的列: 列名 → 列定义 (create_all 只建新表, 不 ALTER 旧表;
+# 整张新表 (music_settings / cellular_usage) create_all 自己会补建)
 _COLUMN_MIGRATIONS: Final[dict[str, dict[str, str]]] = {
     "tracks": {"added_at": "REAL NOT NULL DEFAULT 0",
                "search_keys": "TEXT NOT NULL DEFAULT ''"},
     "albums": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
     "artists": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
-    "playlists": {"is_local": "BOOLEAN NOT NULL DEFAULT 0"},
+    "playlists": {"is_local": "BOOLEAN NOT NULL DEFAULT 0",
+                  "cover_version": "INTEGER NOT NULL DEFAULT 0"},
     "playlist_items": {"added_locally": "BOOLEAN NOT NULL DEFAULT 0"},
 }
 

@@ -1,6 +1,7 @@
 // music.js — My Music 浏览页: 主页 (播放列表/最近播放) + 资料库
 // (专辑/艺人/歌曲/已下载 + 语种筛选) + 搜索 (歌名/专辑/艺人/歌词) +
-// 专辑/艺人详情。播放交给 music-player.js, 下载管理在 downloads.js。
+// 专辑/艺人详情 + 设置。播放交给 music-player.js, 下载管理在 downloads.js,
+// 蜂窝流量记账在 cellular-usage.js。
 "use strict";
 
 const LIBRARY_SEGMENTS = [
@@ -25,7 +26,15 @@ const pageState = {
   homeRecent: null,      // 主页最近播放段曲目 (队列用)
   searchAbort: null,
   scanPollTimer: 0,
+  lastScanSignature: "", // 已消化的一轮扫描 (finished_at+changed): 重复的不再响应
+  sawScanRunning: false, // 这轮扫描是不是在本页眼皮底下跑的 (首见的旧结果不惊动)
 };
+
+// 手动「重新扫描曲库」按下后置位: 那一轮收尾要出提示 (后台自动扫的不打扰)
+let userRescanPending = false;
+
+// 文件选择器是全局单例, 记住现在改封面的是哪个列表
+let coverUploadPlaylistId = 0;
 
 // ------------------------------------------------------------ 路由 (hash)
 
@@ -34,6 +43,7 @@ function currentRoute() {
   const [name, argument] = hash.split("/");
   if (name === "search") return { view: "search" };
   if (name === "stats") return { view: "stats" };
+  if (name === "settings") return { view: "settings" };
   if (name === "library") return { view: "library" };
   if (name === "album" && argument) return { view: "album", albumId: Number(argument) };
   if (name === "artist" && argument) return { view: "artist", artistId: Number(argument) };
@@ -60,6 +70,7 @@ function route() {
   stopScanPolling();
   if (view === "search") renderSearchView();
   else if (view === "stats") renderStatsView();
+  else if (view === "settings") renderSettingsView();
   else if (view === "album") renderAlbumView(albumId);
   else if (view === "artist") renderArtistView(artistId);
   else if (view === "playlist") renderPlaylistView(playlistId);
@@ -226,13 +237,14 @@ function albumCardHTML(album) {
     </button>`;
 }
 
-/** 曲目行: 序号 + 动条 (播放中顶掉序号) + 标题 (词/不可播标) + 艺人
-    + 下载标 + 时长。下载标不是真按钮 (行本身是 button, 嵌套非法)。 */
-function trackRowHTML(track, leadHTML) {
+/** 曲目行: 序号/小封面 + 动条 (播放中顶掉序号) + 标题 (词/不可播标) + 艺人
+    + 下载标 + 时长。下载标不是真按钮 (行本身是 button, 嵌套非法)。
+    leadClass="art" 时引导位放宽 (44px 封面图替序号, 播放列表用)。 */
+function trackRowHTML(track, leadHTML, leadClass) {
   return `
     <button class="track-row${track.playable ? "" : " disabled"}"
             data-track-row="${track.track_id}" data-track-id="${track.track_id}">
-      <span class="t-lead">${leadHTML || ""}${ICON_BARS}</span>
+      <span class="t-lead${leadClass ? ` ${leadClass}` : ""}">${leadHTML || ""}${ICON_BARS}</span>
       <span class="t-main">
         <span class="t-title">${escapeHTML(track.title)}
           ${track.lyrics_available ? '<i class="t-lyric">词</i>' : ""}
@@ -248,6 +260,14 @@ function trackRowHTML(track, leadHTML) {
     </button>`;
 }
 
+/** 曲目自己的小封面 (元数据内嵌图; 没有的给音符占位块)。 */
+function trackArtHTML(track) {
+  return track.has_artwork
+    ? `<img class="t-art" loading="lazy" decoding="async" alt=""
+            src="${trackArtworkURL(track)}">`
+    : '<span class="t-art">♪</span>';
+}
+
 function artistRowHTML(artist) {
   return `
     <button class="artist-row" data-artist-id="${artist.artist_id}">
@@ -260,11 +280,14 @@ function artistRowHTML(artist) {
     </button>`;
 }
 
-/** 播放列表行: 渐变音符块 + 名字 + 规模。 */
+/** 播放列表行: 自定义封面 (传过) / 渐变音符块 + 名字 + 规模。 */
 function playlistRowHTML(playlist) {
+  const cover = playlistCoverURL(playlist);
   return `
     <button class="playlist-row" data-playlist-id="${playlist.playlist_id}">
-      <span class="pl-icon">♫</span>
+      ${cover
+        ? `<img class="pl-icon art" loading="lazy" decoding="async" alt="" src="${cover}">`
+        : '<span class="pl-icon">♫</span>'}
       <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
         <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
       <span class="chev">›</span>
@@ -515,12 +538,17 @@ async function renderPlaylistPicker() {
     list.innerHTML = listPlaceholderHTML("还没有播放列表; 起个名字新建一个");
     return;
   }
-  list.innerHTML = playlists.map((playlist) => `
+  list.innerHTML = playlists.map((playlist) => {
+    const cover = playlistCoverURL(playlist);
+    return `
     <button class="picker-row" data-picker-playlist="${playlist.playlist_id}">
-      <span class="pl-icon">♫</span>
+      ${cover
+        ? `<img class="pl-icon art" loading="lazy" decoding="async" alt="" src="${cover}">`
+        : '<span class="pl-icon">♫</span>'}
       <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
         <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
-    </button>`).join("");
+    </button>`;
+  }).join("");
 }
 
 async function addTrackToPlaylist(playlistId, playlistName) {
@@ -958,9 +986,12 @@ async function renderPlaylistView(playlistId) {
   }
   const playlist = page.playlist;
   const playable = page.tracks.filter((track) => track.playable);
+  const cover = playlistCoverURL(playlist);
   $("#main").innerHTML = `
     <div class="album-hero">
-      <div class="pl-icon big">♫</div>
+      ${cover
+        ? `<img class="pl-icon big art" alt="" src="${cover}">`
+        : '<div class="pl-icon big">♫</div>'}
       <div class="hero-txt">
         <h2>${escapeHTML(playlist.name)}</h2>
         <small>${escapeHTML(describeDuration(
@@ -974,9 +1005,12 @@ async function renderPlaylistView(playlistId) {
         ${ICON_ACTION_SHUFFLE} 随机</button>
       <button class="action" id="playlist-delete">${ICON_ACTION_TRASH} 删除列表</button>
     </div>
+    <div class="cover-row">
+      <button class="cover-chip" id="cover-change">${ICON_ACTION_IMAGE} ${cover ? "换封面" : "设置封面"}</button>
+      ${cover ? `<button class="cover-chip" id="cover-remove">${ICON_ACTION_TRASH} 移除封面</button>` : ""}
+    </div>
     <div class="track-list" id="playlist-tracks">
-      ${page.tracks.map((track, index) => trackRowHTML(track,
-        `<span class="t-index">${index + 1}</span>`)).join("")}
+      ${page.tracks.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")}
     </div>`;
   $("#playlist-play").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]));
@@ -984,6 +1018,22 @@ async function renderPlaylistView(playlistId) {
   $("#playlist-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
+  $("#cover-change").addEventListener("click", () => {
+    $("#cover-file").click();        // 隐藏的文件选择器 (选完自动上传)
+  });
+  if (cover) {
+    $("#cover-remove").addEventListener("click", async () => {
+      if (!window.confirm(`移除「${playlist.name}」的自定义封面?`)) return;
+      try {
+        await fetchJSON(`/music/api/playlists/${playlistId}/cover`,
+                        { method: "DELETE" });
+        toast("封面已移除");
+        renderPlaylistView(playlistId);
+      } catch (error) {
+        toast(`没移除掉: ${error.message}`);
+      }
+    });
+  }
   $("#playlist-delete").addEventListener("click", async () => {
     if (!window.confirm(`删除播放列表「${playlist.name}」?`)) return;
     try {
@@ -995,7 +1045,31 @@ async function renderPlaylistView(playlistId) {
     }
   });
   bindTrackLists($("#playlist-tracks"), () => page.tracks);
+  coverUploadPlaylistId = playlistId;
   syncPlayerIndicators();
+}
+
+/** 隐藏文件选择器选中图片 → 直接把字节 PUT 上去 (原图直存, 不压缩)。 */
+async function uploadPlaylistCover(playlistId) {
+  const input = $("#cover-file");
+  const file = input.files && input.files[0];
+  input.value = "";                     // 同一张图重选也要触发 change
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    toast("封面太大了 (上限 10 MB)");
+    return;
+  }
+  try {
+    await fetchJSON(`/music/api/playlists/${playlistId}/cover`, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    toast("封面已更新");
+    renderPlaylistView(playlistId);
+  } catch (error) {
+    toast(`封面没传上去: ${error.message}`);
+  }
 }
 
 // ------------------------------------------------------------ 搜索页
@@ -1158,18 +1232,135 @@ function formatRowHTML(row, totalCount) {
     </div>`;
 }
 
-// ------------------------------------------------------------ 扫描状态条
+// ------------------------------------------------------------ 设置页
+// 曲库路径 / 联网补歌词开关与地址 / 蜂窝流量月账。设置只有管理员能改
+// (普通账号进来只看到说明); 曲库路径改了服务器会立刻重新扫描整个曲库。
+
+async function renderSettingsView() {
+  $("#main").innerHTML = '<div id="settings-body">'
+    + '<p class="stat-empty">加载中…</p></div>';
+  const body = $("#settings-body");
+  let settings;
+  try {
+    settings = await fetchJSON("/music/api/settings");
+  } catch (error) {
+    const message = String(error.message).includes("管理员")
+      ? "设置只有管理员能改" : `设置拿不到: ${error.message}`;
+    body.innerHTML = `<p class="stat-empty">${escapeHTML(message)}</p>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="settings-block">
+      <div class="settings-title">音乐库</div>
+      <div class="settings-field">
+        <label for="set-dir">曲库路径</label>
+        <input id="set-dir" spellcheck="false" autocomplete="off"
+               placeholder="${escapeHTML(settings.music_directory_default)}"
+               value="${escapeHTML(settings.music_directory)}">
+        <small>服务器上存放音乐的目录 (留空用默认); 改了会立刻重新扫描整个曲库</small>
+      </div>
+    </div>
+    <div class="settings-block">
+      <div class="settings-title">联网补歌词</div>
+      <div class="settings-field switch-row">
+        <label>库里没歌词时上网求一遍</label>
+        <button class="switch${settings.lyrics_api_enabled ? " on" : ""}"
+                id="set-lyrics-on" role="switch"
+                aria-checked="${settings.lyrics_api_enabled}"><i></i></button>
+      </div>
+      <div class="settings-field">
+        <label for="set-lyrics-base">歌词 API 地址</label>
+        <input id="set-lyrics-base" spellcheck="false" autocomplete="off" inputmode="url"
+               placeholder="${escapeHTML(settings.lyrics_api_default)}"
+               value="${escapeHTML(settings.lyrics_api_base)}">
+        <small>LRCLIB 兼容接口; 求到的歌词会写回曲库, 离线也能看</small>
+      </div>
+    </div>
+    <div class="set-save-row">
+      <button class="action primary" id="set-save">保存设置</button>
+    </div>
+    <div class="settings-block">
+      <div class="settings-title">蜂窝流量 · 听歌消耗</div>
+      ${settings.cellular_months.length
+        ? settings.cellular_months.map(monthRowHTML).join("")
+        : '<p class="stat-empty">还没有记录</p>'}
+      <small class="settings-note">能认出蜂窝网络的浏览器 (如安卓 Chrome) 会自动按月上报;
+        iPhone 的 Safari 认不出网络类型, 那部分记不上。</small>
+    </div>`;
+  const toggle = $("#set-lyrics-on");
+  toggle.addEventListener("click", () => {
+    const on = toggle.getAttribute("aria-checked") !== "true";
+    toggle.setAttribute("aria-checked", String(on));
+    toggle.classList.toggle("on", on);
+  });
+  $("#set-save").addEventListener("click", async () => {
+    const button = $("#set-save");
+    button.disabled = true;
+    try {
+      await fetchJSON("/music/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          music_directory: $("#set-dir").value.trim(),
+          lyrics_api_enabled: toggle.getAttribute("aria-checked") === "true",
+          lyrics_api_base: $("#set-lyrics-base").value.trim(),
+        }),
+      });
+      toast("设置已保存");
+      checkScanStatus();      // 曲库路径换过的话, 扫描已起: 进度条接上
+    } catch (error) {
+      toast(`没保存上: ${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+/** 流量月账一行: "2026年9月" + 友好字节数。 */
+function monthRowHTML(month) {
+  const [year, monthNumber] = month.month.split("-");
+  return `
+    <div class="month-row">
+      <span>${year}年${Number(monthNumber)}月</span>
+      <b>${formatBytes(month.bytes)}</b>
+    </div>`;
+}
+
+// ------------------------------------------------------------ 扫描状态
+// 服务器每几分钟自动增量重扫一轮 (新专辑自动冒出来), 这里 30 秒问一次:
+// 在扫 → 进度条; 收尾 → 动过库 (changed) 才静默刷新, 手动触发的才出提示。
+
+const SCAN_POLL_INTERVAL_MS = 30000;
 
 async function checkScanStatus() {
   try {
-    const status = await fetchJSON("/music/api/status");
-    const scan = status.scan;
+    const scan = (await fetchJSON("/music/api/status")).scan;
     if (scan.running) {
+      pageState.sawScanRunning = true;
       showScanStrip(scan);
     } else {
-      $("#scan-strip").hidden = true;
+      const watched = pageState.sawScanRunning;
+      pageState.sawScanRunning = false;
+      digestScanSettled(scan, watched);
     }
   } catch (_error) { /* 状态条失败不影响浏览 */ }
+}
+
+/** 一轮扫描收尾的消化: 同一轮不重复响应; 启动首见的旧结果只记账不惊动;
+    动过库就静默重铺, 手动按过「重新扫描」的再补一句提示。 */
+function digestScanSettled(scan, watched) {
+  $("#scan-strip").hidden = true;
+  const signature = `${scan.finished_at || 0}:${scan.changed ? 1 : 0}`;
+  if (signature === pageState.lastScanSignature) return;
+  const firstSighting = !pageState.lastScanSignature && !watched;
+  pageState.lastScanSignature = signature;
+  if (firstSighting) return;              // 上次关页前就扫完的旧结果
+  const manual = userRescanPending;
+  userRescanPending = false;
+  if (!manual && !scan.changed) return;   // 后台自动扫, 什么都没变: 不打扰
+  resetLibraryLists();
+  route();                                // 曲目/专辑列表重铺 (当前页自动刷新)
+  if (manual) toast("曲库扫描完成");
 }
 
 function showScanStrip(scan) {
@@ -1184,12 +1375,7 @@ function showScanStrip(scan) {
     try {
       const status = await fetchJSON("/music/api/status");
       if (status.scan.running) showScanStrip(status.scan);
-      else {
-        strip.hidden = true;
-        resetLibraryLists();
-        route();                   // 扫完自动刷新当前页
-        toast("曲库扫描完成");
-      }
+      else digestScanSettled(status.scan, true);
     } catch (_error) { /* 下轮再问 */ }
   }, 2000);
 }
@@ -1227,6 +1413,13 @@ function bindGlobalEvents() {
     closeBrandMenu();
     navigate("stats");
   });
+  $("#settings-link").addEventListener("click", () => {
+    closeBrandMenu();
+    navigate("settings");
+  });
+  $("#cover-file").addEventListener("change", () => {
+    if (coverUploadPlaylistId) uploadPlaylistCover(coverUploadPlaylistId);
+  });
   $("#logout").addEventListener("click", async () => {
     try { await fetch("/music/api/logout", { method: "POST" }); }
     catch (_error) { /* 清 cookie 失败也照样走 */ }
@@ -1235,13 +1428,49 @@ function bindGlobalEvents() {
   $("#rescan").addEventListener("click", async () => {
     try {
       await fetchJSON("/music/api/rescan", { method: "POST" });
+      userRescanPending = true;      // 这轮收尾要出提示 (后台自动扫的不出)
       toast("开始扫描曲库");
       checkScanStatus();
     } catch (error) {
       toast(error.message);
     }
   });
+  // 后台自动增量重扫的探针: 页面可见时每 30 秒问一次状态
+  setInterval(() => {
+    if (!document.hidden) checkScanStatus();
+  }, SCAN_POLL_INTERVAL_MS);
   window.addEventListener("hashchange", route);
+}
+
+// ------------------------------------------------------------ 蜂窝流量
+// 只有能认出蜂窝网络的浏览器 (安卓 Chrome 的 navigator.connection) 才上报,
+// iPhone 的 Safari 认不出网络类型, 记不上 (设置页有说明)。收口/上报的
+// 节奏在 cellular-usage.js, 这里只给浏览器适配器。
+if (window.performance && performance.getEntriesByType
+    && typeof createCellularMonitor === "function") {
+  createCellularMonitor({
+    isCellular: () => {
+      const connection = navigator.connection
+        || navigator.mozConnection || navigator.webkitConnection;
+      return !!connection && connection.type === "cellular";
+    },
+    takeEntries: () => performance.getEntriesByType("resource"),
+    report: async (bytes) => {
+      const response = await fetch("/music/api/cellular-usage", {
+        method: "POST", keepalive: true,      // 离开页面那一笔也要送到
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bytes }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    },
+    onHide: (flush) => {
+      window.addEventListener("pagehide", flush);
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) flush();     // 切后台就报, 别等系统杀页
+      });
+    },
+    now: () => Date.now(),
+  }).start();
 }
 
 bindGlobalEvents();

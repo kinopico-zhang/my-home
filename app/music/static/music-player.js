@@ -274,6 +274,7 @@ function toggleLyricsView() {
   if (lyricsViewOpen) {
     loadLyrics();
   } else {
+    cancelLyricsScroll();          // 关页时动画立刻停, scroll 事件别再误判
     lyricsActiveIndex = -1;
   }
 }
@@ -296,9 +297,11 @@ async function loadLyrics() {
   const lyricsDocument = lyricsCache.get(track.track_id);
   const container = $("#fp-lyrics");
   if (!lyricsDocument || !lyricsDocument.lines.length) {
+    cancelLyricsScroll();                  // 旧动画别再追已重铺的行
     container.innerHTML = '<div class="lyrics-empty">这首歌没有歌词</div>';
     return;
   }
+  cancelLyricsScroll();
   container.innerHTML = lyricsDocument.lines.map((line) =>
     `<div class="lyrics-line" data-time="${line.timeSeconds}">${escapeHTML(line.text)}</div>`
   ).join("");
@@ -327,14 +330,64 @@ function highlightActiveLyric() {
   if (lyricsFollowPaused) maybeResumeLyricsFollow();
 }
 
-/** 歌词容器滚动定位到某行居中 (不用 scrollIntoView: smooth 动画的
-    中间态会和"手动滑动"判定打架, 这里直接设 scrollTop + 短窗豁免)。 */
+/** 歌词容器滚动到某行居中 —— rAF 指数缓出追目标, 丝滑滚动 (Apple Music 风):
+    目标位置每帧重算 (行高跟着"放大动画"在变, 一次算死会差半行);
+    Chrome 的 rAF 时间戳会回退, dt 钳制后再用。 */
+let lyricsScrollRaf = 0;            // 在跑的动画帧句柄 (0 = 没在动)
+let lyricsScrollTargetLine = null;  // 追踪中的行 (换曲重铺后作废)
+let lyricsScrollLastTime = 0;       // 上一帧时刻 (算 dt)
+let lyricsScrollGraceTimer = 0;     // 动画停后还把 scroll 事件当自己的宽限期
+
 function scrollLyricsTo(lineElement) {
   const container = $("#fp-lyrics");
+  if (!container.contains(lineElement)) return;   // 换曲重铺前的旧行: 别滚
+  lyricsScrollTargetLine = lineElement;
+  clearTimeout(lyricsScrollGraceTimer);
   lyricsAutoScrolling = true;
-  container.scrollTop = lineElement.offsetTop - container.clientHeight / 2
-    + lineElement.offsetHeight / 2;
-  setTimeout(() => { lyricsAutoScrolling = false; }, 120);
+  if (!lyricsScrollRaf) {
+    lyricsScrollLastTime = performance.now();
+    lyricsScrollRaf = requestAnimationFrame(lyricsScrollFrame);
+  }
+}
+
+function lyricsScrollFrame(now) {
+  lyricsScrollRaf = 0;
+  const container = $("#fp-lyrics");
+  const line = lyricsScrollTargetLine;
+  if (!line || !container.contains(line)) {
+    endLyricsScroll();
+    return;
+  }
+  const dt = Math.min(Math.max(now - lyricsScrollLastTime, 0), 40) / 1000;
+  lyricsScrollLastTime = now;
+  const target = line.offsetTop - container.clientHeight / 2
+    + line.offsetHeight / 2;
+  const remaining = target - container.scrollTop;
+  if (Math.abs(remaining) < 1) {
+    container.scrollTop = target;
+    endLyricsScroll();
+    return;
+  }
+  container.scrollTop += remaining * Math.min(1, dt * 10);   // 指数缓出
+  lyricsScrollRaf = requestAnimationFrame(lyricsScrollFrame);
+}
+
+/** 动画到点收尾: 撤目标, scroll 事件的宽限再撑一小会儿。 */
+function endLyricsScroll() {
+  lyricsScrollTargetLine = null;
+  clearTimeout(lyricsScrollGraceTimer);
+  lyricsScrollGraceTimer = setTimeout(() => {
+    lyricsAutoScrolling = false;
+  }, 150);
+}
+
+/** 用户上手滚歌词: 立刻交还控制权 (别跟手指抢), 之后的滚动算手动。 */
+function cancelLyricsScroll() {
+  if (lyricsScrollRaf) cancelAnimationFrame(lyricsScrollRaf);
+  lyricsScrollRaf = 0;
+  lyricsScrollTargetLine = null;
+  clearTimeout(lyricsScrollGraceTimer);
+  lyricsAutoScrolling = false;
 }
 
 /** 手动滑过歌词后静置够了就回到跟唱。 */
@@ -454,7 +507,9 @@ function bindPlayerEvents() {
   $("#queue-mask").addEventListener("click", closeQueueSheet);
   $("#lyrics-resume").addEventListener("click", resumeLyricsFollow);
 
-  // 手动滑歌词 (程序定位引发的 scroll 不算) → 暂停跟唱 + 出"回到当前句"
+  // 手动滑歌词 (程序定位引发的 scroll 不算) → 暂停跟唱 + 出"回到当前句";
+  // 手指按下的那一刻先撤掉滚动动画, 之后的位置全算用户的
+  $("#fp-lyrics").addEventListener("pointerdown", cancelLyricsScroll);
   $("#fp-lyrics").addEventListener("scroll", () => {
     if (lyricsAutoScrolling) return;
     lyricsFollowPaused = true;

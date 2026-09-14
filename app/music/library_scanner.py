@@ -56,7 +56,7 @@ class LibraryScanner:
         started = time.monotonic()
         self._set_status(running=True, phase="walk", files_done=0,
                          files_total=0, started_at=datetime.now(),
-                         finished_at=None, error="")
+                         finished_at=None, error="", changed=False)
         try:
             if not self._music_directory.is_dir():
                 # os.walk 对不存在的根不报错, 会把整个索引当 "消失" 清空
@@ -69,8 +69,11 @@ class LibraryScanner:
                              finished_at=datetime.now())
             raise
         summary.elapsed_seconds = time.monotonic() - started
+        # 上一轮有没有动库 (前端据此决定要不要刷新列表; 自动重扫没变就不打扰)
         self._set_status(phase="done", running=False,
-                         finished_at=datetime.now())
+                         finished_at=datetime.now(),
+                         changed=bool(summary.tracks_scanned
+                                      or summary.tracks_removed))
         return summary
 
     def _set_status(self, **fields: object) -> None:

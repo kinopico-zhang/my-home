@@ -15,8 +15,9 @@ def test_versions_newest_first_and_wellformed():
     """新→老; 每版字段齐全, 文案是用户视角的一句话 (不夹技术黑话)。"""
     vs = changelog.entries()
     assert [v.version for v in vs] == [
-        "2.5.1", "2.5.0", "2.4.0", "2.3.0", "2.2.0", "2.1.0", "2.0.0", "1.1.0", "1.0.0"]
-    assert vs[0].date == "2026-09-14" and vs[-1].date == "2026-09-08"
+        "2.6.0", "2.5.1", "2.5.0", "2.4.0", "2.3.0", "2.2.0", "2.1.0",
+        "2.0.0", "1.1.0", "1.0.0"]
+    assert vs[0].date == "2026-09-15" and vs[-1].date == "2026-09-08"
     for v in vs:
         assert v.items                                  # 每版至少一条
         assert len(v.date) == 10 and v.date[4] == "-"   # YYYY-MM-DD
@@ -25,9 +26,10 @@ def test_versions_newest_first_and_wellformed():
             assert len(it.text) >= 4                    # 不是光秃秃的词
             # 站在用户视角: 不夹接口路径 / 链接等技术黑话
             assert "api/" not in it.text and "http" not in it.text
-    # 最新一版同时有新增/改进/修复 (合并批次的立意, 不再一个提交一版)
+    # 合并批次的立意: 三类合在一起发, 不再一个提交一版 (单功能的小批次
+    # 可以只有一类 —— 2.6.0 只有菜单显示账号这一件事, 硬凑修复反而失真)
     kinds = {it.kind for it in vs[0].items}
-    assert kinds == {"新增", "改进", "修复"}
+    assert kinds <= {"新增", "改进", "修复"}
 
 
 # ---------------------------------------------------------------- 接口

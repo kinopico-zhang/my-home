@@ -1,5 +1,7 @@
 """媒体流: 音频按 Range 分段流 (iOS Safari 的 <audio> 必须支持 206),
-专辑封面从 FLAC 内嵌抽取后缓存到 data/music-art/ (曲库本体只读)。
+封面从内嵌标签抽取后缓存到 data/music-art/ (曲库本体只读); 专辑封面取
+专辑第一首的内嵌图, 单曲封面取这首歌自己的 (播放列表行用, 各自独立
+缓存); 播放列表的自定义封面是用户上传的原图, 直接透传。
 """
 import re
 from pathlib import Path
@@ -11,8 +13,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .library_database import (Album, Artist, Track, artwork_cache_directory,
-                               music_directory)
+from .library_database import (Album, Artist, Playlist, Track,
+                               artwork_cache_directory, music_directory)
 from .library_tags import extract_album_artwork
 
 _STREAM_CHUNK_BYTES = 256 * 1024
@@ -159,4 +161,56 @@ def artist_artwork_response(session: Session, artist_id: int) -> Response:
     media_type = _POSTER_CONTENT_TYPES.get(poster_path.suffix.lower(),
                                            "application/octet-stream")
     return FileResponse(poster_path, media_type=media_type,
+                        headers=_LONG_CACHE_HEADERS)
+
+
+def track_artwork_response(session: Session, track_id: int) -> Response:
+    """单曲自己的内嵌封面 (播放列表行用; 与专辑封面互相独立缓存)。
+
+    有效性 = 缓存文件 mtime ≥ 曲目 file_mtime (文件换过就重抽)。"""
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "曲目不存在")
+    if not track.has_artwork:
+        raise HTTPException(404, "没有封面")
+    cache_path = artwork_cache_directory() / f"track-{track_id}.jpg"
+    if not (cache_path.is_file()
+            and cache_path.stat().st_mtime >= track.file_mtime):
+        artwork = extract_album_artwork(music_directory() / track.file_path)
+        if artwork is None:
+            raise HTTPException(404, "封面抽取失败")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = cache_path.with_suffix(".tmp")
+        temporary_path.write_bytes(artwork)
+        temporary_path.replace(cache_path)
+    return FileResponse(cache_path, media_type="image/jpeg",
+                        headers=_LONG_CACHE_HEADERS)
+
+
+# 播放列表自定义封面的三种扩展名 (上传时按魔数定, 找文件时挨个试)
+_COVER_EXTENSIONS = (".jpg", ".png", ".webp")
+
+
+def playlist_cover_file(playlist_id: int) -> Path | None:
+    """自定义封面文件 (三种扩展名里找现存的; 没传过 None)。"""
+    for extension in _COVER_EXTENSIONS:
+        path = artwork_cache_directory() / f"playlist-{playlist_id}{extension}"
+        if path.is_file():
+            return path
+    return None
+
+
+def playlist_cover_response(session: Session, playlist_id: int) -> Response:
+    """自定义封面透传 (?v= 版本长缓存, 换图即换址); 没传过 404。"""
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise HTTPException(404, "播放列表不存在")
+    if not playlist.cover_version:
+        raise HTTPException(404, "没有自定义封面")
+    cover_path = playlist_cover_file(playlist_id)
+    if cover_path is None:
+        raise HTTPException(404, "封面文件不存在")
+    media_type = _POSTER_CONTENT_TYPES.get(cover_path.suffix.lower(),
+                                           "application/octet-stream")
+    return FileResponse(cover_path, media_type=media_type,
                         headers=_LONG_CACHE_HEADERS)

@@ -575,6 +575,23 @@ def test_all_pages_declare_png_and_touch_icons(auth):
         assert "apple-touch-icon.png" in body, f"{path} 缺 apple-touch-icon"
 
 
+def test_brand_menu_pages_show_current_user():
+    """每个带品牌下拉的页面都引 menu-user.js: 菜单顶部显示当前登录的账号。"""
+    root = Path(__file__).parent.parent / "app"
+    pages = [page for base in ("tesla", "bookkeeping", "music", "home")
+             for page in (root / base / "static").glob("*.html")
+             if "brand-menu" in page.read_text(encoding="utf-8")]
+    assert len(pages) >= 14            # 三应用 13 页 + 门厅账号页, 加页面也得跟上
+    for page in pages:
+        html = page.read_text(encoding="utf-8")
+        assert "/static/menu-user.js" in html, f"{page.name} 缺 menu-user.js"
+    # 小件本身: 问 /api/me, 样式自带, 找不到菜单静默不装 (名字走 DOM 不进 innerHTML)
+    widget = (root / "home" / "static" / "menu-user.js").read_text(encoding="utf-8")
+    for frag in ('"/api/me"', ".brand-menu .menu", "menu.prepend",
+                 "is_admin", ".textContent = name"):
+        assert frag in widget, f"menu-user.js 缺少 {frag}"
+
+
 def test_all_pages_have_brand_menu(auth):
     """品牌即入口: My Tesla 是下拉按钮, 展开是三个页面 + 退出登录, 当前页高亮。"""
     for path, cur, slug in (("/tesla/charging", "充电记录", "charging"),

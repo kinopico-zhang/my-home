@@ -18,11 +18,13 @@ from .. import account_store, database
 from ..models import User
 from ..schemas import ChangelogVersion, OkResponse
 from . import (changelog, library_media, library_playlists,
-               library_queries, service)
+               library_queries, library_settings, service)
 from .library_database import (Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
-                      LibraryStats, LyricsResponse, MusicStatusResponse,
+                      CellularUsageReport, LibraryStats, LyricsResponse,
+                      MusicSettingsState, MusicSettingsUpdate,
+                      MusicStatusResponse,
                       PlayRecordRequest, PlaylistBrief, PlaylistCreateRequest,
                       PlaylistPage, PlaylistPageList,
                       PlaylistTrackRequest, RecentPlaysResponse,
@@ -64,6 +66,14 @@ def _require_user(request: Request, users: Session) -> User:
     if user is None:
         raise HTTPException(401, "未登录")
     return user
+
+
+def _require_admin(request: Request, users: Session) -> User:
+    """管理员校验 (设置改的是服务器路径, 不能人人都动)。"""
+    user = _require_user(request, users)
+    if user.is_admin:
+        return user
+    raise HTTPException(403, "仅管理员可改设置")
 
 
 def _validate_language(language: str) -> str:
@@ -156,6 +166,44 @@ def music_rescan(request: Request,
     return RescanResponse(started=True)
 
 
+# ---------------------------------------------------------------- 设置 / 流量
+
+@api.get("/settings", response_model=MusicSettingsState)
+def music_settings(request: Request,
+                   users: Session = Depends(database.get_users_db),
+                   library: Session = Depends(get_db)) -> MusicSettingsState:
+    """设置页状态: 曲库路径 / 歌词 API 现值 + 蜂窝流量月账 (仅管理员)。"""
+    _require_admin(request, users)
+    return library_settings.settings_state(library)
+
+
+@api.post("/settings", response_model=MusicSettingsState)
+def music_settings_save(body: MusicSettingsUpdate, request: Request,
+                        users: Session = Depends(database.get_users_db),
+                        library: Session = Depends(get_db)) -> MusicSettingsState:
+    """保存设置 (仅管理员); 曲库路径变了就同库换目录起全量重扫。"""
+    _require_admin(request, users)
+    try:
+        new_directory = library_settings.save_settings(
+            library, body.music_directory, body.lyrics_api_enabled,
+            body.lyrics_api_base)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if new_directory is not None:
+        service.apply_music_directory(new_directory)
+    return library_settings.settings_state(library)
+
+
+@api.post("/cellular-usage", response_model=OkResponse)
+def music_cellular_usage(body: CellularUsageReport, request: Request,
+                         users: Session = Depends(database.get_users_db),
+                         library: Session = Depends(get_db)) -> OkResponse:
+    """客户端报一笔蜂窝流量 (能认出蜂窝网络的浏览器定期上报, 记进当月账)。"""
+    _require_user(request, users)
+    library_settings.record_cellular_bytes(library, body.bytes)
+    return OkResponse(ok=True)
+
+
 @api.get("/playlists", response_model=PlaylistPageList)
 def music_playlists(request: Request,
                     users: Session = Depends(database.get_users_db),
@@ -218,6 +266,40 @@ def music_playlist_delete(request: Request,
     except KeyError as exc:
         raise HTTPException(404, "没有这个播放列表") from exc
     return OkResponse(ok=True)
+
+
+@api.put("/playlists/{playlist_id}/cover", response_model=PlaylistBrief)
+async def music_playlist_cover_upload(request: Request,
+                                      playlist_id: int,
+                                      users: Session = Depends(
+                                          database.get_users_db),
+                                      library: Session = Depends(
+                                          get_db)) -> PlaylistBrief:
+    """换播放列表自定义封面 (请求体就是图片字节, 类型看 Content-Type)。"""
+    _require_user(request, users)
+    data = await request.body()
+    try:
+        return library_playlists.set_playlist_cover(
+            library, playlist_id, data,
+            request.headers.get("content-type", ""))
+    except KeyError as exc:
+        raise HTTPException(404, "没有这个播放列表") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@api.delete("/playlists/{playlist_id}/cover", response_model=PlaylistBrief)
+def music_playlist_cover_clear(request: Request,
+                               playlist_id: int,
+                               users: Session = Depends(database.get_users_db),
+                               library: Session = Depends(
+                                   get_db)) -> PlaylistBrief:
+    """撤掉自定义封面 (列表卡片回默认的渐变音符块)。"""
+    _require_user(request, users)
+    try:
+        return library_playlists.clear_playlist_cover(library, playlist_id)
+    except KeyError as exc:
+        raise HTTPException(404, "没有这个播放列表") from exc
 
 
 @api.get("/albums", response_model=AlbumPageList)
@@ -324,9 +406,13 @@ def music_search(request: Request,
 def music_lyrics(track_id: int, request: Request,
                  users: Session = Depends(database.get_users_db),
                  library: Session = Depends(get_db)) -> LyricsResponse:
-    """单曲歌词原文 (lrc 时间轴由前端解析)。"""
+    """单曲歌词原文 (lrc 时间轴由前端解析)。
+
+    库里没有时按设置联网求一遍 (求到写回索引)。"""
     _require_user(request, users)
-    lyrics = library_queries.lyrics_for_track(library, track_id)
+    lyrics = library_queries.lyrics_for_track(
+        library, track_id,
+        library_settings.effective_lyrics_api(library))
     if lyrics is None:
         raise HTTPException(404, "曲目不存在")
     return lyrics
@@ -349,6 +435,24 @@ def music_album_artwork(album_id: int, request: Request,
     """专辑封面 (FLAC 内嵌抽取, data/music-art 缓存, ?v= 版本长缓存)。"""
     _require_user(request, users)
     return library_media.album_artwork_response(library, album_id)
+
+
+@media.get("/tracks/{track_id}/artwork")
+def music_track_artwork(track_id: int, request: Request,
+                        users: Session = Depends(database.get_users_db),
+                        library: Session = Depends(get_db)) -> Response:
+    """单曲自己的内嵌封面 (播放列表里每行用各首歌的封面)。"""
+    _require_user(request, users)
+    return library_media.track_artwork_response(library, track_id)
+
+
+@media.get("/playlists/{playlist_id}/cover")
+def music_playlist_cover(playlist_id: int, request: Request,
+                         users: Session = Depends(database.get_users_db),
+                         library: Session = Depends(get_db)) -> Response:
+    """播放列表自定义封面 (?v= 版本长缓存)。"""
+    _require_user(request, users)
+    return library_media.playlist_cover_response(library, playlist_id)
 
 
 @media.get("/artists/{artist_id}/artwork")
