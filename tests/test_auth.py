@@ -90,11 +90,12 @@ def test_all_pages_have_refresh_button(auth):
         "/tesla/stats": ("stats.js", "await refetch();"),
         "/tesla/chargemap": ("chargemap.js", "await refresh(false);"),
         "/tesla/map": ("map.js", "await refresh(false);"),
-        "/tesla/trips": ("trips.js", "await refreshList();"),
+        "/tesla/trips": ("trips-list.js", "await refreshList();"),
         "/tesla/groups": ("groups.js", "await load();"),
         "/tesla/live": ("live.js", "await poll();"),
         "/tesla/settings": ("settings.js", "await loadSettings();"),
-        "/tesla/changelog": ("changelog.js", "await load();"),
+        "/tesla/changelog": ("/static/changelog-page.js", "await load();"),
+        "/music/changelog": ("/static/changelog-page.js", "await load();"),
         "/bookkeeping": ("bookkeeping.js", "await syncNow();"),
         "/accounts": ("accounts.js", "await loadAll();"),
         "/music": ("music.js", "resetLibraryLists();"),
@@ -107,7 +108,8 @@ def test_all_pages_have_refresh_button(auth):
                   else "/music/static" if path == "/music"
                   else "/static" if path == "/accounts"
                   else "/tesla/static")
-        js = auth.get(f"{prefix}/{js_file}?v=1").text
+        js_path = js_file if js_file.startswith("/") else f"{prefix}/{js_file}"
+        js = auth.get(f"{js_path}?v=1").text
         assert '$("#refresh-btn").addEventListener' in js, path
         assert call in js, f"{path} 刷新按钮没接上 {call}"
         # 刷新按钮始终顶栏最右: 有时间菜单的页菜单吃 auto 边距, 按钮跟在后面;
@@ -275,7 +277,8 @@ def test_unauthed_pages_redirect_to_login(client):
     for path in ("/", "/tesla", "/tesla/charging", "/tesla/stats",
                  "/tesla/chargemap", "/tesla/map", "/tesla/changelog",
                  "/tesla/trips", "/tesla/groups", "/tesla/live",
-                 "/tesla/settings", "/accounts", "/bookkeeping", "/music"):
+                 "/tesla/settings", "/accounts", "/bookkeeping", "/music",
+                 "/music/changelog"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
         assert r.headers["location"] == "/login", path
@@ -289,6 +292,7 @@ def test_unauthed_apis_return_401_json(client):
                  "/tesla/live/api/status",
                  "/tesla/changelog/api/entries",
                  "/music/api/albums", "/music/api/status",
+                 "/music/changelog/api/entries",
                  "/api/me", "/api/account/name", "/accounts/api/users"):
         r = client.get(path)
         assert r.status_code == 401, path
@@ -454,7 +458,8 @@ def test_pages_served_after_login(auth):
                          ("/tesla/live", "My Tesla"),
                          ("/tesla/settings", "My Tesla"),
                          ("/accounts", "My Home"),             # 账号管理
-                         ("/bookkeeping", "My Money")):
+                         ("/bookkeeping", "My Money"),
+                         ("/music/changelog", "My Music")):
         r = auth.get(path)
         assert r.status_code == 200, path
         assert marker in r.text, path
