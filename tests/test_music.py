@@ -6,6 +6,7 @@
 import os
 import sqlite3
 import struct
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -703,15 +704,19 @@ def _login(client):
 
 
 def _wait_scan_done(client, timeout=10.0):
-    """轮询到扫描收尾 (done/error)。"""
+    """轮询到扫描收尾 (done/error); idle 只是还没开始, 不算失败。
+
+    触发返回后到线程真正置起 running 之间有个窗口 (状态还是 idle),
+    一进就断言会冤枉好扫描; 真没扫起来 (触发被拒) 则一直 idle 到超时。"""
     deadline = time.monotonic() + timeout
+    scan = {}
     while time.monotonic() < deadline:
         scan = client.get("/music/api/status").json()["scan"]
-        if not scan["running"]:
+        if not scan["running"] and scan["phase"] != "idle":
             assert scan["phase"] == "done", scan
             return
         time.sleep(0.05)
-    raise AssertionError("扫描超时未完成")
+    raise AssertionError(f"扫描超时未完成: {scan}")
 
 
 def test_music_page_requires_login(auth):
@@ -1047,6 +1052,35 @@ def test_startup_chain_syncs_playlists_and_survives_plex_gone(
     _wait_scan_done(auth)
     assert [item["name"] for item in
             auth.get("/music/api/playlists").json()["playlists"]] == ["夜跑"]
+
+
+def test_reinit_scans_even_if_old_thread_lingers(auth, tmp_path, monkeypatch):
+    """换代重装配: 上一代扫描线程还没退场, 新实例的首扫也照起。
+
+    旧版 trigger_scan 拿全局线程句柄的 is_alive 挡触发 —— 旧线程只是
+    迟几毫秒收尾, 就把新扫描器永远卡在 idle (启动链测试偶发 phase=idle)。"""
+    gate = threading.Event()
+    real_run = service._run_scan
+
+    def slow_run(current, after_backfill):
+        if current is old:
+            gate.wait(timeout=10)                      # 上一代卡在半路不退场
+        real_run(current, after_backfill)
+
+    monkeypatch.setattr(service, "_run_scan", slow_run)
+    service.stop_service()
+    root = tmp_path / "lingering-library"
+    _make_library(root)
+    service.start_service(f"sqlite:///{tmp_path / 'lingering.db'}", root,
+                          scan_immediately=False)
+    old = service.scanner()
+    assert service.trigger_scan(after_backfill=True)   # 上一代扫描进行中
+    # 旧线程卡着: 换库重装配, 新实例首扫必须照起, 不能被旧线程挡成 idle
+    service.start_service(f"sqlite:///{tmp_path / 'fresh.db'}", root,
+                          scan_immediately=True)
+    _wait_scan_done(auth)
+    assert auth.get("/music/api/status").json()["track_count"] == 4
+    gate.set()                                         # 放旧线程收尾
 
 
 def test_matching_lyric_line_pure():

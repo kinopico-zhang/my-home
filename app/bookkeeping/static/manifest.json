@@ -4,7 +4,7 @@
   "description": "家庭多人账本, 断网也能记, 联网自动同步",
   "id": "/bookkeeping",
   "start_url": "/bookkeeping",
-  "scope": "/",
+  "scope": "/bookkeeping",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",

@@ -96,6 +96,7 @@ def test_all_pages_have_refresh_button(auth):
         "/tesla/settings": ("settings.js", "await loadSettings();"),
         "/tesla/changelog": ("/static/changelog-page.js", "await load();"),
         "/music/changelog": ("/static/changelog-page.js", "await load();"),
+        "/bookkeeping/changelog": ("/static/changelog-page.js", "await load();"),
         "/bookkeeping": ("bookkeeping.js", "await syncNow();"),
         "/accounts": ("accounts.js", "await loadAll();"),
     }
@@ -135,13 +136,16 @@ def test_pages_remember_last_page(auth):
         assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
     assert "lastpage.js" not in auth.get("/login").text
     assert "lastpage.js" not in auth.get("/register").text
-    # 登录成功: 回上次停留页 (白名单正则, 站外/坏值回落门厅) —— 逻辑在 login.js
+    # 登录成功去哪: 逻辑在 login.js —— 应用内的登录页回该应用 (或 next 参数
+    # 带来的原地址, 只认本应用 scope), 门厅的回上次停留页 (白名单正则,
+    # 站外/坏值回落门厅), 不再写死充电页
     login_html = auth.get("/static/login.js?v=1").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
     assert ("/^\\/(tesla\\/(charging|stats|chargemap|map|trips|groups|live|settings"
             "|changelog))(\\?|$)/.test(last)") in login_html
-    # 白名单不匹配 (首次登录 / 坏值) 回门厅, 不再写死充电页
-    assert '? last : "/")' in login_html
+    assert '? last : "/"' in login_html
+    assert 'function pickNext()' in login_html
+    assert 'const APP_TITLES = { "/tesla": "My Tesla", "/music": "My Music",' in login_html
 
     r = auth.get("/tesla/static/lastpage.js")
     assert r.status_code == 200
@@ -161,13 +165,14 @@ def test_pages_remember_last_page(auth):
 
 def test_webapp_manifests_scoped_per_app(auth):
     """Web App Manifest: 各入口一份 (门厅 / Tesla / 记账 / 音乐), 名字和启动页
-    互不相同, scope 统一放宽到 / —— 登录页搬到了门厅层 (应用旧 scope 之外),
-    全屏 App 会话过期被 302 到 /login 时若越出 scope 就弹回 Safari 露地址栏
-    (2026-09-12 用户实测踩坑)。图标各用各的, 加主屏互不干扰。"""
+    互不相同, scope 各归各 —— 同源四张 manifest 都圈 "/" 时, iOS 锁屏点播放
+    封面会归给先装的 My Tesla (2026-09-14 用户实测跳错应用)。scope 收窄后
+    会话过期 302 /login 越界的旧坑 (2026-09-12) 由各应用 scope 内自带登录页
+    解决 (见 test_app_login_pages_in_scope)。图标各用各的, 加主屏互不干扰。"""
     for url, name, scope, start in (
-            ("/tesla/static/manifest.json", "My Tesla", "/", "/tesla/charging"),
-            ("/bookkeeping/static/manifest.json", "My Money", "/", "/bookkeeping"),
-            ("/music/static/manifest.json", "My Music", "/", "/music"),
+            ("/tesla/static/manifest.json", "My Tesla", "/tesla", "/tesla/charging"),
+            ("/bookkeeping/static/manifest.json", "My Money", "/bookkeeping", "/bookkeeping"),
+            ("/music/static/manifest.json", "My Music", "/music", "/music"),
             ("/static/manifest.json", "My Home", "/", "/")):
         r = auth.get(url)
         assert r.status_code == 200, url
@@ -263,7 +268,8 @@ def test_logout_clears_only_this_device(client, usersdb):
     assert client.post("/api/logout").status_code == 200
     r = client.get("/tesla/charging", follow_redirects=False)
     assert r.status_code == 302
-    assert r.headers["location"] == "/login"
+    # 应用页的登录跳转留在本应用 scope 内 (带原地址, 登录完回来)
+    assert r.headers["location"] == "/tesla/login?next=%2Ftesla%2Fcharging"
     # 别人的会话不受影响
     client2 = TestClient(m.app)
     client2.cookies.set("auth", authentication.make_token(other.uuid))
@@ -273,14 +279,47 @@ def test_logout_clears_only_this_device(client, usersdb):
 
 # ---------------------------------------------------------------- 中间件
 def test_unauthed_pages_redirect_to_login(client):
-    for path in ("/", "/tesla", "/tesla/charging", "/tesla/stats",
-                 "/tesla/chargemap", "/tesla/map", "/tesla/changelog",
-                 "/tesla/trips", "/tesla/groups", "/tesla/live",
-                 "/tesla/settings", "/accounts", "/bookkeeping", "/music",
-                 "/music/changelog"):
+    """页面未登录 302 登录页: 应用页跳自己 scope 内的登录页 (带上原地址,
+    登录完回去), 门厅层 (/, /accounts) 跳根路径 /login。"""
+    from urllib.parse import quote
+    for path, login in (("/", "/login"), ("/accounts", "/login"),
+                        ("/tesla", "/tesla/login"),
+                        ("/tesla/charging", "/tesla/login"),
+                        ("/tesla/stats", "/tesla/login"),
+                        ("/tesla/chargemap", "/tesla/login"),
+                        ("/tesla/map", "/tesla/login"),
+                        ("/tesla/changelog", "/tesla/login"),
+                        ("/tesla/trips", "/tesla/login"),
+                        ("/tesla/groups", "/tesla/login"),
+                        ("/tesla/live", "/tesla/login"),
+                        ("/tesla/settings", "/tesla/login"),
+                        ("/bookkeeping", "/bookkeeping/login"),
+                        ("/bookkeeping/changelog", "/bookkeeping/login"),
+                        ("/music", "/music/login"),
+                        ("/music/changelog", "/music/login")):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, path
-        assert r.headers["location"] == "/login", path
+        expected = login if path == login else login + "?next=" + quote(path, safe="")
+        assert r.headers["location"] == expected, path
+
+
+def test_app_login_pages_in_scope(client):
+    """各应用 scope 内的登录页: 未登录直接可开 (不再 302 到根路径 /login
+    越出 scope), 内容就是门厅那张登录页; 已登录访问直接回该应用主页
+    (独立 client, 不带上面的未登录态)。"""
+    for path in ("/tesla/login", "/music/login", "/bookkeeping/login"):
+        r = client.get(path, follow_redirects=False)
+        assert r.status_code == 200, path
+        assert 'src="/static/login.js?v=1"' in r.text, path
+    authed = TestClient(m.app)
+    assert authed.post("/api/login", json={"user": config.AUTH_USER,
+                                           "password": config.AUTH_PASS}
+                       ).status_code == 200
+    for path, root in (("/tesla/login", "/tesla/charging"),
+                       ("/music/login", "/music"),
+                       ("/bookkeeping/login", "/bookkeeping")):
+        r = authed.get(path, follow_redirects=False)
+        assert (r.status_code, r.headers["location"]) == (302, root), path
 
 
 def test_unauthed_apis_return_401_json(client):
@@ -293,6 +332,7 @@ def test_unauthed_apis_return_401_json(client):
                  "/music/api/albums", "/music/api/status",
                  "/music/api/playlists", "/music/api/playlists/1",
                  "/music/changelog/api/entries",
+                 "/bookkeeping/changelog/api/entries",
                  "/api/me", "/api/account/name", "/accounts/api/users"):
         r = client.get(path)
         assert r.status_code == 401, path
@@ -411,8 +451,7 @@ def test_moved_account_paths_redirect(client):
     """账号体系搬到根路径 (门厅共享层), 旧地址 302/307 兼容 —— 已经发出去的
     邀请链接和手机上的老书签不能断: 页面 302, 接口 307 (保方法与请求体),
     查询串 (invite=) 原样带上。"""
-    for old, new in (("/tesla/login", "/login"),
-                     ("/tesla/register?invite=tok", "/register?invite=tok"),
+    for old, new in (("/tesla/register?invite=tok", "/register?invite=tok"),
                      ("/tesla/accounts", "/accounts")):
         r = client.get(old, follow_redirects=False)
         assert (r.status_code, r.headers["location"]) == (302, new), old
@@ -461,6 +500,7 @@ def test_pages_served_after_login(auth):
                          ("/tesla/settings", "My Tesla"),
                          ("/accounts", "My Home"),             # 账号管理
                          ("/bookkeeping", "My Money"),
+                         ("/bookkeeping/changelog", "My Money"),
                          ("/music/changelog", "My Music")):
         r = auth.get(path)
         assert r.status_code == 200, path

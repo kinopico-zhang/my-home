@@ -4,7 +4,7 @@
   "description": "自建曲库随身听: 资料库 / 搜索 / 逐行歌词",
   "id": "/music",
   "start_url": "/music",
-  "scope": "/",
+  "scope": "/music",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",

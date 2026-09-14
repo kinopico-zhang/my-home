@@ -4,7 +4,7 @@
   "description": "Tesla 充电 / 足迹 / 行程",
   "id": "/tesla/charging",
   "start_url": "/tesla/charging",
-  "scope": "/",
+  "scope": "/tesla",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#000000",

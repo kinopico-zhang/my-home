@@ -15,10 +15,12 @@ from sqlalchemy.orm import Session
 
 from .. import account_store, database
 from ..models import User
-from . import store
+from ..schemas import ChangelogVersion
+from . import changelog, store
 from .schemas import (CategoryTree, EntryOut, SyncRequest, SyncResponse)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+HOME_STATIC_DIR = Path(__file__).resolve().parents[1] / "home" / "static"
 
 bk_app = FastAPI(title="My Money", docs_url=None, redoc_url=None,
                  openapi_url=None)
@@ -32,9 +34,11 @@ async def sqlalchemy_error_handler(
     return JSONResponse({"detail": f"数据库查询失败: {exc}"}, status_code=503)
 
 
-def _page(fname: str) -> FileResponse:
-    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (与主应用同一策略)。"""
-    resp = FileResponse(STATIC_DIR / fname)
+def _page(fname: str, directory: Path | None = None) -> FileResponse:
+    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (与主应用同一策略)。
+
+    目录缺省记账应用自己的静态目录; 登录页是门厅共享层的。"""
+    resp = FileResponse((directory or STATIC_DIR) / fname)
     resp.headers["Cache-Control"] = "no-cache"
     return resp
 
@@ -51,6 +55,27 @@ def _require_user(request: Request, users: Session) -> User:
 def bookkeeping_page() -> FileResponse:
     """记账页: 离线优先 (本地保存, 联网同步), 多人账本。"""
     return _page("bookkeeping.html")
+
+
+@bk_app.get("/login")
+def bookkeeping_login_page() -> FileResponse:
+    """记账应用 scope 内的登录页 (门厅那张): 会话过期 302 过来不越界。"""
+    return _page("login.html", directory=HOME_STATIC_DIR)
+
+
+@bk_app.get("/changelog")
+def bookkeeping_changelog_page() -> FileResponse:
+    """更新日志页 (记账应用自己的版本线, 与 My Tesla 的日志各自独立)。"""
+    return _page("changelog.html")
+
+
+@bk_app.get("/changelog/api/entries")
+def bookkeeping_changelog_entries(
+        request: Request,
+        users: Session = Depends(database.get_users_db)) -> list[ChangelogVersion]:
+    """更新日志版本 (新→老), 每版是一批改动的合并。"""
+    _require_user(request, users)
+    return changelog.entries()
 
 
 @api.post("/logout")

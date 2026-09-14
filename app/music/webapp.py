@@ -26,6 +26,7 @@ from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
                       RescanResponse, SearchResult, TrackPageList)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+HOME_STATIC_DIR = Path(__file__).resolve().parents[1] / "home" / "static"
 
 music_app = FastAPI(title="My Music", docs_url=None, redoc_url=None,
                     openapi_url=None)
@@ -44,9 +45,11 @@ async def sqlalchemy_error_handler(
     return JSONResponse({"detail": f"数据库查询失败: {exc}"}, status_code=503)
 
 
-def _page(file_name: str) -> FileResponse:
-    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (与主应用同一策略)。"""
-    response = FileResponse(STATIC_DIR / file_name)
+def _page(file_name: str, directory: Path | None = None) -> FileResponse:
+    """HTML 页面: 允许缓存但必须带 ETag 重新校验 (与主应用同一策略)。
+
+    目录缺省听歌应用自己的静态目录; 登录页是门厅共享层的。"""
+    response = FileResponse((directory or STATIC_DIR) / file_name)
     response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -69,6 +72,12 @@ def _validate_language(language: str) -> str:
 def music_page() -> FileResponse:
     """My Music 主页: 资料库 + 搜索 + 播放器 (一个页面管全部)。"""
     return _page("music.html")
+
+
+@music_app.get("/login")
+def music_login_page() -> FileResponse:
+    """听歌应用 scope 内的登录页 (门厅那张): 会话过期 302 过来不越界。"""
+    return _page("login.html", directory=HOME_STATIC_DIR)
 
 
 @music_app.get("/changelog")

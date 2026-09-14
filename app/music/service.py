@@ -23,6 +23,9 @@ class _ServiceState:
 
     scanner: LibraryScanner | None = None
     scan_thread: threading.Thread | None = None
+    # 那条扫描线程是给哪个实例起的: 重装配换实例后, 旧线程还在收尾,
+    # 不能拿它的存活挡住新实例的首扫 (否则新扫描器永远停在 idle)
+    scan_thread_owner: LibraryScanner | None = None
 
 
 _service = _ServiceState()
@@ -59,7 +62,12 @@ def scanner() -> LibraryScanner:
 
 
 def trigger_scan(after_backfill: bool = False) -> bool:
-    """起后台扫描线程; 已在扫返回 False (路由层答 409)。
+    """起后台扫描线程; 同一实例已在扫 (或线程刚起步还没挂上 running)
+    返回 False (路由层答 409)。
+
+    挡的只是同一实例的重复触发 —— 上一代实例的线程还在收尾不挡
+    新实例: 换代重装配是正常操作 (测试每个用例都换代), 旧线程
+    迟几毫秒退场是常态, 不能因此把新扫描器卡在 idle。
 
     after_backfill: 启动首扫用 —— 先把老库缺的入库时刻/检索键补齐再扫,
     免得补数和扫描两个写者抢 SQLite 锁 (补数是新库时瞬间空跑)。"""
@@ -67,8 +75,11 @@ def trigger_scan(after_backfill: bool = False) -> bool:
     if current is None or current.status().running:
         return False
     with _trigger_lock:
-        if _service.scan_thread is not None and _service.scan_thread.is_alive():
+        if (_service.scan_thread is not None
+                and _service.scan_thread.is_alive()
+                and _service.scan_thread_owner is current):
             return False
+        _service.scan_thread_owner = current
         _service.scan_thread = threading.Thread(
             target=_run_scan, args=(current, after_backfill),
             daemon=True, name="music-scan")
