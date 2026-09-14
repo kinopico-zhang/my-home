@@ -1,4 +1,4 @@
-"""My Tesla 的静态页面 (充电/地图/行程/设置等, 页面文件在 app/static)。"""
+"""My Tesla 的静态页面 (充电/地图/行程/设置等, 页面文件在 app/tesla/static)。"""
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, RedirectResponse
 

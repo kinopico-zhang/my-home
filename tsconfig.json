@@ -13,9 +13,9 @@
     "types": []
   },
   "include": [
-    "app/static/gcj02.js",
-    "app/static/trackutil.js",
-    "app/static/lastpage.js",
+    "app/tesla/static/gcj02.js",
+    "app/tesla/static/trackutil.js",
+    "app/tesla/static/lastpage.js",
     "app/bookkeeping/static/bookkeeping-merge.js",
     "app/music/static/lyrics-parser.js",
     "app/music/static/player-queue.js",
