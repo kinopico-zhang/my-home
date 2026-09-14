@@ -1,8 +1,8 @@
 """充电记录 API 测试 (SQLite 种子数据跑真实 SQL, 不依赖真实 TeslaMate 库)。"""
 from datetime import datetime
 
-from app import repository
-from app.models import Address, ChargingProcess, Geofence
+from app.tesla import repository
+from app.tesla.models import Address, ChargingProcess, Geofence
 from tests.conftest import (seed_addresses, seed_car, seed_charge,
                             seed_charging)
 

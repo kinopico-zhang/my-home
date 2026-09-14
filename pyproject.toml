@@ -28,6 +28,12 @@ disallow_untyped_calls = false
 module = "mutagen.*"
 implicit_reexport = true
 
+[[tool.mypy.overrides]]
+# repository 按域拆模块后 __init__ 是集中重导出的门面 (调用方免于关心
+# 名字住在哪个域), mutagen 同理: 关掉再导出的显式性检查
+module = ["app.tesla.repository", "app.tesla.repository.*"]
+implicit_reexport = true
+
 # ---------------------------------------------------------------- pylint
 [tool.pylint.main]
 # 从仓库根运行时让 pylint 找到 app 包 (conftest 里是运行时 sys.path 注入)

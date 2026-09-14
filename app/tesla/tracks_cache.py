@@ -15,7 +15,8 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import config, repository
+from .. import config
+from . import repository
 from .schemas import MapTrack
 
 CACHE_VERSION = 2

@@ -11,7 +11,7 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import database
+from .. import database
 from .models import AppSetting, Driver, TripDriver
 from .schemas import (AmapSettings, DriverInfo, SettingsState,
                       SettingsUpdate, TeslaMateSettings)
