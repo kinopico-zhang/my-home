@@ -2,6 +2,8 @@
 
 不逐提交记版本 (一个版本可以同时含多个修复和多个功能); 版本号 x.y.z ——
 x 大改版 · y 新功能 · z 问题修复, 新批次加在最上面 (新→老)。
+只记 My Tesla 自己的版本线; My Music / My Money 的变化在各自应用的
+日志页看 (2026-09-14 起各自独立)。
 """
 from typing import Final
 
@@ -9,17 +11,9 @@ from .schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
     ChangelogVersion(version="2.5.0", date="2026-09-13", items=[
-        ChangelogItem(kind="新增", text="My Money (记账): 独立小应用, 可单独加到主屏幕; 记一笔支出或收入, 按月看汇总, 每笔都记着是谁记的;"
-                                       " 断网也能记, 联网自动同步"),
         ChangelogItem(kind="新增", text="多账号: 管理员生成邀请链接发给家人, 注册后各有各的账号; 除账号管理外的功能都能用"),
         ChangelogItem(kind="新增", text="账号管理页 (仅管理员): 看账号列表, 生成 / 撤销注册邀请, 一键复制邀请链接"),
         ChangelogItem(kind="新增", text="设置页可以改自己的名称和密码"),
-        ChangelogItem(kind="新增", text="记账的金额输入换成自带计算器键盘: 0-9 加加减乘除顺手就能算 (买菜 3.5×2 这种), 边打边出结果;"
-                                       " 「完成」和 ⌫ 排在键盘右边, 长按 ⌫ 一键清空; 系统键盘不再弹出来"),
-        ChangelogItem(kind="新增", text="记账类别直接铺子类: 一格就是一个子类 (早餐 / 午餐 / 充电 / 地铁…), 点一下就选好, 不用先点大类;"
-                                       " 类别是从挖财账本导过来的 160 多个, 收入支出各一套"),
-        ChangelogItem(kind="新增", text="记一笔可以改记账时刻, 还能给账目贴标签; 用过的标签会记着, 下次点一下就能选上"),
-        ChangelogItem(kind="改进", text="记一笔弹层顶部的把手可以拽下来关闭 (和充电详情一个手势), 点一下把手也能关; 类别图标改成单色, 跟深色界面更搭"),
         ChangelogItem(kind="改进", text="服务定名 My Home: 登录后是家门厅, My Tesla (车辆) 和 My Money (记账)"
                                        " 两个应用都从这里进"),
         ChangelogItem(kind="改进", text="门厅搬到了根路径: 打开就是两个应用的大卡片, 点一下就进; 门厅自己也有主屏图标 (黑底白房子)"),
@@ -29,7 +23,6 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="修复", text="iPhone Safari 上复制邀请链接没反应: 换了兜底拷贝方案, 实在拷不了就直接弹分享面板 (里面也能拷贝,"
                                        " 还能直接发给家人)"),
         ChangelogItem(kind="修复", text="账号列表里「管理员」标签的椭圆外框只剩上半截"),
-        ChangelogItem(kind="修复", text="记一笔弹层能被左右拖动 (日期备注一行比屏幕宽了一点)"),
     ]),
     ChangelogVersion(version="2.4.0", date="2026-09-13", items=[
         ChangelogItem(kind="新增", text="充电详情可以导航到充电站, 自己挑手机里的地图 App (高德 / 百度 / 腾讯 / 苹果地图),"

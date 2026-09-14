@@ -4,13 +4,15 @@
 repository 层 (SQLAlchemy, 方言中立); 测试通过 database.init_engine()
 注入 SQLite, 不碰真实库。
 时间处理: 库内为 UTC 裸时间戳, 对外输出本地时间 (默认 Asia/Shanghai)。
-鉴权: 登录后签发 HMAC 签名的会话 cookie (默认 90 天), 未登录跳转 /tesla/login。
+鉴权: 登录后签发 HMAC 签名的会话 cookie (默认 90 天), 未登录页面跳各应用
+scope 内自己的登录页 (门厅层跳 /login), API 回 401。
 """
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Awaitable, Callable
+from urllib.parse import quote
 
 from fastapi import (APIRouter, Depends, FastAPI, HTTPException,
                      Request, Response)
@@ -112,6 +114,9 @@ async def sqlalchemy_error_handler(
 # 登出只清 cookie, 不需要有效会话
 _PUBLIC_PATHS = frozenset((
     "/login", "/register",
+    # 各应用 scope 内的登录页 (2026-09-14 起 scope 收窄, 登录页跟进去,
+    # 会话过期 302 不越出 scope, 全屏 App 不弹回 Safari 露地址栏)
+    "/tesla/login", "/music/login", "/bookkeeping/login",
     "/api/login", "/api/logout",
     "/api/register", "/api/invite-status",
     "/bookkeeping/api/logout", "/music/api/logout"))
@@ -121,7 +126,6 @@ _STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/",
 # 账号体系从 /tesla 搬到根路径 (账号属于 My Home, 不属于任何一个应用);
 # 旧地址 302/307 兼容 —— 手机上的老书签和已经发出去的邀请链接还能用
 _MOVED_PAGES = {
-    "/tesla/login": "/login",
     "/tesla/register": "/register",
     "/tesla/accounts": "/accounts",
 }
@@ -142,6 +146,32 @@ def _moved_target(path: str) -> str | None:
     if new is None and path.startswith("/tesla/accounts/api/"):
         new = "/accounts/api/" + path[len("/tesla/accounts/api/"):]
     return new
+
+
+# 应用登录页 → 登录后回哪 (登录页在应用 scope 内, 已登录的访客直接回应用)
+_APP_LOGIN_ROOTS = {
+    "/tesla/login": "/tesla/charging",
+    "/music/login": "/music",
+    "/bookkeeping/login": "/bookkeeping",
+}
+
+
+def _login_redirect(path: str, query: str) -> str:
+    """未登录页面 302 到当前应用 scope 内的登录页, 带上原地址 (登录完回去)。
+
+    scope 收窄后 (2026-09-14, 修锁屏封面跳错应用) 不能再全站跳根路径 /login ——
+    那会越出应用 scope。门厅层 (/, /accounts) 没有 scope 问题, 仍是 /login。"""
+    target = "/login"
+    for prefix, login_path in (("/tesla", "/tesla/login"),
+                               ("/music", "/music/login"),
+                               ("/bookkeeping", "/bookkeeping/login")):
+        if path == prefix or path.startswith(prefix + "/"):
+            target = login_path
+            break
+    if path != target:
+        origin = path + (("?" + query) if query else "")
+        target += "?next=" + quote(origin, safe="")
+    return target
 
 
 def _is_protected(path: str) -> bool:
@@ -175,12 +205,16 @@ async def auth_middleware(
     if path == "/login" and token_ok:
         # 已登录的访客不再看表单, 直接进门厅
         resp = RedirectResponse("/", status_code=302)
+    elif path in _APP_LOGIN_ROOTS and token_ok:
+        # 应用自己的登录页: 已登录直接回该应用
+        resp = RedirectResponse(_APP_LOGIN_ROOTS[path], status_code=302)
     elif path in _PUBLIC_PATHS or path.startswith(_STATIC_PREFIXES):
         resp = await call_next(request)
     elif is_api and not token_ok:
         resp = JSONResponse({"detail": "未登录"}, status_code=401)
     elif protected and not is_api and not token_ok:
-        resp = RedirectResponse("/login", status_code=302)
+        resp = RedirectResponse(_login_redirect(path, request.url.query),
+                                status_code=302)
     else:
         resp = await call_next(request)
     if is_api:
@@ -213,6 +247,12 @@ def home_page() -> FileResponse:
 @app.get("/login", response_class=HTMLResponse)
 def login_page() -> FileResponse:
     """登录页 (My Home 的门, 全站唯一)。"""
+    return _page("login.html", directory=HOME_STATIC_DIR)
+
+
+@app.get("/tesla/login", response_class=HTMLResponse)
+def tesla_login_page() -> FileResponse:
+    """Tesla 应用 scope 内的登录页 (门厅那张): 会话过期 302 过来不越界。"""
     return _page("login.html", directory=HOME_STATIC_DIR)
 
 

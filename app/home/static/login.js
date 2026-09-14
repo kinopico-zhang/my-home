@@ -1,4 +1,6 @@
 // login.js — 由 login.html 内联脚本抽出 (位置/顺序/语义不变), 供 lint 与测试
+// 同一张登录页服务全站: 门厅的 /login 和各应用 scope 内的 /tesla/login,
+// /music/login, /bookkeeping/login (scope 收窄后会话过期 302 不再越界)。
 "use strict";
 const form = document.getElementById("form");
 const errEl = document.getElementById("err");
@@ -6,6 +8,40 @@ const btn = document.getElementById("btn");
 const card = document.getElementById("card");
 const passInput = document.getElementById("pass");
 const eyeBtn = document.getElementById("eye");
+
+// 本登录页属于哪个应用 (门厅的 /login → 空串)
+function appRoot() {
+  return location.pathname.replace(/\/login\/?$/, "");
+}
+
+const APP_TITLES = { "/tesla": "My Tesla", "/music": "My Music",
+                     "/bookkeeping": "My Money" };
+
+// 应用内的登录页换上应用自己的名字 (标题/卡片), 门厅的保持 My Home
+(function applyAppName() {
+  const name = APP_TITLES[appRoot()];
+  if (!name) return;
+  document.title = "登录 · " + name;
+  const h1 = document.querySelector("h1");
+  if (h1) h1.textContent = name;
+})();
+
+// 登录完去哪: 优先 next 参数 (会话过期 302 带来的原地址; 只认当前应用
+// scope 内的站内路径, 防跨应用/站外跳)。应用内登录页没带 next 就回该应用
+// 主页; 门厅登录页回上次停留的 Tesla 页 (主屏 App 里会话过期重新登录 /
+// Safari 书签进来都适用), 白名单外回门厅。
+function pickNext() {
+  const root = appRoot();
+  const next = new URLSearchParams(location.search).get("next") || "";
+  const inRoot = next.startsWith("/") && !next.startsWith("//") &&
+    (root === "" || next === root || next.startsWith(root + "/"));
+  if (inRoot) return next;
+  if (root) return root;
+  let last = null;
+  try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
+  return last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog))(\?|$)/.test(last)
+    ? last : "/";
+}
 
 // 查看密码: 明文 ↔ 密文, 图标同步切换
 eyeBtn.addEventListener("click", () => {
@@ -32,11 +68,7 @@ form.addEventListener("submit", async e => {
       }),
     });
     if (r.ok) {
-      // 回上次停留的页面 (主屏 App 里会话过期重新登录 / Safari 书签进来都适用)
-      var last = null;
-      try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
-      location.replace(last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog))(\?|$)/.test(last)
-        ? last : "/");
+      location.replace(pickNext());
       return;
     }
     // 优先展示后端给出的原因 (账号密码错误 / 尝试次数过多…), 兜底按状态码
