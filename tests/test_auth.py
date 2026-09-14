@@ -98,7 +98,6 @@ def test_all_pages_have_refresh_button(auth):
         "/music/changelog": ("/static/changelog-page.js", "await load();"),
         "/bookkeeping": ("bookkeeping.js", "await syncNow();"),
         "/accounts": ("accounts.js", "await loadAll();"),
-        "/music": ("music.js", "resetLibraryLists();"),
     }
     for path, (js_file, call) in wiring.items():
         html = auth.get(path).text
@@ -292,14 +291,17 @@ def test_unauthed_apis_return_401_json(client):
                  "/tesla/live/api/status",
                  "/tesla/changelog/api/entries",
                  "/music/api/albums", "/music/api/status",
+                 "/music/api/playlists", "/music/api/playlists/1",
                  "/music/changelog/api/entries",
                  "/api/me", "/api/account/name", "/accounts/api/users"):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json() == {"detail": "未登录"}
-    r = client.post("/bookkeeping/api/sync", json={"entries": []})
-    assert r.status_code == 401
-    assert r.json() == {"detail": "未登录"}
+    for method, path in ((client.post, "/music/api/playlists/sync"),
+                         (client.post, "/bookkeeping/api/sync")):
+        r = method(path, json={"entries": []})
+        assert r.status_code == 401
+        assert r.json() == {"detail": "未登录"}
 
 
 def test_public_paths_accessible_without_login(client):
@@ -583,15 +585,19 @@ def test_bookkeeping_topbar_is_own_app(auth):
 
 
 def test_mymusic_topbar_is_own_app(auth):
-    """音乐应用自己的顶栏: 品牌下拉 (重新扫描曲库 + 退出登录收菜单里) +
-    刷新按钮最右; 与 My Tesla 只共享账号 —— 页面里不出现任何 tesla
-    链接/脚本, 图标样式全自己的。"""
+    """音乐应用自己的顶栏: 品牌下拉 (统计/重新扫描曲库/同步 Plex 播放列表 +
+    退出登录收菜单里) + 搜索按钮最右 (刷新=重扫, 不设刷新按钮); 没有底栏;
+    与 My Tesla 只共享账号 —— 页面里不出现任何 tesla 链接/脚本, 图标样式全自己的。"""
     html = auth.get("/music").text
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
     assert 'class="logout-row" id="logout"' in html
     assert "重新扫描曲库" in html
-    assert '<button id="refresh-btn"' in html
-    block = html[html.index("#refresh-btn {"):]
+    assert 'id="stats-link"' in html            # 统计收进下拉菜单
+    assert 'id="sync-playlists"' in html        # Plex 播放列表手动同步入口
+    assert '<button id="search-btn"' in html    # 顶栏最右是搜索不是刷新
+    assert 'id="refresh-btn"' not in html
+    assert 'id="tabbar"' not in html            # 底栏已撤
+    block = html[html.index("#search-btn {"):]
     assert "margin-left: auto" in block[:block.index("}")]
     assert "/tesla/" not in html          # 独立应用: 图标/脚本/链接全自己的
     assert 'href="/music/static/manifest.json"' in html

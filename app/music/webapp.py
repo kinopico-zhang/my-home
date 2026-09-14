@@ -16,11 +16,13 @@ from sqlalchemy.orm import Session
 
 from .. import account_store, database
 from ..schemas import ChangelogVersion
-from . import changelog, library_media, library_queries, service
+from . import (changelog, library_media, library_playlists,
+               library_queries, service)
 from .library_database import (Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
                       LibraryStats, LyricsResponse, MusicStatusResponse,
+                      PlaylistPage, PlaylistPageList, PlaylistSyncResponse,
                       RescanResponse, SearchResult, TrackPageList)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -126,6 +128,43 @@ def music_rescan(request: Request,
     if not service.trigger_scan():
         raise HTTPException(409, "扫描正在进行中")
     return RescanResponse(started=True)
+
+
+@api.get("/playlists", response_model=PlaylistPageList)
+def music_playlists(request: Request,
+                    users: Session = Depends(database.get_users_db),
+                    library: Session = Depends(get_db)) -> PlaylistPageList:
+    """播放列表清单 (Plex 同步过来的)。"""
+    _require_user(request, users)
+    return library_queries.list_playlists(library)
+
+
+@api.get("/playlists/{playlist_id}", response_model=PlaylistPage)
+def music_playlist_page(request: Request,
+                        playlist_id: int,
+                        users: Session = Depends(database.get_users_db),
+                        library: Session = Depends(get_db)) -> PlaylistPage:
+    """播放列表详情: 有序曲目。"""
+    _require_user(request, users)
+    page = library_queries.playlist_page(library, playlist_id)
+    if page is None:
+        raise HTTPException(404, "没有这个播放列表")
+    return page
+
+
+@api.post("/playlists/sync", response_model=PlaylistSyncResponse)
+def music_playlist_sync(request: Request,
+                        users: Session = Depends(database.get_users_db),
+                        library: Session = Depends(get_db)
+                        ) -> PlaylistSyncResponse:
+    """从 Plex 同步播放列表 (只读 Plex 库; Plex 不在就 503, 本地列表不受影响)。"""
+    _require_user(request, users)
+    try:
+        plex_playlists = library_playlists.read_plex_playlists(
+            Path(library_playlists.DEFAULT_PLEX_LIBRARY_DATABASE))
+    except FileNotFoundError as exc:
+        raise HTTPException(503, "找不到 Plex (以后可能被下掉), 已同步的列表还能用") from exc
+    return library_playlists.sync_playlists(library, plex_playlists)
 
 
 @api.get("/albums", response_model=AlbumPageList)

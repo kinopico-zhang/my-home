@@ -10,10 +10,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from .library_database import AUDIO_EXTENSION_FORMATS, Album, Artist, Track
+from .library_search_keys import search_keys
 from .library_tags import album_title_from_directory, read_track_metadata
 from .schemas import ScanStatus, ScanSummary, ScannedTrack
 
@@ -260,12 +261,16 @@ class LibraryScanner:
             "file_size": track.file_size, "file_mtime": track.file_mtime,
             "file_format": track.file_format, "script": track.script,
             "lyrics": track.lyrics, "lyrics_synced": track.lyrics_synced,
-            "has_artwork": track.has_artwork}
+            "has_artwork": track.has_artwork,
+            "search_keys": search_keys(
+                track.title, track.artist, track.album_title,
+                track.album_artist)}
         track_id = existing_track_ids.get(track.relative_path)
         if track_id is None:
-            session.add(Track(file_path=track.relative_path, **values))
+            session.add(Track(file_path=track.relative_path, **values,
+                              added_at=time.time()))   # 入库时刻只记一次
         else:
-            session.execute(update(Track).where(
+            session.execute(update(Track).where(    # added_at 不进更新集
                 Track.id == track_id).values(**values))
 
     def _remove_vanished_tracks(self, live_paths: set[str]) -> int:
@@ -298,7 +303,20 @@ class LibraryScanner:
         for artist in session.execute(select(Artist)).scalars():
             if not artist.name:
                 artist.name = artist.directory
+        LibraryScanner.refresh_album_artist_search_keys(session)
         return session.scalar(select(func.count()).select_from(Artist)) or 0
+
+    @staticmethod
+    def refresh_album_artist_search_keys(session: Session) -> None:
+        """专辑/艺人的检索键整表重算 (曲目键在 upsert 时逐条算过了)。"""
+        artist_names = {artist.id: artist.name or artist.directory
+                        for artist in session.execute(select(Artist)).scalars()}
+        for album in session.execute(select(Album)).scalars():
+            album.search_keys = search_keys(
+                album.title, artist_names.get(album.artist_id, ""))
+        for artist in session.execute(select(Artist)).scalars():
+            artist.search_keys = search_keys(
+                artist.name, artist.sort_name, artist.directory)
 
     @staticmethod
     def _refresh_album_aggregates(session: Session) -> None:
@@ -311,8 +329,35 @@ class LibraryScanner:
                 func.sum(Track.duration_seconds), 0.0)).where(
                 Track.album_id == Album.id).scalar_subquery(),
             added_at=select(func.coalesce(
-                func.max(Track.file_mtime), 0.0)).where(
+                func.max(Track.added_at), 0.0)).where(
                 Track.album_id == Album.id).scalar_subquery(),
             has_artwork=select(func.coalesce(
                 func.max(Track.has_artwork), False)).where(
                 Track.album_id == Album.id).scalar_subquery()))
+
+
+def backfill_legacy_rows(
+        database_sessions: sessionmaker[Session]) -> tuple[int, int]:
+    """老库一次性补数: 曲目入库时刻缺的按文件 mtime 回填 (最接近的入库代理),
+    检索键为空的行按现名重算。返回 (补时刻行数, 补键行数); 新库无事可做时 (0, 0)。
+    mtime 为 0 的行补不了 (实际不会发生, 扫描必写), 保持 0 = 未知, 排序当最老。"""
+    added_at_count = 0
+    search_keys_count = 0
+    with database_sessions() as session:
+        rows = session.execute(
+            select(Track, Album.title)
+            .join(Album, Track.album_id == Album.id)
+            .where(or_(and_(Track.added_at == 0.0, Track.file_mtime > 0.0),
+                       Track.search_keys == ""))).all()
+        for track, album_title in rows:
+            if track.added_at == 0.0 and track.file_mtime > 0.0:
+                track.added_at = track.file_mtime
+                added_at_count += 1
+            if not track.search_keys:
+                track.search_keys = search_keys(
+                    track.title, track.artist, album_title)
+                search_keys_count += 1
+        session.commit()
+        LibraryScanner.refresh_album_artist_search_keys(session)     # 专辑/艺人键整表
+        session.commit()
+    return added_at_count, search_keys_count

@@ -4,6 +4,7 @@
 
 const LIBRARY_SEGMENTS = [
   ["recent", "最近添加"], ["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"],
+  ["playlists", "播放列表"],
 ];
 const LANGUAGES = ["全部", "中文", "日文", "英文", "韩文", "俄文", "其他"];
 
@@ -25,6 +26,7 @@ function currentRoute() {
   if (name === "stats") return { view: "stats" };
   if (name === "album" && argument) return { view: "album", albumId: Number(argument) };
   if (name === "artist" && argument) return { view: "artist", artistId: Number(argument) };
+  if (name === "playlist" && argument) return { view: "playlist", playlistId: Number(argument) };
   return { view: "library" };
 }
 
@@ -34,24 +36,19 @@ function navigate(hash) {
 }
 
 function route() {
-  const { view, albumId, artistId } = currentRoute();
-  const pushed = view === "album" || view === "artist";
+  const { view, albumId, artistId, playlistId } = currentRoute();
+  const pushed = view === "album" || view === "artist" || view === "playlist";
   $("#back-btn").hidden = !pushed;
   $("#brand-menu").hidden = pushed;
-  $("#tabbar").hidden = pushed;
   $("#back-label").textContent = "资料库";
-  document.querySelectorAll("#tabbar [data-tab]").forEach((button) => {
-    const active = view === "album" || view === "artist"
-      ? "library" : view;      // 详情页算资料库的
-    button.classList.toggle("on", button.dataset.tab === active);
-  });
   stopScanPolling();
   if (view === "search") renderSearchView();
   else if (view === "stats") renderStatsView();
   else if (view === "album") renderAlbumView(albumId);
   else if (view === "artist") renderArtistView(artistId);
+  else if (view === "playlist") renderPlaylistView(playlistId);
   else renderLibraryView();
-  if (view !== "album" && view !== "artist") checkScanStatus();
+  if (!pushed) checkScanStatus();
   syncPlayerIndicators();
 }
 
@@ -125,6 +122,17 @@ function artistRowHTML(artist) {
     </button>`;
 }
 
+/** 播放列表行: 渐变音符块 + 名字 + 规模。 */
+function playlistRowHTML(playlist) {
+  return `
+    <button class="playlist-row" data-playlist-id="${playlist.playlist_id}">
+      <span class="pl-icon">♫</span>
+      <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
+        <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
+      <span class="chev">›</span>
+    </button>`;
+}
+
 function listPlaceholderHTML(message) {
   return `<div class="list-empty">${message}</div>`;
 }
@@ -173,11 +181,18 @@ function renderLibraryView() {
     document.querySelectorAll("#lib-seg [data-segment]")
       .forEach((item) => item.classList.toggle("on",
         item.dataset.segment === pageState.segment));
+    syncChipsVisibility();
     renderLibraryBody();
   });
   bindChips($("#lib-chips"));
   bindLibraryBody();
+  syncChipsVisibility();
   renderLibraryBody();
+}
+
+/** 语种筛选只对曲目/专辑/艺人有意义; 播放列表段把筛选行收起来。 */
+function syncChipsVisibility() {
+  $("#lib-chips").hidden = pageState.segment === "playlists";
 }
 
 /** 曲库四段共用的容器事件 (专辑/艺人跳转 + 曲目开播), 只绑一次。 */
@@ -188,6 +203,8 @@ function bindLibraryBody() {
     if (albumCard) { navigate(`album/${albumCard.dataset.albumId}`); return; }
     const artistRow = event.target.closest("[data-artist-id]");
     if (artistRow) { navigate(`artist/${artistRow.dataset.artistId}`); return; }
+    const playlistRow = event.target.closest("[data-playlist-id]");
+    if (playlistRow) { navigate(`playlist/${playlistRow.dataset.playlistId}`); return; }
   });
   bindTrackLists(body, () => {
     const list = pageState.lists[pageState.segment];
@@ -219,17 +236,24 @@ async function loadListPage(segment) {
 }
 
 async function fetchListPage(segment, list) {
-  const parameters = new URLSearchParams({ language: pageState.language, limit: "60" });
-  if (segment === "albums") parameters.set("sort", "title");
-  if (segment === "songs") parameters.set("limit", "100");
-  parameters.set("offset", String(list.offset));
   try {
-    const endpoint = segment === "artists" ? "/music/api/artists"
-      : segment === "songs" ? "/music/api/tracks" : "/music/api/albums";
-    const data = await fetchJSON(`${endpoint}?${parameters}`);
-    list.items.push(...(segment === "artists" ? data.artists
-      : segment === "songs" ? data.tracks : data.albums));
-    list.total = data.total_count;
+    let data;
+    if (segment === "playlists") {
+      data = await fetchJSON("/music/api/playlists");
+      list.items.push(...data.playlists);
+      list.total = data.playlists.length;      // 清单一页全给, 没有分页
+    } else {
+      const parameters = new URLSearchParams({ language: pageState.language, limit: "60" });
+      if (segment === "albums") parameters.set("sort", "title");
+      if (segment === "songs") parameters.set("limit", "100");
+      parameters.set("offset", String(list.offset));
+      const endpoint = segment === "artists" ? "/music/api/artists"
+        : segment === "songs" ? "/music/api/tracks" : "/music/api/albums";
+      data = await fetchJSON(`${endpoint}?${parameters}`);
+      list.items.push(...(segment === "artists" ? data.artists
+        : segment === "songs" ? data.tracks : data.albums));
+      list.total = data.total_count;
+    }
     list.offset = list.items.length;
     list.done = list.offset >= list.total;
   } catch (error) {
@@ -244,16 +268,19 @@ async function fetchListPage(segment, list) {
 function appendListPage(body, segment, list) {
   const firstRender = !body.querySelector(".list-sentinel")
     && !body.querySelector(".album-grid") && !body.querySelector(".track-row")
-    && !body.querySelector(".artist-row");
+    && !body.querySelector(".artist-row") && !body.querySelector(".playlist-row");
   if (firstRender && !list.items.length) {
     body.innerHTML = listPlaceholderHTML(
-      pageState.language === "全部" ? "曲库还是空的" : "这个语种下没有内容");
+      segment === "playlists" ? "还没有播放列表 (菜单里可从 Plex 同步)"
+        : pageState.language === "全部" ? "曲库还是空的" : "这个语种下没有内容");
     return;
   }
   const existingSentinel = body.querySelector(".list-sentinel");
   if (existingSentinel) existingSentinel.remove();
   const added = list.items.slice(list.renderedCount || 0);
-  if (segment === "artists") {
+  if (segment === "playlists") {
+    body.insertAdjacentHTML("beforeend", added.map(playlistRowHTML).join(""));
+  } else if (segment === "artists") {
     body.insertAdjacentHTML("beforeend", added.map(artistRowHTML).join(""));
   } else if (segment === "songs") {
     body.insertAdjacentHTML("beforeend", added.map((track, offset) => trackRowHTML(
@@ -312,7 +339,10 @@ async function renderAlbumView(albumId) {
       <div class="hero-txt">
         <h2>${escapeHTML(album.title)}</h2>
         <button class="hero-artist" data-artist-id="${album.artist_id}">${escapeHTML(album.artist_name)}</button>
-        <small>${album.year || ""} · ${describeDuration(album.duration_seconds, album.track_count)}</small>
+        <small>${escapeHTML([album.year || "",
+          describeDuration(album.duration_seconds, album.track_count),
+          formatAddedDate(album.added_at) && `入库 ${formatAddedDate(album.added_at)}`]
+          .filter(Boolean).join(" · "))}</small>
       </div>
     </div>
     <div class="action-row">
@@ -384,6 +414,48 @@ async function renderArtistView(artistId) {
   });
 }
 
+// ------------------------------------------------------------ 播放列表页
+
+async function renderPlaylistView(playlistId) {
+  $("#main").innerHTML = listPlaceholderHTML("加载中…");
+  let page = null;
+  try {
+    page = await fetchJSON(`/music/api/playlists/${playlistId}`);
+  } catch (error) {
+    $("#main").innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
+    return;
+  }
+  const playlist = page.playlist;
+  const playable = page.tracks.filter((track) => track.playable);
+  $("#main").innerHTML = `
+    <div class="album-hero">
+      <div class="pl-icon big">♫</div>
+      <div class="hero-txt">
+        <h2>${escapeHTML(playlist.name)}</h2>
+        <small>${escapeHTML(describeDuration(
+          playlist.duration_seconds, playlist.track_count))}</small>
+      </div>
+    </div>
+    <div class="action-row">
+      <button class="action primary" id="playlist-play" ${playable.length ? "" : "disabled"}>
+        ${ICON_ACTION_PLAY} 播放</button>
+      <button class="action" id="playlist-shuffle" ${playable.length ? "" : "disabled"}>
+        ${ICON_ACTION_SHUFFLE} 随机</button>
+    </div>
+    <div class="track-list" id="playlist-tracks">
+      ${page.tracks.map((track, index) => trackRowHTML(track,
+        `<span class="t-index">${index + 1}</span>`)).join("")}
+    </div>`;
+  $("#playlist-play").addEventListener("click", () => {
+    playerStart(page.tracks, page.tracks.indexOf(playable[0]));
+  });
+  $("#playlist-shuffle").addEventListener("click", () => {
+    playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
+  });
+  bindTrackLists($("#playlist-tracks"), () => page.tracks);
+  syncPlayerIndicators();
+}
+
 // ------------------------------------------------------------ 搜索页
 
 function renderSearchView() {
@@ -391,7 +463,7 @@ function renderSearchView() {
     <div class="search-box">
       <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       <input id="search-input" type="search" enterkeyhint="search" autocomplete="off"
-             placeholder="歌曲、专辑、艺人、歌词" maxlength="100"
+             placeholder="歌曲、专辑、艺人、歌词 (拼音简繁都行)" maxlength="100"
              value="${escapeHTML(pageState.searchQuery)}">
       <button id="search-clear" hidden aria-label="清空">✕</button>
     </div>
@@ -452,7 +524,7 @@ async function runSearch() {
   if (pageState.searchAbort) pageState.searchAbort.abort();
   if (!pageState.searchQuery) {
     pageState.searchResults = null;
-    body.innerHTML = listPlaceholderHTML("搜歌名、艺人、专辑, 或者直接搜一句歌词");
+    body.innerHTML = listPlaceholderHTML("搜歌名、艺人、专辑或一句歌词, 拼音简繁都行");
     return;
   }
   const controller = new AbortController();
@@ -586,23 +658,44 @@ function stopScanPolling() {
 
 // ------------------------------------------------------------ 启动
 
+/** 收起品牌下拉 (菜单里点了会跳转的按钮后调用)。 */
+function closeBrandMenu() {
+  $("#brand-menu").removeAttribute("open");
+}
+
 function bindGlobalEvents() {
-  $("#tabbar").addEventListener("click", (event) => {
-    const tab = event.target.closest("[data-tab]");
-    if (!tab) return;
-    navigate(tab.dataset.tab);
-  });
   $("#back-btn").addEventListener("click", () => {
     if (history.length > 1) history.back();
     else navigate("library");
   });
-  $("#refresh-btn").addEventListener("click", () => {
-    const button = $("#refresh-btn");
-    button.classList.add("busy");
-    resetLibraryLists();
-    pageState.searchResults = null;
-    route();
-    setTimeout(() => button.classList.remove("busy"), 600);
+  $("#search-btn").addEventListener("click", () => {
+    navigate("search");
+    const input = $("#search-input");
+    if (input) input.focus();     // 同页 route() 已同步跑完, 直接聚焦
+    else setTimeout(() => {       // 跨页要等 hashchange 渲染好
+      const pending = $("#search-input");
+      if (pending) pending.focus();
+    }, 50);
+  });
+  $("#stats-link").addEventListener("click", () => {
+    closeBrandMenu();
+    navigate("stats");
+  });
+  $("#sync-playlists").addEventListener("click", async () => {
+    closeBrandMenu();
+    try {
+      const result = await fetchJSON("/music/api/playlists/sync",
+                                    { method: "POST" });
+      toast(`同步了 ${result.playlists_synced} 个播放列表`
+        + (result.tracks_skipped ? `, ${result.tracks_skipped} 首没对上` : ""));
+      if (currentRoute().view === "library"
+          && pageState.segment === "playlists") {
+        resetLibraryLists();
+        renderLibraryBody();
+      }
+    } catch (error) {
+      toast(error.message);
+    }
   });
   $("#logout").addEventListener("click", async () => {
     try { await fetch("/music/api/logout", { method: "POST" }); }

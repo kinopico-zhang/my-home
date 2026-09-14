@@ -205,6 +205,38 @@ class SearchResult(BaseModel):
     lyric_hits: list[LyricHit] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------- 播放列表
+
+class PlaylistBrief(BaseModel):
+    """播放列表一行 (资料库的播放列表段)。"""
+
+    playlist_id: int
+    name: str
+    track_count: int
+    duration_seconds: float
+
+
+class PlaylistPageList(BaseModel):
+    """播放列表清单 (同步过来的十几个, 不分页)。"""
+
+    playlists: list[PlaylistBrief]
+
+
+class PlaylistPage(BaseModel):
+    """播放列表详情: 卡片 + 有序曲目。"""
+
+    playlist: PlaylistBrief
+    tracks: list[TrackBrief]
+
+
+class PlaylistSyncResponse(BaseModel):
+    """POST /api/playlists/sync 的应答 (内部同步过程也用它累计)。"""
+
+    playlists_synced: int = 0
+    tracks_synced: int = 0
+    tracks_skipped: int = 0       # Plex 里有但本库对不上 (文件删了/还没扫)
+
+
 class LyricsResponse(BaseModel):
     """单曲歌词原文 (前端解析时间轴)。"""
 

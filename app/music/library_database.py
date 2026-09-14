@@ -6,9 +6,9 @@
 """
 import os
 from pathlib import Path
-from typing import Iterator
+from typing import Final, Iterator
 
-from sqlalchemy import ForeignKey, String, create_engine
+from sqlalchemy import ForeignKey, String, create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (DeclarativeBase, Mapped, Session, mapped_column,
                             sessionmaker)
@@ -45,6 +45,7 @@ class Artist(MusicLibraryBase):
     sort_name: Mapped[str] = mapped_column(default="", index=True)  # artistsort 标签
     directory: Mapped[str] = mapped_column(String, unique=True)     # 相对曲库根
     poster_file: Mapped[str] = mapped_column(default="")            # 目录里的 poster.*
+    search_keys: Mapped[str] = mapped_column(default="")            # 拼音/简繁检索键
 
 
 class Album(MusicLibraryBase):
@@ -58,10 +59,11 @@ class Album(MusicLibraryBase):
                                            index=True)
     year: Mapped[int] = mapped_column(default=0)
     directory: Mapped[str] = mapped_column(String, unique=True)     # 相对曲库根
-    added_at: Mapped[float] = mapped_column(default=0.0)            # 曲目 mtime 最大值
+    added_at: Mapped[float] = mapped_column(default=0.0)            # 旗下曲目入库最晚时刻
     track_count: Mapped[int] = mapped_column(default=0)
     duration_seconds: Mapped[float] = mapped_column(default=0.0)
     has_artwork: Mapped[bool] = mapped_column(default=False)        # 曲目内嵌封面
+    search_keys: Mapped[str] = mapped_column(default="")            # 拼音/简繁检索键
 
 
 class Track(MusicLibraryBase):
@@ -85,6 +87,34 @@ class Track(MusicLibraryBase):
     lyrics: Mapped[str] = mapped_column(default="")      # lrc 原文或纯文本
     lyrics_synced: Mapped[bool] = mapped_column(default=False)
     has_artwork: Mapped[bool] = mapped_column(default=False)  # 内嵌封面 (专辑封面取材)
+    added_at: Mapped[float] = mapped_column(default=0.0)      # 入库时刻 (首插记, 重扫不改)
+    search_keys: Mapped[str] = mapped_column(default="")      # 拼音/简繁检索键
+
+
+class Playlist(MusicLibraryBase):
+    """播放列表 (Plex 同步过来的; 全量替换式, 本地不编辑)。"""
+
+    __tablename__ = "playlists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String, unique=True)
+    position: Mapped[int] = mapped_column(default=0)      # 列表内成员的排序档
+    track_count: Mapped[int] = mapped_column(default=0)
+    duration_seconds: Mapped[float] = mapped_column(default=0.0)
+    plex_playlist_id: Mapped[int] = mapped_column(default=0)   # 源库 id (溯源/幂等)
+
+
+class PlaylistItem(MusicLibraryBase):
+    """播放列表成员 (position 是 Plex 的千分步序号)。"""
+
+    __tablename__ = "playlist_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"),
+                                             index=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id"),
+                                          index=True)
+    position: Mapped[int] = mapped_column(default=0)
 
 
 class _EngineState:
@@ -171,3 +201,25 @@ def get_db() -> Iterator[Session]:
 def create_all() -> None:
     """建表 (启动时调用)。"""
     MusicLibraryBase.metadata.create_all(engine())
+
+
+# 老库升级要补的列: 列名 → 列定义 (create_all 只建新表, 不 ALTER 旧表)
+_COLUMN_MIGRATIONS: Final[dict[str, dict[str, str]]] = {
+    "tracks": {"added_at": "REAL NOT NULL DEFAULT 0",
+               "search_keys": "TEXT NOT NULL DEFAULT ''"},
+    "albums": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
+    "artists": {"search_keys": "TEXT NOT NULL DEFAULT ''"},
+}
+
+
+def ensure_columns() -> None:
+    """给已存在的老表补缺失的列 (SQLite ADD COLUMN, 带默认值不重写行)。"""
+    with engine().begin() as connection:
+        for table_name, columns in _COLUMN_MIGRATIONS.items():
+            present = {row[1] for row in
+                       connection.execute(text(f"PRAGMA table_info({table_name})"))}
+            for column_name, column_definition in columns.items():
+                if column_name not in present:
+                    connection.execute(text(
+                        f"ALTER TABLE {table_name} ADD COLUMN "
+                        f"{column_name} {column_definition}"))

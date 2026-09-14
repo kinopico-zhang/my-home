@@ -86,14 +86,12 @@ header {
   color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
   border-radius: 0 0 10px 10px;
 }
-#refresh-btn {
+#search-btn {
   display: flex; align-items: center; margin-left: auto;
   color: var(--ink-1); background: var(--surface-2);
-  padding: 5px 9px; border-radius: 999px;
+  padding: 5px 10px; border-radius: 999px;
 }
-#refresh-btn:active { background: var(--surface-3); }
-#refresh-btn.busy svg { animation: refresh-spin .8s linear infinite; }
-@keyframes refresh-spin { to { transform: rotate(360deg); } }
+#search-btn:active { background: var(--surface-3); }
 
 /* ---------- 扫描进度条 ---------- */
 #scan-strip {
@@ -110,7 +108,7 @@ header {
 /* ---------- 主区 ---------- */
 main {
   flex: 1; width: 100%; max-width: 860px; margin: 0 auto;
-  padding: 14px 16px calc(150px + env(safe-area-inset-bottom));
+  padding: 14px 16px calc(90px + env(safe-area-inset-bottom));
 }
 .seg {
   display: flex; background: var(--surface-2); border-radius: 9px;
@@ -300,26 +298,29 @@ main {
 .list-empty { padding: 48px 20px; text-align: center; color: var(--ink-3); font-size: 14px; }
 .list-sentinel { height: 2px; }
 
-/* ---------- 底部标签栏 ---------- */
-#tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: flex; justify-content: space-around;
-  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
-  background: var(--nav-bg);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
-  border-top: 1px solid var(--hairline);
+/* ---------- 播放列表行 ---------- */
+.playlist-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px 0; text-align: left; border-bottom: 1px solid var(--hairline);
 }
-#tabbar button {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  color: var(--ink-3); font-size: 10px; min-width: 72px; padding: 3px 0;
+.playlist-row:active { background: rgba(255,255,255,.04); }
+.pl-icon {
+  width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: #fff;
+  background: linear-gradient(135deg, #6e40c8, #fa2d48);
 }
-#tabbar button.on { color: var(--accent); }
+.pl-icon.big {
+  width: min(62vw, 260px); height: auto; aspect-ratio: 1;
+  font-size: min(24vw, 96px); border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.55);
+}
+.playlist-row .chev { color: var(--ink-3); font-size: 18px; }
 
 /* ---------- 迷你播放条 ---------- */
 #mini-player {
   position: fixed; left: 8px; right: 8px;
-  bottom: calc(66px + env(safe-area-inset-bottom));
+  bottom: calc(8px + env(safe-area-inset-bottom));
   z-index: 45; height: 58px; overflow: hidden;
   display: flex; align-items: center; gap: 10px;
   background: rgba(44,44,46,.88);
@@ -464,7 +465,7 @@ main {
 
 /* ---------- 提示 ---------- */
 #toast {
-  position: fixed; left: 50%; bottom: calc(140px + env(safe-area-inset-bottom));
+  position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom));
   transform: translateX(-50%) translateY(8px); z-index: 120;
   max-width: 82vw; padding: 9px 18px; border-radius: 999px;
   background: rgba(58,58,60,.95); color: var(--ink-1); font-size: 13px;
@@ -489,12 +490,14 @@ main {
     <details class="nav-menu brand-menu" id="brand-menu">
       <summary>My Music<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
+        <button id="stats-link">统计</button>
         <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
+        <button id="sync-playlists" title="把 Plex 里建的播放列表同步过来 (服务启动时也会自动同步)">同步 Plex 播放列表</button>
         <a href="/music/changelog">更新日志</a>
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-    <button id="refresh-btn" aria-label="刷新"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button id="search-btn" aria-label="搜索"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   </div>
 </header>
 
@@ -547,21 +550,15 @@ main {
   <div class="sheet-head"><b>播放队列</b><button id="queue-close">完成</button></div>
   <div id="queue-list"></div>
 </div>
-
-<nav id="tabbar">
-  <button data-tab="library" class="on">
-    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-    资料库
-  </button>
-  <button data-tab="search">
-    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    搜索
-  </button>
-  <button data-tab="stats">
-    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M5 20v-7M12 20V5M19 20v-10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-    统计
-  </button>
-</nav>
+      <div class="menu">
+        <button id="stats-link">统计</button>
+        <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
+        <button id="sync-playlists" title="把 Plex 里建的播放列表同步过来 (服务启动时也会自动同步)">同步 Plex 播放列表</button>
+        <a href="/music/changelog">更新日志</a>
+        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
+      </div>
+    </details>
+    <button id="search-btn" aria-label="搜索"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
 
 <div id="toast" hidden></div>
 
@@ -569,6 +566,6 @@ main {
 <script src="/music/static/player-queue.js?v=1"></script>
 <script src="/music/static/music-common.js?v=1"></script>
 <script src="/music/static/music-player.js?v=1"></script>
-<script src="/music/static/music.js?v=2"></script>
+<script src="/music/static/music.js?v=3"></script>
 </body>
 </html>

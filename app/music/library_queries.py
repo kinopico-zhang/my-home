@@ -7,14 +7,16 @@
 import re
 
 from sqlalchemy import ColumnElement, exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from .library_database import (BROWSER_PLAYABLE_FORMATS, Album, Artist,
-                               Track)
+                               Playlist, PlaylistItem, Track)
+from .library_search_keys import query_patterns
 from .library_languages import language_for_script, scripts_for_language
 from .schemas import (AlbumCard, AlbumPage, AlbumPageList, ArtistBrief,
                       ArtistPage, ArtistPageList, FormatCount, LibraryStats,
-                      LyricHit, LyricsResponse,
+                      LyricHit, LyricsResponse, PlaylistBrief, PlaylistPage,
+                      PlaylistPageList,
                       SearchResult, TrackBrief, TrackPageList)
 
 # 搜索结果的板块容量 (一次全给, 前端分块展示)
@@ -31,11 +33,28 @@ _TRACK_ORDER = (Album.added_at.desc(), Album.id, Track.disc_number,
                 Track.track_number, Track.id)
 
 
-def _like_pattern(query: str) -> str:
-    """搜索词 → LIKE 模式 (转义 % _ \\, 调用处要带 ESCAPE '\\')。"""
-    escaped = (query.replace("\\", "\\\\").replace("%", "\\%")
-               .replace("_", "\\_"))
-    return f"%{escaped}%"
+def _like_patterns(query: str) -> list[str]:
+    """搜索词 → LIKE 模式组 (原词/简体化/去空格 × 转义 % _ \\, 带 ESCAPE '\\')。
+
+    模式组对着 search_keys 键列扫: 拼音/声母/简繁变体都预压在键里,
+    这里只归一写法; 原名列的 OR 兜底覆盖键还没回填完的老库行。"""
+    def escape(text: str) -> str:
+        escaped = (text.replace("\\", "\\\\").replace("%", "\\%")
+                   .replace("_", "\\_"))
+        return f"%{escaped}%"
+    return [escape(pattern) for pattern in query_patterns(query)]
+
+
+def _any_like(column: InstrumentedAttribute[str], patterns: list[str]
+              ) -> ColumnElement[bool]:
+    """一列 × 多模式的 OR LIKE。"""
+    return or_(*[column.like(pattern, escape="\\") for pattern in patterns])
+
+
+def _text_match(*columns: InstrumentedAttribute[str],
+                patterns: list[str]) -> ColumnElement[bool]:
+    """检索键 + 原名列们 × 多模式的 OR (键列在前, 命中面最大)。"""
+    return or_(*[_any_like(column, patterns) for column in columns])
 
 
 def _script_condition(language: str) -> ColumnElement[bool] | None:
@@ -181,6 +200,37 @@ def list_tracks(session: Session, language: str = "全部", offset: int = 0,
                          offset=offset, limit=limit)
 
 
+def list_playlists(session: Session) -> PlaylistPageList:
+    """播放列表清单 (按同步顺序, 不分页 —— 就十几个)。"""
+    playlists = [PlaylistBrief(
+        playlist_id=playlist.id, name=playlist.name,
+        track_count=playlist.track_count,
+        duration_seconds=playlist.duration_seconds)
+        for playlist in session.execute(
+            select(Playlist).order_by(Playlist.position, Playlist.id)).scalars()]
+    return PlaylistPageList(playlists=playlists)
+
+
+def playlist_page(session: Session, playlist_id: int) -> PlaylistPage | None:
+    """播放列表详情: 卡片 + 成员曲目 (按列表内顺序)。"""
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        return None
+    tracks = [track_brief(track, album_title)
+              for track, album_title in session.execute(
+                  select(Track, Album.title)
+                  .join(PlaylistItem, PlaylistItem.track_id == Track.id)
+                  .join(Album, Track.album_id == Album.id)
+                  .where(PlaylistItem.playlist_id == playlist_id)
+                  .order_by(PlaylistItem.position, PlaylistItem.id))]
+    return PlaylistPage(
+        playlist=PlaylistBrief(
+            playlist_id=playlist.id, name=playlist.name,
+            track_count=playlist.track_count,
+            duration_seconds=playlist.duration_seconds),
+        tracks=tracks)
+
+
 def lyrics_for_track(session: Session, track_id: int) -> LyricsResponse | None:
     """单曲歌词原文 (前端解析时间轴)。"""
     track = session.get(Track, track_id)
@@ -191,10 +241,11 @@ def lyrics_for_track(session: Session, track_id: int) -> LyricsResponse | None:
 
 
 def _matching_lyric_line(lyrics: str, query: str) -> str:
-    """歌词里第一处命中行 (剥时间轴; 大小写不敏感)。"""
-    folded = query.casefold()
+    """歌词里第一处命中行 (剥时间轴; 大小写不敏感 + 简体化互搜)。"""
+    folded_variants = query_patterns(query)
     for line in lyrics.splitlines():
-        if folded in line.casefold():
+        line_folded = line.casefold()
+        if any(variant in line_folded for variant in folded_variants):
             text = _LRC_TAG_PATTERN.sub("", line).strip()
             return text[:_LYRIC_LINE_MAX_LENGTH]
     return ""
@@ -227,15 +278,15 @@ def search_library(session: Session, query: str,
     result = SearchResult(query=query, language=language)
     if not query:
         return result
-    pattern = _like_pattern(query)
+    patterns = _like_patterns(query)
     script_condition = _script_condition(language)
     album_condition = _album_language_condition(language)
 
     track_statement = (
         select(Track, Album.title)
         .join(Album, Track.album_id == Album.id)
-        .where(or_(Track.title.like(pattern, escape="\\"),
-                   Track.artist.like(pattern, escape="\\")))
+        .where(_text_match(Track.search_keys, Track.title, Track.artist,
+                           patterns=patterns))
         .order_by(*_TRACK_ORDER).limit(SEARCH_TRACK_LIMIT))
     if script_condition is not None:
         track_statement = track_statement.where(script_condition)
@@ -246,7 +297,7 @@ def search_library(session: Session, query: str,
     album_statement = (
         select(Album, _artist_name_expression().label("artist_name"))
         .join(Artist, Album.artist_id == Artist.id)
-        .where(Album.title.like(pattern, escape="\\"))
+        .where(_text_match(Album.search_keys, Album.title, patterns=patterns))
         .order_by(Album.added_at.desc(), Album.id)
         .limit(SEARCH_ALBUM_LIMIT))
     if album_condition is not None:
@@ -259,10 +310,9 @@ def search_library(session: Session, query: str,
         artist_id=artist.id, name=artist.name or artist.directory,
         album_count=0, track_count=0, has_poster=bool(artist.poster_file))
         for artist in session.execute(
-            select(Artist).where(or_(
-                Artist.name.like(pattern, escape="\\"),
-                Artist.sort_name.like(pattern, escape="\\"),
-                Artist.directory.like(pattern, escape="\\")))
+            select(Artist).where(_text_match(
+                Artist.search_keys, Artist.name, Artist.sort_name,
+                Artist.directory, patterns=patterns))
             .order_by(Artist.sort_name, Artist.id)
             .limit(SEARCH_ARTIST_LIMIT)).scalars()]
 
@@ -270,7 +320,7 @@ def search_library(session: Session, query: str,
         select(Track, Album.title)
         .join(Album, Track.album_id == Album.id)
         .where(Track.lyrics != "",
-               Track.lyrics.like(pattern, escape="\\"))
+               _any_like(Track.lyrics, patterns))
         .order_by(*_TRACK_ORDER).limit(SEARCH_LYRICS_LIMIT))
     if script_condition is not None:
         lyric_statement = lyric_statement.where(script_condition)

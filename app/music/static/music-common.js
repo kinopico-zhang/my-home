@@ -2,7 +2,8 @@
 // 纯逻辑在 lyrics-parser.js / player-queue.js; 浏览与播放两个页面脚本共用这里。
 "use strict";
 /* exported escapeHTML, fetchJSON, toast, albumArtworkURL, artistArtworkURL,
-   PLACEHOLDER_ARTWORK, describeDuration, ICON_PLAY, ICON_PAUSE, ICON_BARS,
+   PLACEHOLDER_ARTWORK, describeDuration, formatAddedDate,
+   ICON_PLAY, ICON_PAUSE, ICON_BARS,
    ICON_ACTION_PLAY, ICON_ACTION_SHUFFLE */   // 供 music-player.js / music.js 引用
 
 function $(selector) {
@@ -59,6 +60,13 @@ const PLACEHOLDER_ARTWORK =
     + '<rect width="64" height="64" rx="8" fill="#2c2c2e"/>'
     + '<path d="M40 14v24.5a7.5 7.5 0 1 1-3-6V22l-12 3v17.5a7.5 7.5 0 1 1-3-6V19z"'
     + ' fill="#5a5a5e"/></svg>');
+
+/** 入库日期文案: "2026年9月10日" (epoch 秒; 0/缺省返回空串)。 */
+function formatAddedDate(addedAt) {
+  if (!addedAt) return "";
+  const date = new Date(addedAt * 1000);
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
 
 /** 专辑总时长文案: "48 分钟" / "1.2 小时" / "3 首 · 12 分钟"。 */
 function describeDuration(totalSeconds, trackCount) {

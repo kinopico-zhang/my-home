@@ -4,6 +4,7 @@
 不依赖曲库真文件; 扫描器用临时曲库目录, 接口用 TestClient 走完整 HTTP 栈。
 """
 import os
+import sqlite3
 import struct
 import time
 from pathlib import Path
@@ -16,15 +17,16 @@ from fastapi.testclient import TestClient
 import app.main as m
 from app import config
 from app.music import service
-from app.music.library_database import (Album, Artist, Track,
+from app.music.library_database import (Album, Artist, Playlist, Track,
                                         session_factory)
 from app.music.library_languages import (detect_script, language_for_script,
                                          scripts_for_language)
 from app.music.library_media import parse_range_header
-from app.music.library_scanner import LibraryScanner
+from app.music.library_scanner import LibraryScanner, backfill_legacy_rows
 from app.music.library_tags import (extract_album_artwork,
                                     read_track_metadata)
-from app.music import library_queries
+from app.music import library_playlists, library_queries
+from app.music import library_search_keys
 
 PICTURE_BYTES = b"\xff\xd8\xff\xe0FAKEJPEG" + b"x" * 64
 
@@ -539,6 +541,132 @@ def test_search_four_boards(tmp_path):
         assert library_queries.search_library(session, "%曲%").tracks == []
 
 
+# ------------------------------------------------------ 检索键 / 入库时间
+
+def test_search_key_variants():
+    """纯函数: 原文/简体化/全拼/声母 + 去空格变体; 查询词简繁互换。"""
+    keys = library_search_keys.search_keys("周傑倫")
+    assert "周傑倫" in keys               # 原文 (小写化)
+    assert "周杰伦" in keys               # 简体化 → 简体搜索词直接命中
+    assert "zhoujielun" in keys           # 全拼
+    assert "zjl" in keys                  # 声母
+    squashed = library_search_keys.search_keys("Jay Chou")
+    assert "jaychou" in squashed          # 去空格后能整词搜
+    assert library_search_keys.search_keys("") == ""
+
+    patterns = library_search_keys.query_patterns("周傑倫")
+    assert patterns == ["周傑倫", "周杰伦"]     # 繁体词也带简体形态去撞键
+    assert library_search_keys.query_patterns("晴天 jay") == [
+        "晴天 jay", "晴天jay"]
+    assert not library_search_keys.query_patterns("   ")
+
+
+def _seed_search_library() -> None:
+    """繁体名直插 (键齐全): 拼音/简繁互搜的目标行。"""
+    with session_factory()() as session:
+        artist = Artist(name="周杰倫", sort_name="", directory="周杰倫",
+                        search_keys=library_search_keys.search_keys("周杰倫"))
+        session.add(artist)
+        session.flush()
+        album = Album(title="七里香", artist_id=artist.id, year=2004,
+                      directory="周杰倫/七里香",
+                      search_keys=library_search_keys.search_keys(
+                          "七里香", "周杰倫"))
+        session.add(album)
+        session.flush()
+        session.add(Track(
+            album_id=album.id, title="晴天", artist="周杰倫", track_number=1,
+            disc_number=1, duration_seconds=269.0,
+            file_path="周杰倫/七里香/01 晴天.flac", file_format="flac",
+            script="Hant", lyrics="",
+            search_keys=library_search_keys.search_keys(
+                "晴天", "周杰倫", "七里香")))
+        session.commit()
+
+
+def test_search_pinyin_and_simplified_traditional(tmp_path):
+    """拼音全拼/声母搜中文, 简体词搜繁体名, 原词搜简体名 (键里双向都存)。"""
+    _seed_search_library()
+    with session_factory()() as session:
+        result = library_queries.search_library(session, "zhoujielun")
+        assert [brief.name for brief in result.artists] == ["周杰倫"]
+        assert [brief.name for brief in
+                library_queries.search_library(
+                    session, "zjl").artists] == ["周杰倫"]
+        assert [brief.name for brief in
+                library_queries.search_library(
+                    session, "周杰伦").artists] == ["周杰倫"]   # 简查繁
+        assert [brief.name for brief in
+                library_queries.search_library(
+                    session, "周杰倫").artists] == ["周杰倫"]   # 繁查繁
+        assert [track.title for track in
+                library_queries.search_library(
+                    session, "qingtian").tracks] == ["晴天"]
+        assert [track.title for track in
+                library_queries.search_library(
+                    session, "qt").tracks] == ["晴天"]
+        assert [card.title for card in
+                library_queries.search_library(
+                    session, "qilixiang").albums] == ["七里香"]
+
+
+def test_backfill_legacy_rows_fills_added_at_and_keys(tmp_path):
+    """老行 (无键无入库时刻): 补数后 added_at 拿文件时间兜底, 键可拼音搜。"""
+    _seed_library()
+    added_at_count, key_count = backfill_legacy_rows(session_factory())
+    assert (added_at_count, key_count) == (1, 5)   # 只有曲C 有文件时间
+    with session_factory()() as session:
+        track = session.query(Track).filter_by(title="曲C").one()
+        assert track.added_at == 2000.0            # 只有文件时间可当线索
+        no_mtime = session.query(Track).filter_by(title="曲A").one()
+        assert no_mtime.added_at == 0.0            # 没线索的保持未知 (当最老)
+        assert "quc" in track.search_keys
+        artist = session.query(Artist).filter_by(name="老歌手").one()
+        assert "laogeshou" in artist.search_keys
+        album = session.query(Album).filter_by(title="丙").one()
+        assert "bing" in album.search_keys
+        result = library_queries.search_library(session, "lgs")
+        assert [brief.name for brief in result.artists] == ["老歌手"]
+        # 幂等: 再补一遍无事可做
+        assert backfill_legacy_rows(session_factory()) == (0, 0)
+
+
+def test_added_at_recorded_on_insert_preserved_on_rescan(tmp_path):
+    """入库时刻只在首插记: 重扫 (mtime 都拨到未来) 不改; 新文件自己的时刻;
+    专辑汇到旗下最晚。"""
+    root = tmp_path / "library"
+    _make_library(root)
+    scanner = _scanner_for(root)
+    before = time.time()
+    scanner.scan()
+    with session_factory()() as session:
+        first = {track.file_path: track.added_at
+                 for track in session.query(Track)}
+        assert first and all(value >= before for value in first.values())
+        for album_row in session.query(Album).all():
+            track_times = [track.added_at for track in session.query(Track)
+                           .filter_by(album_id=album_row.id)]
+            assert album_row.added_at == max(track_times)   # 旗下最晚入库
+
+    future = time.time() + 5000
+    for flac in root.rglob("*.flac"):
+        os.utime(flac, (future, future))
+    scanner.scan()
+    with session_factory()() as session:
+        assert {track.file_path: track.added_at
+                for track in session.query(Track)} == first
+
+    _write_audio(root, "AI机组/2021 丁 [dddd4444]/01 曲E.flac",
+                 {"TITLE": "曲E", "ARTIST": "AI机组", "ALBUMARTIST": "AI机组",
+                  "ALBUM": "丁", "DATE": "2021"}, mtime=100.0)
+    scanner.scan()
+    with session_factory()() as session:
+        track = session.query(Track).filter_by(title="曲E").one()
+        assert track.added_at >= before
+        album = session.query(Album).filter_by(title="丁").one()
+        assert album.added_at == track.added_at
+
+
 # ---------------------------------------------------------------- Range 流
 
 def test_parse_range_header():
@@ -636,32 +764,66 @@ def test_music_stats_endpoint(auth):
 
 
 def test_music_stats_page_wiring():
-    """统计页接线: 标签栏第三格 + hash 路由 + 渲染函数 (E2E 再验真数据)。"""
+    """统计页接线: 收进品牌下拉菜单 + hash 路由 + 渲染函数 (E2E 再验真数据)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
-    assert 'data-tab="stats"' in html
+    assert 'id="stats-link"' in html
     assert "stat-grid" in html and "format-bar" in html   # 统计卡片 + 比例条
     js = (static / "music.js").read_text(encoding="utf-8")
     assert 'if (name === "stats") return { view: "stats" };' in js
     assert "function renderStatsView()" in js
     assert '"/music/api/stats"' in js
-    assert 'navigate(tab.dataset.tab)' in js              # 标签栏直通各视图
+    assert 'navigate("stats")' in js                      # 菜单按钮直通统计页
+
+
+def test_music_playlists_page_wiring():
+    """播放列表接线: 资料库第五段 + 详情路由 + 菜单同步按钮 (E2E 再验真数据)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    assert 'id="sync-playlists"' in html
+    assert "playlist-row" in html          # 行样式在
+    js = (static / "music.js").read_text(encoding="utf-8")
+    assert '["playlists", "播放列表"]' in js
+    assert 'if (name === "playlist" && argument)' in js
+    assert "function renderPlaylistView(" in js
+    assert '"/music/api/playlists"' in js
+    assert "playlistRowHTML" in js
 
 
 def test_music_rescan_full_flow(auth, tmp_path):
-    """手动重扫: 接口触发 → 后台扫 → 浏览/搜索/封面/流全链路有数据。"""
-    _make_library(tmp_path / "music-library")
-    response = auth.post("/music/api/rescan")
-    assert response.status_code == 200 and response.json() == {"started": True}
-    _wait_scan_done(auth)
+    """手动重扫: 接口触发 → 后台扫 → 浏览/搜索/封面/流全链路有数据。
+
+    分三批写文件重扫 (甲 → 乙 → 丙), 入库时间逐批变晚 → 最近添加 = 丙乙甲。"""
+    root = tmp_path / "music-library"
+    _write_audio(root, "AI机组/2019 甲 [aaaa1111]/01 曲A.flac",
+                 {"TITLE": "曲A", "ARTIST": "AI机组", "ALBUMARTIST": "AI机组",
+                  "SCRIPT": "Jpan", "ALBUM": "甲", "DATE": "2019"},
+                 picture=PICTURE_BYTES, mtime=2000.0)
+    assert auth.post("/music/api/rescan").json() == {"started": True}
+    _wait_scan_done(auth)                              # 第一批: 甲
+
+    _write_audio(root, "AI机组/2020 乙 [bbbb2222]/01 曲B.flac",
+                 {"TITLE": "曲B", "ARTIST": "AI机组", "ALBUMARTIST": "AI机组",
+                  "SCRIPT": "Jpan", "ALBUM": "乙", "DATE": "2020",
+                  "LYRICS": "[00:01.00]乙の歌詞"}, mtime=3000.0)
+    (root / "AI机组/poster.jpeg").write_bytes(PICTURE_BYTES)
+    assert auth.post("/music/api/rescan").json() == {"started": True}
+    _wait_scan_done(auth)                              # 第二批: 乙
+
+    _write_audio(root, "老歌手/2001 丙 [cccc3333]/01 曲C.flac",
+                 {"TITLE": "曲C", "ARTIST": "老歌手", "ALBUMARTIST": "老歌手",
+                  "SCRIPT": "Hant", "ALBUM": "丙", "DATE": "2001"}, mtime=1000.0)
+    _write_audio(root, "老歌手/2001 丙 [cccc3333]/02 曲D.flac", {}, mtime=1000.0)
+    assert auth.post("/music/api/rescan").json() == {"started": True}
+    _wait_scan_done(auth)                              # 第三批: 丙
 
     status = auth.get("/music/api/status").json()
     assert status["artist_count"] == 2 and status["album_count"] == 3
     assert status["track_count"] == 4
 
     albums = auth.get("/music/api/albums").json()["albums"]
-    assert [album["title"] for album in albums] == ["乙", "甲", "丙"]  # added_at 降序
-    album_id = albums[1]["album_id"]                      # 甲 (唯一带内嵌封面)
+    assert [album["title"] for album in albums] == ["丙", "乙", "甲"]  # 入库降序
+    album_id = albums[2]["album_id"]                      # 甲 (唯一带内嵌封面)
     album_page = auth.get(f"/music/api/albums/{album_id}").json()
     assert album_page["album"]["has_artwork"]
     assert [track["title"] for track in album_page["tracks"]] == ["曲A"]
@@ -725,6 +887,166 @@ def test_music_rescan_conflict(auth, monkeypatch, tmp_path):
     deadline = time.monotonic() + 5
     while service.scanner().status().running and time.monotonic() < deadline:
         time.sleep(0.02)
+
+
+# ------------------------------------------------------ Plex 播放列表同步
+
+_PLEX_MUSIC_PREFIX = "/share/CACHEDEV2_DATA/Media/Music/"
+
+
+def _write_plex_database(
+        path: Path, playlists: list[tuple[str, list[str | None]]]) -> None:
+    """极小 Plex 库: 列表行 (type 15) + 成员挂接行 + 文件行。
+
+    成员给 None = Plex 侧媒体对象已丢 (挂接在但没文件); 给曲库外路径的
+    成员正常写进文件行, 由读取侧按 "Media/Music/" 标记剥前缀时丢弃。"""
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            "CREATE TABLE metadata_items (id INTEGER PRIMARY KEY, "
+            "metadata_type INTEGER, title TEXT);"
+            "CREATE TABLE play_queue_generators (id INTEGER PRIMARY KEY, "
+            'playlist_id INTEGER, metadata_item_id INTEGER, "order" INTEGER);'
+            "CREATE TABLE media_items (id INTEGER PRIMARY KEY, "
+            "metadata_item_id INTEGER);"
+            "CREATE TABLE media_parts (id INTEGER PRIMARY KEY, "
+            "media_item_id INTEGER, file TEXT);")
+        next_id = 1
+        for playlist_name, member_files in playlists:
+            playlist_id = next_id
+            next_id += 1
+            connection.execute(
+                "INSERT INTO metadata_items VALUES (?, 15, ?)",
+                (playlist_id, playlist_name))
+            for order, member_file in enumerate(member_files, start=1000):
+                member_id = next_id
+                next_id += 1
+                connection.execute(
+                    "INSERT INTO metadata_items VALUES (?, 10, ?)",
+                    (member_id, f"{playlist_name} 成员 {order}"))
+                connection.execute(
+                    "INSERT INTO play_queue_generators "
+                    "VALUES (NULL, ?, ?, ?)", (playlist_id, member_id, order))
+                if member_file is None:
+                    continue
+                connection.execute(
+                    "INSERT INTO media_items VALUES (NULL, ?)", (member_id,))
+                media_item_id = connection.execute(
+                    "SELECT last_insert_rowid()").fetchone()[0]
+                connection.execute(
+                    "INSERT INTO media_parts VALUES (NULL, ?, ?)",
+                    (media_item_id,
+                     _PLEX_MUSIC_PREFIX + member_file
+                     if not member_file.startswith("/") else member_file))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_read_plex_playlists(tmp_path):
+    """读取: 成员保序可重复; 丢文件的/曲库外的成员丢弃; 库不在报错。"""
+    plex = tmp_path / "plex.db"
+    _write_plex_database(plex, [
+        ("夜跑", ["AI机组/甲/01.flac", None, "老歌手/丙/02.flac",
+                  "AI机组/甲/01.flac"]),
+        ("搬家走了", ["/share/别处/01.flac", "AI机组/乙/01.flac"])])
+    playlists = library_playlists.read_plex_playlists(plex)
+    assert [(item.name, item.member_paths) for item in playlists] == [
+        ("夜跑", ["AI机组/甲/01.flac", "老歌手/丙/02.flac",
+                  "AI机组/甲/01.flac"]),
+        ("搬家走了", ["AI机组/乙/01.flac"])]
+    with pytest.raises(FileNotFoundError):
+        library_playlists.read_plex_playlists(tmp_path / "没有.db")
+
+
+def test_sync_playlists_replaces_and_skips(tmp_path):
+    """全量替换 (上一轮整表清空); 对不上本库的成员跳过计数; 空表不留壳。"""
+    _seed_library()
+    plex_playlists = [
+        library_playlists.PlexPlaylist(
+            plex_playlist_id=101, name="夜跑",
+            member_paths=["AI机组/甲/01.flac", "老歌手/丙/02.flac",
+                          "AI机组/甲/01.flac", "不在这库/01.flac"]),
+        library_playlists.PlexPlaylist(           # 成员整个都搬走了
+            plex_playlist_id=102, name="全搬走",
+            member_paths=["不在这库/01.flac"]),
+    ]
+    with session_factory()() as session:
+        session.add(Playlist(name="上一轮的", track_count=99))
+        session.commit()
+        result = library_playlists.sync_playlists(session, plex_playlists)
+        assert result.playlists_synced == 1
+        assert result.tracks_synced == 3           # 重复成员保留两次
+        assert result.tracks_skipped == 2
+        listing = library_queries.list_playlists(session)
+        assert [item.name for item in listing.playlists] == ["夜跑"]
+        assert listing.playlists[0].track_count == 3
+        assert listing.playlists[0].duration_seconds == pytest.approx(6.0)
+        page = library_queries.playlist_page(
+            session, listing.playlists[0].playlist_id)
+        assert page is not None
+        assert [track.title for track in page.tracks] == ["曲A", "无题曲", "曲A"]
+        assert [track.album_title for track in page.tracks] == ["甲", "丙", "甲"]
+        assert library_queries.playlist_page(session, 99999) is None
+
+
+def test_playlist_endpoints(auth, tmp_path, monkeypatch):
+    """同步接口: Plex 不在 503; 在则同步后列表/详情/404 全通。"""
+    monkeypatch.setattr(library_playlists, "DEFAULT_PLEX_LIBRARY_DATABASE",
+                        str(tmp_path / "不在.db"))
+    assert auth.post("/music/api/playlists/sync").status_code == 503
+
+    _seed_library()
+    plex = tmp_path / "plex.db"
+    _write_plex_database(
+        plex, [("夜跑", ["AI机组/甲/01.flac", "老歌手/丙/02.flac"])])
+    monkeypatch.setattr(library_playlists, "DEFAULT_PLEX_LIBRARY_DATABASE",
+                        str(plex))
+    response = auth.post("/music/api/playlists/sync")
+    assert response.status_code == 200
+    assert response.json() == {"playlists_synced": 1, "tracks_synced": 2,
+                               "tracks_skipped": 0}
+    listing = auth.get("/music/api/playlists").json()["playlists"]
+    assert [item["name"] for item in listing] == ["夜跑"]
+    page = auth.get(f"/music/api/playlists/{listing[0]['playlist_id']}").json()
+    assert [track["title"] for track in page["tracks"]] == ["曲A", "无题曲"]
+    assert page["playlist"]["track_count"] == 2
+    assert page["tracks"][0]["album_title"] == "甲"
+    assert auth.get("/music/api/playlists/99999").status_code == 404
+
+
+def test_startup_chain_syncs_playlists_and_survives_plex_gone(
+        auth, tmp_path, monkeypatch):
+    """启动链 = 补数 → 首扫 → 同步; Plex 之后下掉, 重启静默跳过,
+    已同步的列表照常用。"""
+    service.stop_service()
+    root = tmp_path / "startup-library"
+    _make_library(root)
+    plex = tmp_path / "plex.db"
+    _write_plex_database(
+        plex, [("夜跑", ["AI机组/2019 甲 [aaaa1111]/01 曲A.flac",
+                         "AI机组/2020 乙 [bbbb2222]/01 曲B.flac"])])
+    monkeypatch.setattr(library_playlists, "DEFAULT_PLEX_LIBRARY_DATABASE",
+                        str(plex))
+    database_url = f"sqlite:///{tmp_path / 'boot.db'}"
+    service.start_service(database_url, root, scan_immediately=True)
+    _wait_scan_done(auth)
+    deadline = time.monotonic() + 10.0          # 扫描收尾后同步还有一小截
+    names = []
+    while time.monotonic() < deadline:
+        names = [item["name"] for item in
+                 auth.get("/music/api/playlists").json()["playlists"]]
+        if names:
+            break
+        time.sleep(0.05)
+    assert names == ["夜跑"]
+
+    service.stop_service()
+    plex.unlink()                               # Plex 被下掉
+    service.start_service(database_url, root, scan_immediately=True)
+    _wait_scan_done(auth)
+    assert [item["name"] for item in
+            auth.get("/music/api/playlists").json()["playlists"]] == ["夜跑"]
 
 
 def test_matching_lyric_line_pure():
@@ -821,12 +1143,16 @@ def test_music_service_lifecycle(auth, tmp_path):
     service.start_service(f"sqlite:///{tmp_path / 'lifecycle.db'}", empty,
                           scan_immediately=True)  # 启动即首扫 (空目录秒完)
     deadline = time.monotonic() + 5
+    # 等扫描真正开始再等收尾 (线程刚起时 running 还没置位, 不能只看它)
+    while service.scanner().status().phase == "idle" \
+            and time.monotonic() < deadline:
+        time.sleep(0.02)
     while service.scanner().status().running and time.monotonic() < deadline:
         time.sleep(0.02)
     assert service.scanner().status().phase == "done"
     current = service.scanner()
     with current._scan_lock:                      # noqa: SLF001 顶住锁再跑 → 让位
-        service._run_scan(current)                # noqa: SLF001 不抛即过
+        service._run_scan(current, False)         # noqa: SLF001 不抛即过
 
 
 def test_media_edge_cases(auth, tmp_path):
