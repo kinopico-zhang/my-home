@@ -499,7 +499,8 @@ function openPlaylistPicker(track) {
   renderPlaylistPicker();
 }
 
-/** 列表清单 (新建的排前面; 全都能加歌也都能删); 空态给新建引导。 */
+/** 列表清单 (纯加歌的选择单, 列表删除在各自的详情页; 新建的排前面);
+ * 空态给新建引导。 */
 async function renderPlaylistPicker() {
   const list = $("#picker-list");
   list.innerHTML = listPlaceholderHTML("加载中…");
@@ -519,8 +520,6 @@ async function renderPlaylistPicker() {
       <span class="pl-icon">♫</span>
       <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
         <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
-      <span class="picker-del" data-picker-delete="${playlist.playlist_id}"
-            role="button" tabindex="-1" aria-label="删除列表">✕</span>
     </button>`).join("");
 }
 
@@ -540,21 +539,6 @@ async function addTrackToPlaylist(playlistId, playlistName) {
 }
 
 $("#picker-list").addEventListener("click", async (event) => {
-  const del = event.target.closest("[data-picker-delete]");
-  if (del) {
-    const playlistId = Number(del.dataset.pickerDelete);
-    const row = del.closest(".picker-row");
-    const name = row?.querySelector("b").textContent || "";
-    if (!window.confirm(`删除播放列表「${name}」?`)) return;
-    try {
-      await fetchJSON(`/music/api/playlists/${playlistId}`, { method: "DELETE" });
-      toast("已删除");
-      renderPlaylistPicker();
-    } catch (error) {
-      toast(`没删掉: ${error.message}`);
-    }
-    return;
-  }
   const pick = event.target.closest("[data-picker-playlist]");
   if (pick) await addTrackToPlaylist(Number(pick.dataset.pickerPlaylist),
                                      pick.querySelector("b").textContent);
@@ -988,6 +972,7 @@ async function renderPlaylistView(playlistId) {
         ${ICON_ACTION_PLAY} 播放</button>
       <button class="action" id="playlist-shuffle" ${playable.length ? "" : "disabled"}>
         ${ICON_ACTION_SHUFFLE} 随机</button>
+      <button class="action" id="playlist-delete">${ICON_ACTION_TRASH} 删除列表</button>
     </div>
     <div class="track-list" id="playlist-tracks">
       ${page.tracks.map((track, index) => trackRowHTML(track,
@@ -998,6 +983,16 @@ async function renderPlaylistView(playlistId) {
   });
   $("#playlist-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
+  });
+  $("#playlist-delete").addEventListener("click", async () => {
+    if (!window.confirm(`删除播放列表「${playlist.name}」?`)) return;
+    try {
+      await fetchJSON(`/music/api/playlists/${playlistId}`, { method: "DELETE" });
+      toast("已删除");
+      navigate("home");                  // 回主页, 列表段重铺自然不再有它
+    } catch (error) {
+      toast(`没删掉: ${error.message}`);
+    }
   });
   bindTrackLists($("#playlist-tracks"), () => page.tracks);
   syncPlayerIndicators();

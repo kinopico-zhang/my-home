@@ -251,6 +251,7 @@ export default [
         describeDuration: "readonly", formatAddedDate: "readonly",
         ICON_BARS: "readonly", ICON_DOWNLOAD: "readonly",
         ICON_ACTION_PLAY: "readonly", ICON_ACTION_SHUFFLE: "readonly",
+        ICON_ACTION_TRASH: "readonly",
         playerStart: "readonly", updatePlayButtons: "readonly",
         openFullPlayer: "readonly", openLyricsView: "readonly",
         onTrackChange: "readonly", playerCurrentTrackId: "readonly",

@@ -819,7 +819,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=8" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=9" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1023,11 +1023,14 @@ def test_music_track_context_menu_wiring():
                  "navigate(`artist/${track.artist_id}`)",
                  'fetchJSON("/music/api/playlists"',
                  '`/music/api/playlists/${playlistId}/tracks`',
-                 '`/music/api/playlists/${playlistId}`, { method: "DELETE" }']:
+                 '`/music/api/playlists/${playlistId}`, { method: "DELETE" }',
+                 'id="playlist-delete"',           # 列表删除在详情页 (选择单只加歌)
+        ]:
         assert frag in js, f"music.js 缺少 {frag}"
-    # 新版图标/脚本地址随行 (music.js 这次改到 v8); Plex 同步全撤了
-    assert "music.js?v=8" in html
+    # 新版图标/脚本地址随行 (music.js 这次改到 v9); Plex 同步全撤了
+    assert "music.js?v=9" in html
     assert "picker-sync" not in html and "picker-sync" not in js
+    assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
 
 
