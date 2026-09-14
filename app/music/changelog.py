@@ -9,6 +9,17 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.1.0", date="2026-09-14", items=[
+        ChangelogItem(kind="新增", text="搜索会认拼音: 打 liudehua 或 ldh 都能搜到刘德华, 不用切中文输入法;"
+                                       " 多打少打空格也不影响"),
+        ChangelogItem(kind="新增", text="简繁互搜: 歌名是繁体的 (比如 久石譲), 打简体 (久石让) 也搜得到, 反过来也一样"),
+        ChangelogItem(kind="新增", text="Plex 里建的播放列表同步过来了: 资料库多一个「播放列表」分段, 点进去按顺序听整张列表;"
+                                       " 顶部菜单里也能手动再同步; Plex 哪天下掉, 已同步的列表照样能听"),
+        ChangelogItem(kind="新增", text="每张专辑记下入库时间: 专辑页头多一行入库日期, 「最近添加」也改看这个"),
+        ChangelogItem(kind="改进", text="界面做减法: 底部标签栏撤掉, 搜索挪到顶栏右上角的放大镜, 统计收进顶部菜单"),
+        ChangelogItem(kind="修复", text="动过文件的专辑 (复制、重新打标签) 不再被当成新添加冒到最前面;"
+                                       " 老专辑自动按文件时间补记入库日期, 原来的顺序不变"),
+    ]),
     ChangelogVersion(version="1.0.0", date="2026-09-14", items=[
         ChangelogItem(kind="新增", text="My Music (听歌): 独立小应用, 可单独加到主屏幕; 扫描 NAS 里的曲库 (5 万首) 建索引,"
                                        " 手机上直接串流播放"),

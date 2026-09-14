@@ -29,6 +29,11 @@ module = "mutagen.*"
 implicit_reexport = true
 
 [[tool.mypy.overrides]]
+# zhconv 是无类型标注的纯字典转换库 (搜索键简繁归一用), 接口面极小
+module = "zhconv"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # repository 按域拆模块后 __init__ 是集中重导出的门面 (调用方免于关心
 # 名字住在哪个域), mutagen 同理: 关掉再导出的显式性检查
 module = ["app.tesla.repository", "app.tesla.repository.*"]
