@@ -1,6 +1,9 @@
 // music-common.js — My Music 页面公共小件 (DOM 查询/转义/请求/提示/资源 URL)。
 // 纯逻辑在 lyrics-parser.js / player-queue.js; 浏览与播放两个页面脚本共用这里。
 "use strict";
+/* exported escapeHTML, fetchJSON, toast, albumArtworkURL, artistArtworkURL,
+   PLACEHOLDER_ARTWORK, describeDuration, ICON_PLAY, ICON_PAUSE, ICON_BARS,
+   ICON_ACTION_PLAY, ICON_ACTION_SHUFFLE */   // 供 music-player.js / music.js 引用
 
 function $(selector) {
   return document.querySelector(selector);

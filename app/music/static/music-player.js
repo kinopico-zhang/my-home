@@ -2,6 +2,7 @@
 // 队列状态机在 player-queue.js, 歌词解析在 lyrics-parser.js;
 // 浏览页 (music.js) 只调 playerStart / playerCurrentTrackId / onTrackChange。
 "use strict";
+/* exported playerStart, openLyricsView, onTrackChange */   // 供 music.js 引用
 
 const PLAYER_STATE_KEY = "music-player-state";
 
@@ -282,7 +283,7 @@ function renderQueueSheet() {
   if (!playQueue) return;
   const upcoming = queueUpcoming(playQueue);
   const currentId = playerCurrentTrackId();
-  $("#queue-list").innerHTML = upcoming.map((track, position) => `
+  $("#queue-list").innerHTML = upcoming.map(track => `
     <button class="queue-row${track.track_id === currentId ? " on" : ""}"
             data-queue-track-id="${track.track_id}">
       ${track.track_id === currentId ? ICON_BARS : ""}
