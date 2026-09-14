@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const TrackUtil = require("../../app/static/trackutil.js");
+const TrackUtil = require("../../app/tesla/static/trackutil.js");
 const { splitGaps } = TrackUtil;
 
 const M = 0.00001;   // ~1.1m, 城市打点步长

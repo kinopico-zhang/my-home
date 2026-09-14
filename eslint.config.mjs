@@ -5,11 +5,11 @@ import globals from "globals";
 
 export default [
   // 不检查: 高德/echarts 第三方压缩包、venv、数据目录
-  { ignores: ["app/static/echarts.min.js", ".venv/**", "data/**", "node_modules/**"] },
+  { ignores: ["app/tesla/static/echarts.min.js", ".venv/**", "data/**", "node_modules/**"] },
 
   // 页面脚本 (script 而非 module): 浏览器全局 + 高德/echarts 注入的宿主对象
   {
-    files: ["app/static/*.js"],
+    files: ["app/tesla/static/*.js"],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 2022,

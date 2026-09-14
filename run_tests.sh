@@ -25,7 +25,7 @@ export TMPDIR="$PWD/.pytest-tmp"
 
 DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker
 if ! $DOCKER exec mytesla-debug sh -c \
-  "cd /repo && node node_modules/eslint/bin/eslint.js app/static app/home/static app/bookkeeping/static app/music/static tests/js \
+  "cd /repo && node node_modules/eslint/bin/eslint.js app/tesla/static app/home/static app/bookkeeping/static app/music/static tests/js \
    && node node_modules/typescript/bin/tsc -p tsconfig.json"; then
   echo "前端静态检查失败 (或调试容器 mytesla-debug 未运行)" >&2
   rc=1
@@ -33,8 +33,8 @@ fi
 
 # 单元测试 + 覆盖率门禁: 只统计五个纯逻辑模块 (页面脚本由 E2E 覆盖)
 node node_modules/c8/bin/c8.js \
-  --include 'app/static/gcj02.js' --include 'app/static/trackutil.js' \
-  --include 'app/static/lastpage.js' --include 'app/bookkeeping/static/bookkeeping-merge.js' \
+  --include 'app/tesla/static/gcj02.js' --include 'app/tesla/static/trackutil.js' \
+  --include 'app/tesla/static/lastpage.js' --include 'app/bookkeeping/static/bookkeeping-merge.js' \
   --include 'app/bookkeeping/static/amount-calculator.js' \
   --include 'app/music/static/lyrics-parser.js' \
   --include 'app/music/static/player-queue.js' \

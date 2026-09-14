@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = APP_DIR.parent
-STATIC_DIR = APP_DIR / "static"
+STATIC_DIR = APP_DIR / "tesla" / "static"
 
 # 时间: 库内为 UTC 裸时间戳, 对外输出本地时间
 LOCAL_TZ = ZoneInfo(os.environ.get("TZ_NAME", "Asia/Shanghai"))

@@ -318,7 +318,7 @@ def test_public_paths_accessible_without_login(client):
 def test_apple_touch_icon_opaque_with_padding():
     """iOS 主屏图标: 不透明纯白底 (透明底被 iOS 合成纯黑) + Tesla 红 T 居中留边。
     旧版 T 铺满整个画布还带 Alpha → 添加到主屏幕后 logo 过大且黑底。"""
-    path = Path(m.__file__).parent / "static" / "apple-touch-icon.png"
+    path = Path(m.__file__).parent / "tesla" / "static" / "apple-touch-icon.png"
     with path.open("rb") as fh:
         d = fh.read()
     w, h = struct.unpack(">II", d[16:24])
@@ -366,7 +366,7 @@ def test_mymoney_app_has_own_icons():
         w, h = struct.unpack(">II", d[16:24])
         assert (w, h) == (size, size), fname
         assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
-    tesla = (Path(m.__file__).parent / "static" / "icon-512.png").read_bytes()
+    tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
     assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
 
 
@@ -381,7 +381,7 @@ def test_mymusic_app_has_own_icons():
         w, h = struct.unpack(">II", d[16:24])
         assert (w, h) == (size, size), fname
         assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
-    tesla = (Path(m.__file__).parent / "static" / "icon-512.png").read_bytes()
+    tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
     assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
 
 
@@ -397,7 +397,7 @@ def test_myhome_app_has_own_icons():
         assert (w, h) == (size, size), fname
         assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
     mine = (base / "icon-512.png").read_bytes()
-    assert mine != (Path(m.__file__).parent / "static" / "icon-512.png").read_bytes()
+    assert mine != (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
     assert mine != (Path(m.__file__).parent / "bookkeeping" / "static"
                     / "icon-512.png").read_bytes(), "三个入口不该共用图标"
 
