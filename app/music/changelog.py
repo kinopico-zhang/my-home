@@ -9,14 +9,16 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
-    ChangelogVersion(version="1.3.0", date="2026-09-14", items=[
+    ChangelogVersion(version="1.3.0", date="2026-09-15", items=[
         ChangelogItem(kind="新增", text="长按任意一首歌弹出菜单: 播放 / 进艺人主页 / 分享 / 添加到播放列表,"
                                        " 主页、资料库、搜索里都能长按 (电脑上是点右键)"),
-        ChangelogItem(kind="新增", text="添加到播放列表: 长按菜单里能选任何列表 (Plex 同步过来的也行) 或当场新建;"
-                                       " 加进同步列表的歌下次同步也保留, 自建的列表排主页最上面"),
+        ChangelogItem(kind="新增", text="添加到播放列表: 长按菜单里能选任何列表或当场新建一个;"
+                                       " 列表都能删、都能加歌, 新建的排主页最上面"),
         ChangelogItem(kind="新增", text="下载管理: 「已下载」栏顶部多了统计行 —— 几首歌、合计多大,"
                                        " 手机存储总占用也看得见; 「全部删除」一键清空 (删前会再问一次)"),
         ChangelogItem(kind="改进", text="「已下载」栏每首歌行尾直接标着这首歌占多大, 哪首占地大一眼看出"),
+        ChangelogItem(kind="改进", text="Plex 播放列表同步撤了: 菜单里的同步按钮去掉,"
+                                       " 播放列表全在应用里管; 原有的列表原地保留, 删改随意"),
         ChangelogItem(kind="修复", text="播放界面几个控制键的图标有点歪、暂停再切回播放还会左右跳一下 —— 都摆正了"),
         ChangelogItem(kind="修复", text="下载中的歌点「删除」没反应 —— 现在等于取消下载, 行和图标立即清掉"),
     ]),

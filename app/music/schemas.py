@@ -215,7 +215,7 @@ class PlaylistBrief(BaseModel):
     name: str
     track_count: int
     duration_seconds: float
-    is_local: bool = False   # 应用内自建 (可增删曲目); Plex 同步的以 Plex 为准
+    is_local: bool = False   # 应用内列表 (2026-09-15 起全量如此, 历史同步列表也已转正)
 
 
 class PlaylistCreateRequest(BaseModel):
@@ -231,7 +231,7 @@ class PlaylistTrackRequest(BaseModel):
 
 
 class PlaylistPageList(BaseModel):
-    """播放列表清单 (同步过来的十几个, 不分页)。"""
+    """播放列表清单 (不分页 —— 十几个)。"""
 
     playlists: list[PlaylistBrief]
 
@@ -243,15 +243,6 @@ class PlaylistPage(BaseModel):
     tracks: list[TrackBrief]
 
 
-class PlaylistSyncResponse(BaseModel):
-    """POST /api/playlists/sync 的应答 (内部同步过程也用它累计)。"""
-
-    playlists_synced: int = 0
-    tracks_synced: int = 0
-    tracks_skipped: int = 0       # Plex 里有但本库对不上 (文件删了/还没扫)
-
-
-# ---------------------------------------------------------------- 播放记录
 
 class PlayRecordRequest(BaseModel):
     """POST /api/plays 的请求体 (播一次报一次)。"""

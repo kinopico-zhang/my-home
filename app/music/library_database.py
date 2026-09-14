@@ -94,8 +94,8 @@ class Track(MusicLibraryBase):
 
 
 class Playlist(MusicLibraryBase):
-    """播放列表: Plex 同步的 (is_local=False, 全量替换) + 应用内自建的
-    (is_local=True, 同步不动它们, 只有接口能增删)。"""
+    """播放列表 (2026-09-15 起全在应用内建管; is_local 是同步时代的
+    遗留列, 存量行已全部转 True, 新建恒 True)。"""
 
     __tablename__ = "playlists"
 
@@ -105,12 +105,12 @@ class Playlist(MusicLibraryBase):
     track_count: Mapped[int] = mapped_column(default=0)
     duration_seconds: Mapped[float] = mapped_column(default=0.0)
     plex_playlist_id: Mapped[int] = mapped_column(default=0)   # 源库 id (溯源/幂等)
-    is_local: Mapped[bool] = mapped_column(default=False)  # 应用内自建 (同步保留)
+    is_local: Mapped[bool] = mapped_column(default=False)  # 同步时代遗留, 恒 True
 
 
 class PlaylistItem(MusicLibraryBase):
-    """播放列表成员 (position 是 Plex 的千分步序号; added_locally =
-    应用内长按加进来的 —— 同步时这些成员保留, 其余以 Plex 为准)。"""
+    """播放列表成员 (position 列表内顺序; added_locally = 应用内加的,
+    同步时代用来在重灌时保留, 现在恒 True)。"""
 
     __tablename__ = "playlist_items"
 

@@ -2,19 +2,16 @@
 
 引擎 (data/music.db) 与扫描器都在这里装配; lifespan 启动时调
 start_service(), 路由层经 scanner() / trigger_scan() 触达。
-启动链路 = 老库补数 → 首扫 → Plex 播放列表同步 (同一后台线程, 免得
-几个写者抢 SQLite 锁; Plex 不在就静默跳过, 不挡服务起来)。
+启动链路 = 老库补数 → 首扫 (同一后台线程, 免得补数和扫描两个写者
+抢 SQLite 锁)。Plex 播放列表同步 2026-09-15 已撤 (用户要求): 撤之前
+同步过来的列表原地保留, 此后播放列表全在应用内建、管。
 """
-import sqlite3
 import threading
 from pathlib import Path
-
-from sqlalchemy.exc import SQLAlchemyError
 
 from .library_database import (DEFAULT_MUSIC_DIRECTORY, create_all,
                                dispose_engine, ensure_columns, init_engine,
                                session_factory)
-from . import library_playlists
 from .library_scanner import LibraryScanner, backfill_legacy_rows
 
 
@@ -93,18 +90,5 @@ def _run_scan(current: LibraryScanner, after_backfill: bool) -> None:
         if after_backfill:
             backfill_legacy_rows(session_factory())
         current.scan()
-        if after_backfill:
-            _sync_playlists_once()    # 启动链路收尾 (手动重扫不同步播放列表)
     except RuntimeError:
         pass            # 两个触发挤进同一窗口, 输的那个直接退
-
-
-def _sync_playlists_once() -> None:
-    """同步一次 Plex 播放列表 (库不在/读不动都静默跳过, 点按钮才见报错)。"""
-    try:
-        plex_playlists = library_playlists.read_plex_playlists(
-            Path(library_playlists.DEFAULT_PLEX_LIBRARY_DATABASE))
-        with session_factory()() as session:
-            library_playlists.sync_playlists(session, plex_playlists)
-    except (OSError, sqlite3.Error, SQLAlchemyError):
-        pass            # Plex 以后会被下掉: 服务自身绝不依赖它
