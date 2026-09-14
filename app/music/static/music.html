@@ -76,11 +76,12 @@ header {
   border: 1px solid var(--hairline); border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
 }
-.brand-menu .menu button {
+.brand-menu .menu button, .brand-menu .menu a {
   font-size: 14px; color: var(--ink-1); text-align: left;
   padding: 9px 12px; border-radius: 10px; white-space: nowrap;
 }
-.brand-menu .menu button:active { background: var(--surface-3); }
+.brand-menu .menu button:active, .brand-menu .menu a:active { background: var(--surface-3); }
+.brand-menu .menu a { text-decoration: none; }
 .brand-menu .menu .logout-row {
   color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
   border-radius: 0 0 10px 10px;
@@ -489,6 +490,7 @@ main {
       <summary>My Music<svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="menu">
         <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
+        <a href="/music/changelog">更新日志</a>
         <button class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>

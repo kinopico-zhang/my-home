@@ -1,4 +1,6 @@
-// changelog.js — 更新日志页: 合并批次的版本条目 (新增/改进/修复, 用户视角文案)
+// changelog-page.js — 更新日志页共用渲染器 (My Tesla / My Music 同一套页面
+// 骨架): 菜单收起 / 版本块渲染 / 顶栏刷新 / 失败重试 / 退出登录。
+// 数据源 (各应用自己的条目接口) 由页面 body 的 data-changelog-api 指定。
 "use strict";
 /* 页签菜单: 点空白处收起。 */
 document.addEventListener("click", e => {
@@ -20,6 +22,7 @@ async function getJSON(url) {
   return r.json();
 }
 
+const API_URL = document.body.dataset.changelogApi;
 const KIND_CLS = { "新增": "add", "改进": "imp", "修复": "fix" };
 
 function render(list) {   // 行写进内层 #list, 加载/错误节点不被顶掉
@@ -39,7 +42,7 @@ async function load() {
   $("#error").hidden = true;
   $("#loading").hidden = false;
   try {
-    const list = await getJSON("/tesla/changelog/api/entries");
+    const list = await getJSON(API_URL);
     if (list.length) render(list);
     else showError("还没有版本记录");
   } catch (e) {

@@ -15,7 +15,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .. import account_store, database
-from . import library_media, library_queries, service
+from ..schemas import ChangelogVersion
+from . import changelog, library_media, library_queries, service
 from .library_database import (Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
@@ -66,6 +67,21 @@ def _validate_language(language: str) -> str:
 def music_page() -> FileResponse:
     """My Music 主页: 资料库 + 搜索 + 播放器 (一个页面管全部)。"""
     return _page("music.html")
+
+
+@music_app.get("/changelog")
+def music_changelog_page() -> FileResponse:
+    """更新日志页 (听歌应用自己的版本线, 与 My Tesla 的日志各自独立)。"""
+    return _page("changelog.html")
+
+
+@music_app.get("/changelog/api/entries")
+def music_changelog_entries(
+        request: Request,
+        users: Session = Depends(database.get_users_db)) -> list[ChangelogVersion]:
+    """更新日志版本 (新→老), 每版是一批改动的合并。"""
+    _require_user(request, users)
+    return changelog.entries()
 
 
 @api.post("/logout")
