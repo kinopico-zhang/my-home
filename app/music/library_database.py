@@ -166,6 +166,21 @@ class CellularUsage(MusicLibraryBase):
     bytes: Mapped[int] = mapped_column(default=0)
 
 
+class ShareLink(MusicLibraryBase):
+    """分享链接: 一首歌 / 一个播放列表 24 小时免登录可开。
+
+    token (uuid4 hex) 本身就是凭证 —— 发给谁谁就能看能听, 过期即废;
+    创建时顺手清掉全库过期行 (量小, 不值得后台任务)。"""
+
+    __tablename__ = "share_links"
+
+    token: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8))       # "track" | "playlist"
+    target_id: Mapped[int] = mapped_column(default=0)  # track_id / playlist_id
+    created_by: Mapped[str] = mapped_column(default="")  # 开链接的账号 uuid (审计)
+    created_at: Mapped[float] = mapped_column(default=0.0)  # epoch 秒
+
+
 class _EngineState:
     """进程级引擎持有者 (避免 global 语句)。"""
 

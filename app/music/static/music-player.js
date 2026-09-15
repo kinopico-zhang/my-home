@@ -16,6 +16,7 @@ let lyricsCache = new Map();       // track_id → {synced, lines} | null (没�
 let lyricsActiveIndex = -1;
 let lyricsViewOpen = false;
 let queueViewOpen = false;           // 封面区翻开成队列视图 (与歌词视图二选一)
+let queueDrag = null;                // 队列拖拽换位进行中 (null = 没在拖)
 let scrubbing = false;
 let playRecorded = false;          // 本曲已报过最近播放 (暂停续播不重复报)
 // 歌词自由滑动: 手动滚过就暂停跟唱, 出"回到当前句"; 静置几秒自动恢复
@@ -200,6 +201,8 @@ function savePlayerState() {
     localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify({
       tracks: playQueue.tracks.slice(0, 500),
       index: playQueue.tracks.indexOf(currentTrack),
+      order: playQueue.order.slice(0, 500),     // 拖拽换过的顺序别丢 (随机序也保真)
+      position: playQueue.position,
       time: audio.currentTime,
       shuffle: playQueue.shuffle,
       repeat: playQueue.repeat,
@@ -216,6 +219,20 @@ function playerRestore() {
   if (!saved || !Array.isArray(saved.tracks) || !saved.tracks.length) return;
   playQueue = createPlayQueue(saved.tracks, saved.index || 0);
   playQueue.repeat = saved.repeat || "off";
+  // 存过顺序 (拖拽换位/随机洗牌后的 order) 就原样恢复: 队列视图所见即所存。
+  // 校验是完整排列才认 (老存档/被截断的都不认, 回落原始顺序); 没恢复成
+  // 顺序就不认 shuffle 旗标 —— 顺序是重建的, 旗标亮着却按原序走会骗人。
+  let orderRestored = false;
+  if (Array.isArray(saved.order) && saved.order.length === saved.tracks.length
+      && new Set(saved.order).size === saved.tracks.length
+      && saved.order.every((n) => Number.isInteger(n)
+                            && n >= 0 && n < saved.tracks.length)) {
+    playQueue.order = saved.order.slice();
+    playQueue.position = Math.min(Math.max(0, saved.position || 0),
+                                  saved.order.length - 1);
+    orderRestored = true;
+  }
+  playQueue.shuffle = orderRestored && !!saved.shuffle;
   const track = queueCurrent(playQueue);
   if (!track) { playQueue = null; return; }
   const audio = audioElement();
@@ -677,13 +694,77 @@ function renderQueueView() {
   if (!playQueue) return;
   const upcoming = queueUpcoming(playQueue);
   const currentId = playerCurrentTrackId();
-  $("#queue-list").innerHTML = upcoming.map(track => `
+  $("#fq-count").textContent = `${upcoming.length} 首歌曲`;
+  // 当前曲 eq 动条, 其余接续编号 (当前算 1); 右缘拖拽把手按住上下拖换顺序
+  $("#queue-list").innerHTML = upcoming.map((track, index) => `
     <button class="queue-row${track.track_id === currentId ? " on" : ""}"
             data-queue-track-id="${track.track_id}">
-      ${track.track_id === currentId ? ICON_BARS : ""}
+      <span class="q-lead">${track.track_id === currentId ? ICON_BARS
+        : `<i class="q-num">${index + 1}</i>`}</span>
       <span class="q-title">${escapeHTML(track.title)}</span>
       <span class="q-artist">${escapeHTML(track.artist)}</span>
+      <span class="q-grip" aria-hidden="true">${ICON_GRIP}</span>
     </button>`).join("") || '<div class="lyrics-empty">队列是空的</div>';
+}
+
+// 拖拽换位: 按住右缘把手上下拖 —— 被拖行跟手 (transform), 其余行让位平移;
+// 松手按落点改 order (当前曲位照旧由 queueReorder 兜住)。把手 touch-action:
+// none, 拖把不滚列表; 行本身 pan-y, 列表照常滚。视图下标 0 = order[position]。
+function finishQueueDrag(cancelled) {
+  const drag = queueDrag;
+  queueDrag = null;
+  if (!drag) return;
+  drag.row.classList.remove("dragging");
+  drag.rows.forEach((row) => { row.style.transform = ""; });
+  if (cancelled || !drag.moved || drag.target === undefined
+      || drag.target === drag.fromView || !playQueue) return;
+  const base = Math.max(0, playQueue.position);
+  if (queueReorder(playQueue, base + drag.fromView, base + drag.target)) {
+    renderQueueView();
+    savePlayerState();
+  }
+}
+
+function bindQueueDrag() {
+  const list = $("#queue-list");
+  list.addEventListener("pointerdown", (event) => {
+    const grip = event.target.closest(".q-grip");
+    if (!grip || queueDrag) return;
+    const row = grip.closest(".queue-row");
+    const rows = [...list.querySelectorAll(".queue-row")];
+    const index = rows.indexOf(row);
+    if (!row || index < 0 || !playQueue) return;
+    event.preventDefault();                       // 拖把按下就是拖, 不当点击
+    grip.setPointerCapture(event.pointerId);      // 移出把手事件也不丢
+    queueDrag = { row, rows, fromView: index, target: index,
+                  rowH: row.offsetHeight || 1, startY: event.clientY,
+                  offsetTop: row.offsetTop, moved: false };
+    row.classList.add("dragging");
+  });
+  list.addEventListener("pointermove", (event) => {
+    if (!queueDrag) return;
+    const drag = queueDrag;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved) {
+      if (Math.abs(dy) < 6) return;
+      drag.moved = true;
+    }
+    drag.row.style.transform = `translateY(${dy}px)`;
+    drag.target = Math.max(0, Math.min(drag.rows.length - 1,
+      Math.round((drag.offsetTop + dy) / drag.rowH)));
+    drag.rows.forEach((row, index) => {           // 其余行让位
+      if (row === drag.row) return;
+      let shift = 0;
+      if (drag.target > drag.fromView) {
+        if (index > drag.fromView && index <= drag.target) shift = -drag.rowH;
+      } else if (drag.target < drag.fromView) {
+        if (index >= drag.target && index < drag.fromView) shift = drag.rowH;
+      }
+      row.style.transform = shift ? `translateY(${shift}px)` : "";
+    });
+  });
+  list.addEventListener("pointerup", () => finishQueueDrag(false));
+  list.addEventListener("pointercancel", () => finishQueueDrag(true));
 }
 
 // ------------------------------------------------------------ 锁屏/控制中心
@@ -795,6 +876,7 @@ function bindPlayerEvents() {
   });
 
   $("#queue-list").addEventListener("click", (event) => {
+    if (event.target.closest(".q-grip")) return;   // 拖把不是行点击 (拖完那下更不是)
     const row = event.target.closest("[data-queue-track-id]");
     if (!row || !playQueue) return;
     const track = queueJump(playQueue, Number(row.dataset.queueTrackId));
@@ -804,6 +886,7 @@ function bindPlayerEvents() {
       toast("这首浏览器播不了");
     }
   });
+  bindQueueDrag();
 
   $("#fp-lyrics").addEventListener("click", (event) => {
     const line = event.target.closest(".lyrics-line");
