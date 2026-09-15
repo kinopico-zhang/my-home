@@ -3,7 +3,7 @@
 // 浏览页 (music.js) 只调 playerStart / playerCurrentTrackId / onTrackChange。
 // 听过的歌顺手报给后端 (最近播放), 下一曲在后台预取 (秒切)。
 "use strict";
-/* exported playerStart, openLyricsView, onTrackChange */   // 供 music.js 引用
+/* exported playerStart, openLyricsView, onTrackChange, playerCurrentTrack */   // 供 music.js 引用
 
 const PLAYER_STATE_KEY = "music-player-state";
 // 手动滑动歌词后多久自动回到跟唱 (毫秒; Apple Music 同款节奏)
@@ -160,6 +160,11 @@ function playerCurrentTrackId() {
   return currentTrack ? currentTrack.track_id : 0;
 }
 
+/** 全屏页 ⋯ / ♥ 按钮要的当前曲目 (含恢复现场那首)。 */
+function playerCurrentTrack() {
+  return currentTrack;
+}
+
 function playerIsPlaying() {
   return !!currentTrack && !audioElement().paused;
 }
@@ -217,6 +222,7 @@ function renderPlayerChrome() {
   $("#mini-artist").textContent = track.artist;
   $("#fp-title").textContent = track.title;
   $("#fp-artist").textContent = track.artist;
+  updateSourceLine(track);
   const artwork = track.album_id
     ? `/music/media/albums/${track.album_id}/artwork` : PLACEHOLDER_ARTWORK;
   $("#mini-art").src = artwork;
@@ -245,6 +251,36 @@ function updateShuffleRepeatButtons() {
   repeatButton.classList.toggle("one", repeat === "one");
 }
 
+// ------------------------------------------------------------ 底部来源行
+// 封面下那行小字: 有 作词/作曲 标签就显示, 没有退专辑名;
+// 标签按需现读 (库里只有三成左右的歌带), 读过的缓存住。
+const LOSSLESS_FORMATS = new Set(["flac", "wav", "alac", "aiff", "aif"]);
+const creditsCache = new Map();     // track_id → "作词 X · 作曲 Y" | ""
+let creditsSequence = 0;            // 请求序号: 切曲后旧响应不再上屏
+
+function updateSourceLine(track) {
+  $("#fp-lossless").hidden = !LOSSLESS_FORMATS.has(
+    String(track.file_format || "").toLowerCase());
+  if (creditsCache.has(track.track_id)) {
+    $("#fp-source").textContent = creditsCache.get(track.track_id)
+      || track.album_title || "";
+    return;
+  }
+  $("#fp-source").textContent = track.album_title || "";
+  const token = ++creditsSequence;
+  fetchJSON(`/music/api/tracks/${track.track_id}/credits`)
+    .then((data) => {
+      const parts = [];
+      if (data.lyricist) parts.push(`作词 ${data.lyricist}`);
+      if (data.composer) parts.push(`作曲 ${data.composer}`);
+      creditsCache.set(track.track_id, parts.join(" · "));
+      if (token !== creditsSequence) return;        // 已经切到别的歌了
+      $("#fp-source").textContent = parts.join(" · ")
+        || track.album_title || "";
+    })
+    .catch(() => { /* 拿不到标签就保持专辑名 */ });
+}
+
 function openFullPlayer() {
   const fullPlayer = $("#full-player");
   fullPlayer.hidden = false;
@@ -256,6 +292,94 @@ function closeFullPlayer() {
   fullPlayer.classList.remove("open");
   setTimeout(() => { fullPlayer.hidden = true; }, 300);   // 等滑出动画收尾
   if (lyricsViewOpen) toggleLyricsView();
+}
+
+// ------------------------------------------------------------ 下拉收起
+// 抓手条/封面往下拖: 播放页跟手下滑, 松手时拖得够远或滑得够快就收起,
+// 否则弹回。抓手条拖动后的尾随 click 不算 (不然小拖一下也收起)。
+let fpDismissDragged = false;
+
+function bindDismissDrag(target) {
+  const player = $("#full-player");
+  let dragging = false;
+  let pointerId = -1;
+  let startY = 0;
+  let lastY = 0;
+  let lastTime = 0;
+  let velocity = 0;                  // px/ms, 松手那刻的甩速
+  target.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    pointerId = event.pointerId;
+    startY = lastY = event.clientY;
+    lastTime = performance.now();
+    velocity = 0;
+    fpDismissDragged = false;
+    player.style.transition = "none";
+    target.setPointerCapture(event.pointerId);
+  });
+  target.addEventListener("pointermove", (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    const now = performance.now();
+    if (now > lastTime) {
+      velocity = (event.clientY - lastY) / (now - lastTime);
+      lastTime = now;
+    }
+    lastY = event.clientY;
+    const dy = lastY - startY;
+    if (dy > 10) fpDismissDragged = true;
+    player.style.transform = dy > 0 ? `translateY(${dy * 0.92}px)` : "";
+  });
+  const finish = (event) => {
+    if (!dragging || (event.pointerId !== undefined
+                      && event.pointerId !== pointerId)) return;
+    dragging = false;
+    player.style.transition = "";
+    player.style.transform = "";
+    if (lastY - startY > 90 || velocity > 0.55) closeFullPlayer();
+  };
+  target.addEventListener("pointerup", finish);
+  target.addEventListener("pointercancel", finish);
+}
+
+// ------------------------------------------------------------ 音量
+// 平台认 audio.volume 就直接用; 不认的 (iOS Safari) 只能在第一次拖动
+// 音量条时把音频接进 WebAudio 增益节点再调 —— 没动过手势就一直直连, 零风险
+// (无手势建 AudioContext 会被吊起, 反而把声音弄没)。
+let volumeGainNode = null;
+let volumeRoutingFailed = false;
+
+function loadSavedVolume() {
+  const raw = localStorage.getItem("music-volume");
+  if (raw === null) return 100;         // 没拖过 = 满音量 (Number(null) 是 0, 不能直接转)
+  const saved = Number(raw);
+  return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 100;
+}
+
+function applyVolume(value, fromGesture) {
+  const audio = audioElement();
+  try { audio.volume = value / 100; } catch (_e) { /* iOS 静默忽略 */ }
+  if (volumeGainNode) {
+    volumeGainNode.gain.value = value / 100;
+    return;
+  }
+  if (value >= 100 || volumeRoutingFailed || !fromGesture) return;
+  routeThroughGain(value / 100);
+}
+
+function routeThroughGain(level) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const context = new Ctx();
+    const source = context.createMediaElementSource(audioElement());
+    const gain = context.createGain();
+    gain.gain.value = level;
+    source.connect(gain);
+    gain.connect(context.destination);
+    context.resume().catch(() => {});
+    volumeGainNode = gain;
+  } catch (_error) {
+    volumeRoutingFailed = true;      // 接不进就保持 audio.volume 路线
+  }
 }
 
 /** 歌词结果/外部入口: 打开歌词视图 (已开着就不动)。 */
@@ -497,7 +621,15 @@ function bindPlayerEvents() {
   $("#mini-play").addEventListener("click", (event) => { event.stopPropagation(); playerToggle(); });
   $("#mini-next").addEventListener("click", (event) => { event.stopPropagation(); playerNext(); });
   $("#mini-open").addEventListener("click", openFullPlayer);
-  $("#fp-close").addEventListener("click", closeFullPlayer);
+  $("#fp-grab").addEventListener("click", () => {
+    if (fpDismissDragged) {            // 刚拖过: 抬手补发的 click 不算
+      fpDismissDragged = false;
+      return;
+    }
+    closeFullPlayer();
+  });
+  bindDismissDrag($("#fp-grab"));
+  bindDismissDrag($("#fp-art-wrap"));
   $("#fp-play").addEventListener("click", playerToggle);
   $("#fp-next").addEventListener("click", playerNext);
   $("#fp-prev").addEventListener("click", playerPrevious);
@@ -551,11 +683,17 @@ function bindPlayerEvents() {
   });
 
   const scrubber = $("#fp-scrub");
+  // 时间文案照参考图: 左 = −已播, 右 = −剩余 (倒数式, 两边都带负号)
+  const renderTimes = (current, total) => {
+    $("#fp-time-cur").textContent = `-${formatPlaybackTime(current)}`;
+    $("#fp-time-total").textContent =
+      `-${formatPlaybackTime(Math.max(0, (total || 0) - current))}`;
+  };
   scrubber.addEventListener("input", () => {
     scrubbing = true;
     const total = audio.duration || 0;
     const time = total * Number(scrubber.value) / 1000;
-    $("#fp-time-cur").textContent = formatPlaybackTime(time);
+    renderTimes(time, total);
     scrubber.style.setProperty("--fill", `${scrubber.value / 10}%`);
   });
   const applyScrub = () => {
@@ -566,6 +704,20 @@ function bindPlayerEvents() {
   };
   scrubber.addEventListener("change", applyScrub);
   scrubber.addEventListener("touchend", applyScrub);
+
+  // 音量条: 初值从上次的记忆恢复 (iOS 在动过一次前实际还是满音量)
+  const volumeSlider = $("#fp-volume");
+  const savedVolume = loadSavedVolume();
+  volumeSlider.value = String(savedVolume);
+  volumeSlider.style.setProperty("--fill", `${savedVolume}%`);
+  applyVolume(savedVolume, false);
+  volumeSlider.addEventListener("input", () => {
+    const value = Number(volumeSlider.value);
+    volumeSlider.style.setProperty("--fill", `${value}%`);
+    applyVolume(value, true);
+    try { localStorage.setItem("music-volume", String(value)); }
+    catch (_e) { /* 存不上就不记, 不影响本次调节 */ }
+  });
 
   audio.addEventListener("playing", () => {
     // 真正出声了才算"听过" (恢复现场直接暂停的不算); 暂停续播不重复报
@@ -583,8 +735,7 @@ function bindPlayerEvents() {
     savePlayerState();
   });
   audio.addEventListener("loadedmetadata", () => {
-    $("#fp-time-total").textContent = formatPlaybackTime(audio.duration);
-    $("#fp-time-cur").textContent = formatPlaybackTime(audio.currentTime);
+    renderTimes(audio.currentTime, audio.duration);
     syncPositionState();
   });
   // 锁屏/控制中心的进度是浏览器拿「位置 + 流逝时间 × 速率」估的:
@@ -601,7 +752,7 @@ function bindPlayerEvents() {
       const scrubber = $("#fp-scrub");
       scrubber.value = String(Math.round(progress * 1000));
       scrubber.style.setProperty("--fill", `${Math.round(progress * 100)}%`);
-      $("#fp-time-cur").textContent = formatPlaybackTime(audio.currentTime);
+      renderTimes(audio.currentTime, audio.duration);
     }
     syncPositionState();
     highlightActiveLyric();

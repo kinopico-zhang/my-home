@@ -28,6 +28,7 @@ from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
                       PlayRecordRequest, PlaylistBrief, PlaylistCreateRequest,
                       PlaylistPage, PlaylistPageList,
                       PlaylistTrackRequest, RecentPlaysResponse,
+                      TrackCredits,
                       RescanResponse, SearchResult, TrackPageList)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -418,6 +419,18 @@ def music_lyrics(track_id: int, request: Request,
     if lyrics is None:
         raise HTTPException(404, "曲目不存在")
     return lyrics
+
+
+@api.get("/tracks/{track_id}/credits", response_model=TrackCredits)
+def music_credits(track_id: int, request: Request,
+                  users: Session = Depends(database.get_users_db),
+                  library: Session = Depends(get_db)) -> TrackCredits:
+    """单曲 作词/作曲 标签 (全屏播放页底部来源行, 按需现读文件)。"""
+    _require_user(request, users)
+    credits = library_queries.credits_for_track(library, track_id)
+    if credits is None:
+        raise HTTPException(404, "曲目不存在")
+    return credits
 
 
 @media.get("/stream/{track_id}")

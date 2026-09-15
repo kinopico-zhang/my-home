@@ -293,7 +293,8 @@ def _make_library(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     _write_audio(root, "AI机组/2019 甲 [aaaa1111]/01 曲A.flac",
                  {"TITLE": "曲A", "ARTIST": "AI机组", "ALBUMARTIST": "AI机组",
-                  "SCRIPT": "Jpan", "ALBUM": "甲", "DATE": "2019"},
+                  "SCRIPT": "Jpan", "ALBUM": "甲", "DATE": "2019",
+                  "LYRICIST": "词人甲", "COMPOSER": "曲人乙"},
                  picture=PICTURE_BYTES, mtime=2000.0)
     _write_audio(root, "AI机组/2020 乙 [bbbb2222]/01 曲B.flac",
                  {"TITLE": "曲B", "ARTIST": "AI机组", "ALBUMARTIST": "AI机组",
@@ -819,7 +820,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=13" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=14" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1027,8 +1028,8 @@ def test_music_track_context_menu_wiring():
                  'id="playlist-delete"',           # 列表删除在详情页 (选择单只加歌)
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
-    # 新版图标/脚本地址随行 (music.js 这次改到 v9); Plex 同步全撤了
-    assert "music.js?v=13" in html
+    # 新版图标/脚本地址随行; Plex 同步全撤了
+    assert "music.js?v=14" in html
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
@@ -1134,14 +1135,15 @@ def test_music_lyrics_animation_wiring():
 
 
 def test_music_controls_apple_style_wiring():
-    """播放控制按钮 Apple Music 风格: 白色实心圆主钮 + 按压缩放反馈;
-    图标包围盒中心对准圆心的不变量在 player-icons.test.mjs。"""
+    """播放控制按钮 (参考图 1:1 批): 裸白三键 64px 等距 + 按压缩放反馈;
+    图标包围盒中心对准按键中心的不变量在 player-icons.test.mjs。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
-    assert "width: 68px; height: 68px" in html                # 饱满的大圆钮
-    assert "border-radius: 50%; background: #fff; color: #000" in html
-    assert "#fp-play:active { transform: scale(.93)" in html  # 按压反馈
-    assert "gap: 22px" in html                                # 上一首/下一首间距
+    assert "width: 64px; height: 64px; color: #fff; padding: 0" in html  # 等大三键
+    assert "gap: 43px" in html                                # 参考图键距
+    assert ".fp-controls > button:active { transform: scale(.86)" in html  # 按压反馈
+    assert ".queue-modes" in html                             # 随机/循环进队列面板
+    assert "#fp-volume" in html and "#fp-grab" in html        # 音量条 + 收起抓手
 
 
 def test_music_scan_polling_wiring():
@@ -1399,6 +1401,13 @@ def test_media_edge_cases(auth, tmp_path):
     lyrics = auth.get(f"/music/api/tracks/{qu_b['track_id']}/lyrics").json()
     assert lyrics["lyrics_synced"] and "乙の歌詞" in lyrics["lyrics"]
 
+    # 作词/作曲 (全屏播放页来源行): 带标签的读得出来, 没标签的空串
+    qu_a = next(track for track in tracks if track["title"] == "曲A")
+    credits = auth.get(f"/music/api/tracks/{qu_a['track_id']}/credits").json()
+    assert credits == {"lyricist": "词人甲", "composer": "曲人乙"}
+    assert auth.get(f"/music/api/tracks/{qu_b['track_id']}/credits").json() \
+        == {"lyricist": "", "composer": ""}
+
     # 源文件被删 (索引还在): 流 404; 尾缀 Range 比文件长 → 从 0 开始的 206
     dsf_track = next(track for track in tracks
                      if track["file_format"] == "dsf")
@@ -1430,6 +1439,7 @@ def test_music_webapp_fallbacks(auth):
         assert auth.get("/music/api/status").status_code == 401
     assert auth.get("/music/api/artists/99999").status_code == 404
     assert auth.get("/music/api/tracks/99999/lyrics").status_code == 404
+    assert auth.get("/music/api/tracks/99999/credits").status_code == 404
     response = auth.post("/music/api/logout")     # 登出清 cookie, 放最后
     assert response.status_code == 200 and response.json() == {"ok": True}
 

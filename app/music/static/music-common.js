@@ -99,9 +99,9 @@ function describeDuration(totalSeconds, trackCount) {
 // 播放↔暂停切换不左右跳位 (2026-09-14 前的三角右偏 2 格, 一切换肉眼可见地歪)。
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6.583 18.5l0-13l10.833 6.5z" fill="currentColor"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M14.857 5.571q0.887 0 1.515 0.628t0.628 1.515l0 8.571q0 0.887-0.628 1.515t-1.515 0.628t-1.515-0.628t-0.628-1.515l0-8.571q0-0.887 0.628-1.515t1.515-0.628zM9.143 5.571q0.887 0 1.515 0.628t0.628 1.515l0 8.571q0 0.887-0.628 1.515t-1.515 0.628t-1.515-0.628t-0.628-1.515l0-8.571q0-0.887 0.628-1.515t1.515-0.628z" fill="currentColor"/></svg>';
-// 全屏播放页的大号播放/暂停: 装在白色圆钮里 (Apple Music 风), 颜色随按钮 (黑)
-const ICON_PLAY_BIG = '<svg viewBox="0 0 24 24" width="42" height="42" aria-hidden="true"><path d="M5.75 19.5l0-15l12.5 7.5z" fill="currentColor"/></svg>';
-const ICON_PAUSE_BIG = '<svg viewBox="0 0 24 24" width="42" height="42" aria-hidden="true"><path d="M14.857 5.571q0.887 0 1.515 0.628t0.628 1.515l0 8.571q0 0.887-0.628 1.515t-1.515 0.628t-1.515-0.628t-0.628-1.515l0-8.571q0-0.887 0.628-1.515t1.515-0.628zM9.143 5.571q0.887 0 1.515 0.628t0.628 1.515l0 8.571q0 0.887-0.628 1.515t-1.515 0.628t-1.515-0.628t-0.628-1.515l0-8.571q0-0.887 0.628-1.515t1.515-0.628z" fill="currentColor"/></svg>';
+// 全屏播放页的大号播放/暂停: 裸白字形直接站在页面上 (参考图风, 无圆底)
+const ICON_PLAY_BIG = '<svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><path d="M3 2L21 12 3 22z" fill="currentColor"/></svg>';
+const ICON_PAUSE_BIG = '<svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true"><path d="M4 4.5q0-2.5 2.5-2.5t2.5 2.5v15q0 2.5-2.5 2.5t-2.5-2.5v-15zM15 4.5q0-2.5 2.5-2.5t2.5 2.5v15q0 2.5-2.5 2.5t-2.5-2.5v-15z" fill="currentColor"/></svg>';
 const ICON_BARS = '<span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>';
 // 下载 (曲目行右侧; 已下载时 music.js 换成勾)
 const ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17.5v1.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
