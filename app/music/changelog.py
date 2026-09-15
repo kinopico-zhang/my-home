@@ -32,6 +32,12 @@ VERSIONS: Final[list[ChangelogVersion]] = [
         ChangelogItem(kind="改进", text="设置页普通账号也能看了 (只读):"
                                        " 音乐库目录、歌词开关、流量月账都看得见,"
                                        " 只是开关和输入框锁着, 改还是要管理员"),
+        ChangelogItem(kind="改进", text="播放控制键换了新图标 (上一首/下一首/播放/暂停/随机/循环),"
+                                       " 和应用图标同一套设计;"
+                                       " 专辑、艺人和列表页的播放/随机按钮、长按菜单里的图标也一起换了"),
+        ChangelogItem(kind="修复", text="播放列表里正在播的那首, 封面不再消失 ——"
+                                       " 原先播放动画一放就把封面顶没了;"
+                                       " 现在动画叠在封面中央, 什么封面都看得清"),
     ]),
     ChangelogVersion(version="1.4.0", date="2026-09-15", items=[
         ChangelogItem(kind="新增", text="播放列表能换自定义封面: 列表页点「设置封面」传一张图 (PNG / JPG / WebP),"
