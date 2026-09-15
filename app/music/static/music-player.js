@@ -47,11 +47,16 @@ function playerStart(tracks, startIndex, shuffleOn) {
   loadTrack(track, true);
 }
 
+/** 起播统一入口 (音量走 audio.volume 原生通道, 不再绕 WebAudio)。 */
+function startAudio() {
+  return audioElement().play();
+}
+
 function playerToggle() {
   const audio = audioElement();
   if (!currentTrack) return;
   if (audio.paused) {
-    audio.play().catch(() => toast("播放被浏览器拦了, 再点一次"));
+    startAudio().catch(() => toast("播放被浏览器拦了, 再点一次"));
   } else {
     audio.pause();
   }
@@ -99,6 +104,8 @@ function loadTrack(track, autoplay) {
   currentTrack = track;
   playRecorded = false;
   lyricsCache.delete(track.track_id);      // 每次换曲重取 (歌词可能刚扫描进来)
+  $("#fp-lyrics-btn").disabled = false;    // 探明前先恢复可点
+  prefetchLyrics(track);                   // 探明没有的把歌词键置灰
   lyricsActiveIndex = -1;
   const audio = audioElement();
   const prefetchedURL = prefetched && prefetched.trackId === track.track_id
@@ -115,17 +122,23 @@ function loadTrack(track, autoplay) {
   for (const listener of trackChangeListeners) listener(track);
   savePlayerState();
   prefetchNextTrack();
-  if (autoplay) audio.play().catch(() => { /* iOS 偶发拒绝: 保持暂停态 */ });
+  if (autoplay) startAudio().catch(() => { /* iOS 偶发拒绝: 保持暂停态 */ });
 }
 
 // ------------------------------------------------------------ 下一曲预取
 
 /** 后台拉下一曲的完整音频进 blob (已下载过的会被 SW 直接回缓存, 更快);
-    单槽: 只留即将播的那首, 旧的 revoke。 */
+    单槽: 只留即将播的那首, 旧的 revoke。下一曲的封面也顺手焐热 ——
+    冷门专辑的封面服务端要现抽 (NAS 盘一忙就是好几秒), 藏在整首歌的
+    播放时间里预取, 切歌时即取即有。 */
 function prefetchNextTrack() {
   if (!playQueue || playQueue.repeat === "one") return;   // 单曲循环没有"下一曲"
   const next = nextUpcomingTrack();
   if (!next || !next.playable || next.track_id === playerCurrentTrackId()) return;
+  if (next.album_id) {
+    const warmCover = new Image();
+    warmCover.src = `/music/media/albums/${next.album_id}/artwork`;
+  }
   if (prefetched && prefetched.trackId === next.track_id) return;   // 已就位
   discardPrefetch();
   const trackId = next.track_id;
@@ -207,6 +220,8 @@ function playerRestore() {
   renderQueueSheet();
   updateMediaSession();
   for (const listener of trackChangeListeners) listener(track);
+  $("#fp-lyrics-btn").disabled = false;    // 探明前先恢复可点 (与 loadTrack 同款)
+  prefetchLyrics(track);                   // 恢复现场也探一遍词: 没词的键灰掉
   if (saved.time) audio.currentTime = saved.time;
   prefetchNextTrack();            // 恢复现场时也把下一曲备好
 }
@@ -254,13 +269,10 @@ function updateShuffleRepeatButtons() {
 // ------------------------------------------------------------ 底部来源行
 // 封面下那行小字: 有 作词/作曲 标签就显示, 没有退专辑名;
 // 标签按需现读 (库里只有三成左右的歌带), 读过的缓存住。
-const LOSSLESS_FORMATS = new Set(["flac", "wav", "alac", "aiff", "aif"]);
 const creditsCache = new Map();     // track_id → "作词 X · 作曲 Y" | ""
 let creditsSequence = 0;            // 请求序号: 切曲后旧响应不再上屏
 
 function updateSourceLine(track) {
-  $("#fp-lossless").hidden = !LOSSLESS_FORMATS.has(
-    String(track.file_format || "").toLowerCase());
   if (creditsCache.has(track.track_id)) {
     $("#fp-source").textContent = creditsCache.get(track.track_id)
       || track.album_title || "";
@@ -281,53 +293,95 @@ function updateSourceLine(track) {
     .catch(() => { /* 拿不到标签就保持专辑名 */ });
 }
 
+// 收起后等滑出动画 (300ms) 再 display:none。这期间两层都要放行点击到下层列表
+// (用户看见列表露出来了, 点了就该有反应); 重开必须撤掉挂着的隐藏定时器,
+// 不然「刚关又马上开」时旧定时器会把正开着的播放页藏掉, 之后所有点击
+// 全落到下层列表上 (表现为按键没反应、点了别的歌)。
+let fpHideTimer = 0;
+
 function openFullPlayer() {
   const fullPlayer = $("#full-player");
+  clearTimeout(fpHideTimer);
   fullPlayer.hidden = false;
-  requestAnimationFrame(() => fullPlayer.classList.add("open"));
+  fullPlayer.style.pointerEvents = "";
+  void fullPlayer.offsetWidth;   // 强制起点样式先落地再放滑入 (rAF 在安静页会饿死)
+  fullPlayer.classList.add("open");
 }
 
 function closeFullPlayer() {
   const fullPlayer = $("#full-player");
   fullPlayer.classList.remove("open");
-  setTimeout(() => { fullPlayer.hidden = true; }, 300);   // 等滑出动画收尾
+  fullPlayer.style.pointerEvents = "none";   // 滑出途中别挡下层
+  clearTimeout(fpHideTimer);
+  fpHideTimer = setTimeout(() => {
+    fullPlayer.hidden = true;
+    fullPlayer.style.pointerEvents = "";
+  }, 300);
   if (lyricsViewOpen) toggleLyricsView();
 }
 
-// ------------------------------------------------------------ 下拉收起
-// 抓手条/封面往下拖: 播放页跟手下滑, 松手时拖得够远或滑得够快就收起,
-// 否则弹回。抓手条拖动后的尾随 click 不算 (不然小拖一下也收起)。
+// ------------------------------------------------------------ 下拉收起 / 横划切歌
+// 抓手条/封面往下拖: 播放页跟手下滑, 松手拖得够远或够快就收起, 否则弹回。
+// 封面另有左右划: 跟手平移, 松手拖过三分之一 (或带甩劲) 就切上一首/下一首,
+// 封面朝划的方向滑出, 新封面从另一侧滑入。抓手条拖动后的尾随 click 不算
+// (不然小拖一下也收起)。
 let fpDismissDragged = false;
 
-function bindDismissDrag(target) {
+function bindDismissDrag(target, swipeTracks = false) {
   const player = $("#full-player");
+  const art = $("#fp-art-wrap");
   let dragging = false;
   let pointerId = -1;
+  let startX = 0;
   let startY = 0;
+  let lastX = 0;
   let lastY = 0;
   let lastTime = 0;
-  let velocity = 0;                  // px/ms, 松手那刻的甩速
+  let velocity = 0;                  // px/ms, 松手那刻的甩速 (竖向)
+  let hVelocity = 0;                 // 横向甩速
+  let mode = "";                     // "" 未定 / "down" 收起 / "side" 切歌
   target.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     dragging = true;
     pointerId = event.pointerId;
+    startX = lastX = event.clientX;
     startY = lastY = event.clientY;
     lastTime = performance.now();
     velocity = 0;
+    hVelocity = 0;
+    mode = "";
     fpDismissDragged = false;
-    player.style.transition = "none";
-    target.setPointerCapture(event.pointerId);
   });
   target.addEventListener("pointermove", (event) => {
     if (!dragging || event.pointerId !== pointerId) return;
     const now = performance.now();
     if (now > lastTime) {
       velocity = (event.clientY - lastY) / (now - lastTime);
+      hVelocity = (event.clientX - lastX) / (now - lastTime);
       lastTime = now;
     }
+    lastX = event.clientX;
     lastY = event.clientY;
+    const dx = lastX - startX;
     const dy = lastY - startY;
-    if (dy > 10) fpDismissDragged = true;
-    player.style.transform = dy > 0 ? `translateY(${dy * 0.92}px)` : "";
+    if (!mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      if (Math.abs(dy) >= Math.abs(dx)) mode = "down";
+      else if (swipeTracks) mode = "side";
+      else { dragging = false; return; }   // 抓手条上的横划没意义, 放掉
+      player.style.transition = "none";
+      if (mode === "side") art.style.transition = "none";
+      target.setPointerCapture(event.pointerId);
+    }
+    if (mode === "down") {
+      if (dy > 10) fpDismissDragged = true;
+      player.style.transform = dy > 0 ? `translateY(${dy * 0.92}px)` : "";
+    } else {
+      const drag = dx * 0.9;         // 横向轻阻尼
+      art.style.transform =
+        `translateX(${drag}px) scale(${Math.max(.88, 1 - Math.abs(drag) / 900)})`;
+      art.style.opacity = `${Math.max(.55, 1 - Math.abs(drag) / 700)}`;
+    }
   });
   const finish = (event) => {
     if (!dragging || (event.pointerId !== undefined
@@ -335,19 +389,50 @@ function bindDismissDrag(target) {
     dragging = false;
     player.style.transition = "";
     player.style.transform = "";
-    if (lastY - startY > 90 || velocity > 0.55) closeFullPlayer();
+    if (mode === "down") {
+      if (lastY - startY > 90 || velocity > 0.55) closeFullPlayer();
+      return;
+    }
+    if (mode !== "side") return;
+    const width = art.offsetWidth || 1;
+    const flick = Math.abs(hVelocity) > 0.5 && Math.abs(lastX - startX) > 30;
+    if (lastX - startX <= -width / 3 || (flick && hVelocity < 0)) {
+      swipeCoverTo("left");          // 样式交给动画接管 (从当前位置滑出)
+    } else if (lastX - startX >= width / 3 || (flick && hVelocity > 0)) {
+      swipeCoverTo("right");
+    } else {
+      art.style.transition = "";     // 没拖够: transition 回来, 弹回原位
+      art.style.transform = "";
+      art.style.opacity = "";
+    }
   };
   target.addEventListener("pointerup", finish);
   target.addEventListener("pointercancel", finish);
 }
 
-// ------------------------------------------------------------ 音量
-// 平台认 audio.volume 就直接用; 不认的 (iOS Safari) 只能在第一次拖动
-// 音量条时把音频接进 WebAudio 增益节点再调 —— 没动过手势就一直直连, 零风险
-// (无手势建 AudioContext 会被吊起, 反而把声音弄没)。
-let volumeGainNode = null;
-let volumeRoutingFailed = false;
+/** 封面切歌动画: 朝划的方向滑出淡出 → 换歌 → 新封面从另一侧滑入。 */
+function swipeCoverTo(direction) {
+  const art = $("#fp-art-wrap");
+  const swap = direction === "left" ? playerNext : playerPrevious;
+  art.style.transition = "transform .2s ease-in, opacity .2s ease-in";
+  art.style.transform = `translateX(${direction === "left" ? -70 : 70}%)`;
+  art.style.opacity = "0";
+  setTimeout(() => {
+    swap();
+    art.style.transition = "none";
+    art.style.transform = `translateX(${direction === "left" ? 60 : -60}%)`;
+    void art.offsetWidth;           // 起点先落地再放滑入 (rAF 在安静页会饿死)
+    art.style.transition = "transform .24s cubic-bezier(.32,.72,.35,1)";
+    art.style.transform = "";
+    setTimeout(() => { art.style.transition = ""; }, 260);
+  }, 200);
+}
 
+// ------------------------------------------------------------ 音量
+// 桌面/安卓: audio.volume 原生有效, 应用内音量条直接调, 记住上次的位置。
+// iPhone Safari: audio.volume 写了也白写。1.5.0 试过绕 WebAudio 增益调,
+// 结果拖不动、声音还脱开手机音量键 —— 索性 iPhone 上整个收起音量条,
+// 音频走原生通道, 音量键说了算 (苹果自家的音乐应用也没有应用内音量条)。
 function loadSavedVolume() {
   const raw = localStorage.getItem("music-volume");
   if (raw === null) return 100;         // 没拖过 = 满音量 (Number(null) 是 0, 不能直接转)
@@ -355,36 +440,51 @@ function loadSavedVolume() {
   return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 100;
 }
 
-function applyVolume(value, fromGesture) {
+/** audio.volume 写得进吗? (iOS 写了也白写, 读回来还是 1)。开播放器时探一次。 */
+function nativeVolumeWorks() {
   const audio = audioElement();
-  try { audio.volume = value / 100; } catch (_e) { /* iOS 静默忽略 */ }
-  if (volumeGainNode) {
-    volumeGainNode.gain.value = value / 100;
-    return;
-  }
-  if (value >= 100 || volumeRoutingFailed || !fromGesture) return;
-  routeThroughGain(value / 100);
-}
-
-function routeThroughGain(level) {
+  const before = audio.volume;
   try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const context = new Ctx();
-    const source = context.createMediaElementSource(audioElement());
-    const gain = context.createGain();
-    gain.gain.value = level;
-    source.connect(gain);
-    gain.connect(context.destination);
-    context.resume().catch(() => {});
-    volumeGainNode = gain;
-  } catch (_error) {
-    volumeRoutingFailed = true;      // 接不进就保持 audio.volume 路线
+    audio.volume = before >= 1 ? 0.5 : 1;
+    const changed = audio.volume !== before;
+    audio.volume = before;
+    return changed;
+  } catch (_e) {
+    return false;
   }
 }
 
-/** 歌词结果/外部入口: 打开歌词视图 (已开着就不动)。 */
+function applyVolume(value) {
+  try { audioElement().volume = value / 100; } catch (_e) { /* 静默忽略 */ }
+}
+
+/** 歌词结果/外部入口: 打开歌词视图 (已开着就不动; 没歌词的曲子点不开)。 */
 function openLyricsView() {
-  if (!lyricsViewOpen) toggleLyricsView();
+  if (!lyricsViewOpen && !$("#fp-lyrics-btn").disabled) toggleLyricsView();
+}
+
+/** 歌词键状态: 探明没歌词的置灰禁点 (歌词视图正开着的顺手关回封面)。 */
+function syncLyricsButton() {
+  const noLyrics = currentTrack && lyricsCache.has(currentTrack.track_id)
+    && lyricsCache.get(currentTrack.track_id) === null;
+  $("#fp-lyrics-btn").disabled = !!noLyrics;
+  if (noLyrics && lyricsViewOpen) toggleLyricsView();
+}
+
+/** 换曲后台探一遍歌词: 结果进缓存, 歌词键跟着亮/灰 (探不到先不灰)。 */
+function prefetchLyrics(track) {
+  if (!track) return;
+  fetchJSON(`/music/api/tracks/${track.track_id}/lyrics`)
+    .then((response) => {
+      lyricsCache.set(track.track_id,
+        response.lyrics ? parseLyrics(response.lyrics) : null);
+    })
+    .catch(() => { /* 探不到就当还没探: 键保持可点, 开视图再试 */ })
+    .finally(() => {
+      if (currentTrack && currentTrack.track_id === track.track_id) {
+        syncLyricsButton();
+      }
+    });
 }
 
 function toggleLyricsView() {
@@ -395,6 +495,7 @@ function toggleLyricsView() {
   $("#full-player").classList.toggle("lyrics", lyricsViewOpen);
   lyricsFollowPaused = false;         // 开/关歌词都回到跟唱
   $("#lyrics-resume").hidden = true;
+  $("#fp-lyrics").classList.remove("browsing");   // 距离模糊重新生效
   if (lyricsViewOpen) {
     loadLyrics();
   } else {
@@ -418,6 +519,7 @@ async function loadLyrics() {
     }
   }
   if (!currentTrack || currentTrack.track_id !== track.track_id) return;  // 已切曲
+  syncLyricsButton();
   const lyricsDocument = lyricsCache.get(track.track_id);
   const container = $("#fp-lyrics");
   if (!lyricsDocument || !lyricsDocument.lines.length) {
@@ -429,6 +531,8 @@ async function loadLyrics() {
   container.innerHTML = lyricsDocument.lines.map((line) =>
     `<div class="lyrics-line" data-time="${line.timeSeconds}">${escapeHTML(line.text)}</div>`
   ).join("");
+  // 无时间轴的歌词没有"当前句", 谈不上距离模糊 → 整页清晰
+  container.classList.toggle("static", !lyricsDocument.synced);
   lyricsActiveIndex = -1;
   highlightActiveLyric();
 }
@@ -446,6 +550,10 @@ function highlightActiveLyric() {
     const lines = container.children;
     for (let position = 0; position < lines.length; position++) {
       lines[position].classList.toggle("active", position === index);
+      // 距离模糊: 离当前句越近越清晰 (近一两句半模糊, 更远全模糊)
+      const distance = Math.abs(position - index);
+      lines[position].classList.toggle("near-1", distance === 1);
+      lines[position].classList.toggle("near-2", distance === 2);
     }
     if (!lyricsFollowPaused && index >= 0 && lines[index]) {
       scrollLyricsTo(lines[index]);
@@ -521,29 +629,42 @@ function maybeResumeLyricsFollow() {
   resumeLyricsFollow();
 }
 
-function resumeLyricsFollow() {
+function resumeLyricsFollow(scrollToActive = true) {
   lyricsFollowPaused = false;
   $("#lyrics-resume").hidden = true;
+  $("#fp-lyrics").classList.remove("browsing");   // 浏览态结束, 距离模糊回来
   const lines = $("#fp-lyrics").children;
-  if (lyricsActiveIndex >= 0 && lines[lyricsActiveIndex]) {
+  if (scrollToActive && lyricsActiveIndex >= 0 && lines[lyricsActiveIndex]) {
     scrollLyricsTo(lines[lyricsActiveIndex]);
   }
 }
 
 // ------------------------------------------------------------ 队列面板
 
+// 同播放页: 收起 300ms 内重开要撤掉隐藏定时器; 滑出途中放行点击。
+let queueHideTimer = 0;
+
 function openQueueSheet() {
+  clearTimeout(queueHideTimer);
   renderQueueSheet();
   $("#queue-mask").hidden = false;
   const sheet = $("#queue-sheet");
   sheet.hidden = false;
-  requestAnimationFrame(() => sheet.classList.add("open"));
+  sheet.style.pointerEvents = "";
+  void sheet.offsetWidth;        // 同 openFullPlayer: 不等 rAF
+  sheet.classList.add("open");
 }
 
 function closeQueueSheet() {
-  $("#queue-sheet").classList.remove("open");
+  const sheet = $("#queue-sheet");
+  sheet.classList.remove("open");
+  sheet.style.pointerEvents = "none";
   $("#queue-mask").hidden = true;      // 遮罩不等动画 (点穿比残影烦人)
-  setTimeout(() => { $("#queue-sheet").hidden = true; }, 300);
+  clearTimeout(queueHideTimer);
+  queueHideTimer = setTimeout(() => {
+    sheet.hidden = true;
+    sheet.style.pointerEvents = "";
+  }, 300);
 }
 
 function renderQueueSheet() {
@@ -596,7 +717,7 @@ function syncPositionState() {
 function mediaSessionAction(action) {
   const audio = audioElement();
   switch (action) {
-    case "play": return () => audio.play().catch(() => {});
+    case "play": return () => startAudio().catch(() => {});
     case "pause": return () => audio.pause();
     case "previoustrack": return () => playerPrevious();
     case "nexttrack": return () => playerNext();
@@ -629,7 +750,7 @@ function bindPlayerEvents() {
     closeFullPlayer();
   });
   bindDismissDrag($("#fp-grab"));
-  bindDismissDrag($("#fp-art-wrap"));
+  bindDismissDrag($("#fp-art-wrap"), true);   // 封面: 下拉收起 + 左右划切歌
   $("#fp-play").addEventListener("click", playerToggle);
   $("#fp-next").addEventListener("click", playerNext);
   $("#fp-prev").addEventListener("click", playerPrevious);
@@ -655,13 +776,17 @@ function bindPlayerEvents() {
   $("#lyrics-resume").addEventListener("click", resumeLyricsFollow);
 
   // 手动滑歌词 (程序定位引发的 scroll 不算) → 暂停跟唱 + 出"回到当前句";
-  // 手指按下的那一刻先撤掉滚动动画, 之后的位置全算用户的
+  // 手指按下的那一刻先撤掉滚动动画, 之后的位置全算用户的。
+  // 浏览期间整页取消模糊 (凑近了看), 静置或点行跳播后恢复距离模糊。
   $("#fp-lyrics").addEventListener("pointerdown", cancelLyricsScroll);
   $("#fp-lyrics").addEventListener("scroll", () => {
     if (lyricsAutoScrolling) return;
-    lyricsFollowPaused = true;
+    if (!$("#fp-lyrics").classList.contains("static")) {   // 无时间轴: 没跟唱可暂停
+      lyricsFollowPaused = true;
+      $("#fp-lyrics").classList.add("browsing");
+      $("#lyrics-resume").hidden = false;
+    }
     lyricsLastScrollAt = Date.now();
-    $("#lyrics-resume").hidden = false;
   });
 
   $("#queue-list").addEventListener("click", (event) => {
@@ -680,7 +805,48 @@ function bindPlayerEvents() {
     if (!line) return;
     const time = Number(line.dataset.time);
     if (time >= 0) audioElement().currentTime = time;
+    // 点行跳播 = 在新位置落座: 退出浏览态恢复模糊;
+    // 不抢着滚, 紧跟的 timeupdate 会把新当前句滚居中
+    resumeLyricsFollow(false);
   });
+
+  // 滑杆命中层: iOS 的 range 输入点轨道不跳值、7px 滑钮抓不住 (音量条整个
+  // 点不动)。输入框包一层透明垫子自己算比例 —— 按下即跳、拖动跟手;
+  // 值写回 input 再补发 input/change, 既有 --fill/seek/存档逻辑全复用。
+  const enhanceSliderTouch = (input) => {
+    const wrap = document.createElement("div");
+    wrap.className = "slider-hit";
+    input.replaceWith(wrap);
+    wrap.appendChild(input);
+    let dragging = false;
+    const apply = (clientX) => {
+      const rect = wrap.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const min = Number(input.min);
+      const max = Number(input.max);
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      input.value = String(Math.round(min + ratio * (max - min)));
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    wrap.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      event.preventDefault();               // 别触发文字选择/页面滚动
+      wrap.setPointerCapture(event.pointerId);
+      apply(event.clientX);
+    });
+    wrap.addEventListener("pointermove", (event) => {
+      if (dragging) apply(event.clientX);
+    });
+    const release = () => {
+      if (!dragging) return;
+      dragging = false;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    wrap.addEventListener("pointerup", release);
+    wrap.addEventListener("pointercancel", release);
+  };
+  enhanceSliderTouch($("#fp-scrub"));
+  enhanceSliderTouch($("#fp-volume"));
 
   const scrubber = $("#fp-scrub");
   // 时间文案照参考图: 左 = −已播, 右 = −剩余 (倒数式, 两边都带负号)
@@ -705,19 +871,24 @@ function bindPlayerEvents() {
   scrubber.addEventListener("change", applyScrub);
   scrubber.addEventListener("touchend", applyScrub);
 
-  // 音量条: 初值从上次的记忆恢复 (iOS 在动过一次前实际还是满音量)
+  // 音量条: 原生 audio.volume 写得进的平台才留 (桌面/安卓)。
+  // iOS 写了也白写 —— 整条收起, 音量交给手机音量键。
   const volumeSlider = $("#fp-volume");
-  const savedVolume = loadSavedVolume();
-  volumeSlider.value = String(savedVolume);
-  volumeSlider.style.setProperty("--fill", `${savedVolume}%`);
-  applyVolume(savedVolume, false);
-  volumeSlider.addEventListener("input", () => {
-    const value = Number(volumeSlider.value);
-    volumeSlider.style.setProperty("--fill", `${value}%`);
-    applyVolume(value, true);
-    try { localStorage.setItem("music-volume", String(value)); }
-    catch (_e) { /* 存不上就不记, 不影响本次调节 */ }
-  });
+  if (nativeVolumeWorks()) {
+    const savedVolume = loadSavedVolume();
+    volumeSlider.value = String(savedVolume);
+    volumeSlider.style.setProperty("--fill", `${savedVolume}%`);
+    applyVolume(savedVolume);
+    volumeSlider.addEventListener("input", () => {
+      const value = Number(volumeSlider.value);
+      volumeSlider.style.setProperty("--fill", `${value}%`);
+      applyVolume(value);
+      try { localStorage.setItem("music-volume", String(value)); }
+      catch (_e) { /* 存不上就不记, 不影响本次调节 */ }
+    });
+  } else {
+    $("#full-player").classList.add("volume-off");
+  }
 
   audio.addEventListener("playing", () => {
     // 真正出声了才算"听过" (恢复现场直接暂停的不算); 暂停续播不重复报
@@ -760,7 +931,7 @@ function bindPlayerEvents() {
   audio.addEventListener("ended", () => {
     if (playQueue && playQueue.repeat === "one") {   // 单曲循环: 回开头重播
       audio.currentTime = 0;
-      audio.play().catch(() => {});
+      startAudio().catch(() => {});
       return;
     }
     playerNext();

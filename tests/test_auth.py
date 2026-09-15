@@ -590,6 +590,9 @@ def test_brand_menu_pages_show_current_user():
     for frag in ('"/api/me"', ".brand-menu .menu", "menu.prepend",
                  "is_admin", ".textContent = name"):
         assert frag in widget, f"menu-user.js 缺少 {frag}"
+    # 外点收回: 菜单外任意点击收起所有展开的下拉 (capture 阶段, 换菜单也顺)
+    for frag in ("details.nav-menu[open]", "menu.removeAttribute(\"open\")"):
+        assert frag in widget, f"menu-user.js 缺少 {frag}"
 
 
 def test_all_pages_have_brand_menu(auth):
@@ -681,20 +684,22 @@ def test_bookkeeping_topbar_is_own_app(auth):
 
 
 def test_mymusic_topbar_is_own_app(auth):
-    """音乐应用自己的顶栏: 品牌下拉 (统计/重新扫描曲库/同步 Plex 播放列表 +
-    退出登录收菜单里) + 搜索按钮最右 (刷新=重扫, 不设刷新按钮); 没有底栏;
-    与 My Tesla 只共享账号 —— 页面里不出现任何 tesla 链接/脚本, 图标样式全自己的。"""
+    """音乐应用自己的顶栏 (1.5.1 起单行): 左边主页/资料库/搜索页签,
+    右边 ☰ 菜单钮 (统计/设置/重扫/更新日志 + 退出登录收菜单里)。
+    品牌行和放大镜撤了; 没有底栏; 与 My Tesla 只共享账号 ——
+    页面里不出现任何 tesla 链接/脚本, 图标样式全自己的。"""
     html = auth.get("/music").text
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
     assert 'class="logout-row" id="logout"' in html
     assert "重新扫描曲库" in html
     assert 'id="stats-link"' in html            # 统计收进下拉菜单
     assert 'id="sync-playlists"' not in html   # Plex 同步入口已撤 (2026-09-15)
-    assert '<button id="search-btn"' in html    # 顶栏最右是搜索不是刷新
+    assert 'data-view-tab="search"' in html    # 搜索是第三个页签
+    assert 'id="search-btn"' not in html       # 放大镜按钮已撤
     assert 'id="refresh-btn"' not in html
     assert 'id="tabbar"' not in html            # 底栏已撤
-    block = html[html.index("#search-btn {"):]
-    assert "margin-left: auto" in block[:block.index("}")]
+    block = html[html.index(".brand-menu {"):]
+    assert "margin-left: auto" in block[:block.index("}")]   # 菜单钮顶到最右
     assert "/tesla/" not in html          # 独立应用: 图标/脚本/链接全自己的
     assert 'href="/music/static/manifest.json"' in html
 

@@ -251,7 +251,7 @@ export default [
         artistArtworkURL: "readonly", trackArtworkURL: "readonly",
         playlistCoverURL: "readonly", PLACEHOLDER_ARTWORK: "readonly",
         describeDuration: "readonly", formatAddedDate: "readonly",
-        ICON_BARS: "readonly", ICON_DOWNLOAD: "readonly",
+        ICON_BARS: "readonly", ICON_DOWNLOAD: "readonly", ICON_LYRICS: "readonly",
         ICON_ACTION_PLAY: "readonly", ICON_ACTION_SHUFFLE: "readonly",
         ICON_ACTION_TRASH: "readonly", ICON_ACTION_IMAGE: "readonly",
         playerStart: "readonly", updatePlayButtons: "readonly",
