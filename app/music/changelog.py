@@ -10,6 +10,9 @@ from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
     ChangelogVersion(version="1.4.1", date="2026-09-15", items=[
+        ChangelogItem(kind="修复", text="修好长按菜单第一次点不灵、要再点一下才生效的问题"
+                                       " —— 有的手机长按抬手后不会补发那次点击,"
+                                       " 误触保护一直占着, 把你真正的第一次点击也吞了"),
         ChangelogItem(kind="修复", text="列表里 mp3 等格式歌曲自带的封面裂图修好了 ——"
                                        " 原先只有 FLAC 格式读得出封面, 其他格式明明有封面却显示不出;"
                                        " 现在连万一读不出也给音符占位, 不再裂图"),
