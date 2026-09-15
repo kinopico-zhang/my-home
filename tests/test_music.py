@@ -819,7 +819,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=10" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=11" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1019,7 +1019,7 @@ def test_music_track_context_menu_wiring():
                  "trackPressTimer = setTimeout",            # 500ms 长按计时
                  'document.addEventListener("contextmenu"',
                  "navigator.share", "execCommand",          # 分享 + 复制回落
-                 "suppressTrackClick",                      # 抬手误触吞掉
+                 "suppressTrailingClick",                    # 长按尾随点击只吞一次
                  "navigate(`artist/${track.artist_id}`)",
                  'fetchJSON("/music/api/playlists"',
                  '`/music/api/playlists/${playlistId}/tracks`',
@@ -1028,7 +1028,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行 (music.js 这次改到 v9); Plex 同步全撤了
-    assert "music.js?v=10" in html
+    assert "music.js?v=11" in html
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js

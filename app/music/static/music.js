@@ -333,8 +333,6 @@ function bindTrackLists(container, tracksOf) {
 // ------------------------------------------------------------ 曲目长按菜单
 // 任何界面的曲目行 (含「已下载」栏) 长按 500ms / 桌面右键, 弹出菜单:
 // 播放 (在所在列表的语境里开播) / 进入艺人主页 / 添加到播放列表 / 分享。
-let trackMenuOpenedAt = 0;                // 弹出时刻: 350ms 内的点击当误触吞掉
-let suppressTrackClick = false;           // 长按弹菜单后, 抬手的那次 click 不当播放
 let pickerTrack = null;                   // 正在挑列表往里加的曲目
 
 /** 行 → 曲目对象 (沿 DOM 向上找绑过列表的容器; 已下载栏查下载索引)。 */
@@ -413,8 +411,6 @@ function openTrackMenu(row, point) {
   if (!track || row.classList.contains("busy")
       || row.classList.contains("disabled")) return;
   rowForTrackMenu = row;
-  trackMenuOpenedAt = Date.now();
-  suppressTrackClick = true;
   $("#menu-track-title").textContent = track.title;
   $("#menu-track-artist").textContent = track.artist;
   $("#track-menu-artist").hidden = !track.artist_id;   // 老下载索引没存艺人号
@@ -447,7 +443,6 @@ $("#track-menu-mask").addEventListener("click", closeTrackMenu);
 $("#track-menu").addEventListener("click", async (event) => {
   const action = event.target.closest("[data-track-action]");
   if (!action) return;
-  if (Date.now() - trackMenuOpenedAt < 350) return;   // 弹出瞬间的抬手误触
   const row = rowForTrackMenu;             // closeTrackMenu 会清, 先抓住
   const track = row && trackFromRow(row);
   closeTrackMenu();
@@ -463,6 +458,8 @@ $("#track-menu").addEventListener("click", async (event) => {
 let trackPressTimer = 0;
 let trackPressPoint = null;
 let trackPressPointerId = null;
+let pressOpenedMenu = false;         // 这次按压已开过长按菜单 (抬手防尾随)
+let suppressTrailingClick = false;   // 长按开菜单那次抬手补发的 click (一次即清)
 
 function cancelTrackPress(event) {
   if (event && event.pointerId !== undefined
@@ -473,6 +470,8 @@ function cancelTrackPress(event) {
 }
 
 document.addEventListener("pointerdown", (event) => {
+  pressOpenedMenu = false;
+  suppressTrailingClick = false;     // 新一次按下: 上个手势已经结束, 别再吞点击
   if (event.pointerType === "mouse" && event.button !== 0) return;  // 右键走 contextmenu
   const row = event.target.closest("[data-track-row], .dl-row");
   if (!row || row.classList.contains("disabled")) return;
@@ -481,6 +480,7 @@ document.addEventListener("pointerdown", (event) => {
   clearTimeout(trackPressTimer);
   trackPressTimer = setTimeout(() => {
     trackPressTimer = 0;
+    pressOpenedMenu = true;          // 菜单是这次按压开出来的, 抬手可能有尾随 click
     openTrackMenu(row, trackPressPoint);
   }, 500);
 });
@@ -489,7 +489,13 @@ document.addEventListener("pointermove", (event) => {
   if (Math.hypot(event.clientX - trackPressPoint.x,
                  event.clientY - trackPressPoint.y) > 10) cancelTrackPress(event);
 });
-document.addEventListener("pointerup", cancelTrackPress);
+document.addEventListener("pointerup", (event) => {
+  if (event.pointerId === trackPressPointerId) {
+    if (pressOpenedMenu) suppressTrailingClick = true;   // 同一手势的尾随 click 要吞
+    pressOpenedMenu = false;
+  }
+  cancelTrackPress(event);
+});
 document.addEventListener("pointercancel", cancelTrackPress);
 document.addEventListener("contextmenu", (event) => {
   const row = event.target.closest("[data-track-row], .dl-row");
@@ -499,10 +505,12 @@ document.addEventListener("contextmenu", (event) => {
   if (!$("#track-menu").hidden) return;  // 安卓长按: 计时器可能已经开了
   openTrackMenu(row, { x: event.clientX, y: event.clientY });
 });
-// 长按开了菜单, 手指抬起补发的 click 会落在行/菜单上 —— 吞掉
+// 长按开了菜单, 抬手补发的 click 会落在行/菜单上 —— 吞掉 (只吃一次)。
+// 有的设备长按根本不补发 click: 标记在下一次 pointerdown 就清,
+// 真正的点击第一次就生效, 不会变成"要点两下"。
 document.addEventListener("click", (event) => {
-  if (!suppressTrackClick) return;
-  suppressTrackClick = false;
+  if (!suppressTrailingClick) return;
+  suppressTrailingClick = false;
   event.stopPropagation();
   event.preventDefault();
 }, true);
