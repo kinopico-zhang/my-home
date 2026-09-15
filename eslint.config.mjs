@@ -257,6 +257,7 @@ export default [
         playerStart: "readonly", updatePlayButtons: "readonly",
         openFullPlayer: "readonly", openLyricsView: "readonly",
         onTrackChange: "readonly", playerCurrentTrackId: "readonly",
+        playerCurrentTrack: "readonly",
         downloadsSupported: "readonly", createDownloads: "readonly",
         formatBytes: "readonly", createCellularMonitor: "readonly",
       },
