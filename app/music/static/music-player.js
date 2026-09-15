@@ -454,6 +454,21 @@ function updateMediaSession() {
   }
 }
 
+/** 锁屏/控制中心的进度快照: 暂停时速率报 0 (不然外推器以为还在播),
+    位置钳在 [0, 时长] 里; 时长没就绪就不报 (浏览器会拒)。 */
+function syncPositionState() {
+  if (!("mediaSession" in navigator) || !currentTrack) return;
+  const audio = audioElement();
+  if (!isFinite(audio.duration) || audio.duration <= 0) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: audio.duration,
+      playbackRate: audio.paused ? 0 : audio.playbackRate,
+      position: Math.min(Math.max(audio.currentTime, 0), audio.duration),
+    });
+  } catch (_error) { /* 个别浏览器挑参数, 不挡播放 */ }
+}
+
 function mediaSessionAction(action) {
   const audio = audioElement();
   switch (action) {
@@ -570,14 +585,14 @@ function bindPlayerEvents() {
   audio.addEventListener("loadedmetadata", () => {
     $("#fp-time-total").textContent = formatPlaybackTime(audio.duration);
     $("#fp-time-cur").textContent = formatPlaybackTime(audio.currentTime);
-    if ("mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: audio.duration, playbackRate: audio.playbackRate,
-        });
-      } catch (_error) { /* 时长未就绪时浏览器会拒 */ }
-    }
+    syncPositionState();
   });
+  // 锁屏/控制中心的进度是浏览器拿「位置 + 流逝时间 × 速率」估的:
+  // 暂停、跳句、拖动、变速后不重报, iPhone 锁屏进度条就会自顾自走
+  // (暂停了还在爬、跳完对不上)。凡有动静都重报一次真实位置。
+  for (const eventName of ["play", "pause", "seeked", "ratechange"]) {
+    audio.addEventListener(eventName, syncPositionState);
+  }
   audio.addEventListener("timeupdate", () => {
     const progress = audio.duration
       ? audio.currentTime / audio.duration : 0;
@@ -588,6 +603,7 @@ function bindPlayerEvents() {
       scrubber.style.setProperty("--fill", `${Math.round(progress * 100)}%`);
       $("#fp-time-cur").textContent = formatPlaybackTime(audio.currentTime);
     }
+    syncPositionState();
     highlightActiveLyric();
   });
   audio.addEventListener("ended", () => {

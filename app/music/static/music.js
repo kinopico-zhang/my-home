@@ -246,7 +246,7 @@ function trackRowHTML(track, leadHTML, leadClass) {
             data-track-row="${track.track_id}" data-track-id="${track.track_id}">
       <span class="t-lead${leadClass ? ` ${leadClass}` : ""}">${leadHTML || ""}${ICON_BARS}</span>
       <span class="t-main">
-        <span class="t-title">${escapeHTML(track.title)}
+        <span class="t-title"><span class="t-title-text">${escapeHTML(track.title)}</span>
           ${track.lyrics_available ? '<i class="t-lyric">词</i>' : ""}
           ${track.playable ? "" : `<i class="t-format">${escapeHTML(track.file_format)}</i>`}
         </span>
@@ -417,7 +417,11 @@ function openTrackMenu(row, point) {
   const menu = $("#track-menu");
   menu.hidden = false;
   $("#track-menu-mask").hidden = false;
-  // 定位: 触点下方, 出屏就翻到上方/收边 (fixed 元素, 坐标即视口)
+  placeMenuAt(menu, point);
+}
+
+/** 菜单定位: 触点下方, 出屏就翻到上方/收边 (fixed 元素, 坐标即视口)。 */
+function placeMenuAt(menu, point) {
   menu.style.left = "0px";
   menu.style.top = "0px";
   const rect = menu.getBoundingClientRect();
@@ -438,7 +442,111 @@ function closeTrackMenu() {
   rowForTrackMenu = null;
 }
 
-$("#track-menu-mask").addEventListener("click", closeTrackMenu);
+// 封面菜单: 长按/右键播放列表大封面弹「换封面 / 移除封面」(共用曲目菜单的遮罩)。
+let coverMenuPlaylistId = 0;
+let coverMenuPlaylistName = "";
+
+function openCoverMenu(playlistId, name, hasCover, point) {
+  coverMenuPlaylistId = playlistId;
+  coverMenuPlaylistName = name;
+  $("#menu-cover-title").textContent = name;
+  $("#cover-menu-remove").hidden = !hasCover;   // 没有自定义封面就没得移除
+  const menu = $("#cover-menu");
+  menu.hidden = false;
+  $("#track-menu-mask").hidden = false;
+  placeMenuAt(menu, point);
+}
+
+function closeCoverMenu() {
+  $("#cover-menu").hidden = true;
+  $("#track-menu-mask").hidden = true;
+}
+
+/** 大封面的手势: 点按 = 直接换封面; 长按 500ms / 电脑右键 = 封面菜单。
+    吞尾随 click 的标记绑在"开菜单的那次按压"上, 新按下即清 (同曲目行长按)。 */
+function bindCoverPress(playlistId, name, hasCover) {
+  const tap = $("#cover-tap");
+  let pressTimer = 0;
+  let pressPoint = null;
+  let pressPointerId = null;
+  let pressOpenedMenu = false;
+  let suppressClick = false;
+  const cancelPress = (event) => {
+    if (event && event.pointerId !== undefined
+        && event.pointerId !== pressPointerId) return;
+    clearTimeout(pressTimer);
+    pressTimer = 0;
+    pressPoint = null;
+  };
+  tap.addEventListener("pointerdown", (event) => {
+    pressOpenedMenu = false;
+    suppressClick = false;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    pressPoint = { x: event.clientX, y: event.clientY };
+    pressPointerId = event.pointerId;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      pressTimer = 0;
+      pressOpenedMenu = true;
+      openCoverMenu(playlistId, name, hasCover, pressPoint);
+    }, 500);
+  });
+  tap.addEventListener("pointermove", (event) => {
+    if (!pressTimer || !pressPoint) return;
+    if (Math.hypot(event.clientX - pressPoint.x,
+                   event.clientY - pressPoint.y) > 10) cancelPress(event);
+  });
+  tap.addEventListener("pointerup", (event) => {
+    if (event.pointerId === pressPointerId) {
+      if (pressOpenedMenu) suppressClick = true;   // 这只手的尾随 click 要吞
+      pressOpenedMenu = false;
+    }
+    cancelPress(event);
+  });
+  tap.addEventListener("pointercancel", cancelPress);
+  tap.addEventListener("contextmenu", (event) => {
+    event.preventDefault();              // 封面上的长按/右键归菜单管
+    cancelPress();
+    if (!$("#cover-menu").hidden) return;    // 安卓长按: 计时器可能已经开了
+    openCoverMenu(playlistId, name, hasCover,
+                  { x: event.clientX, y: event.clientY });
+  });
+  tap.addEventListener("click", (event) => {
+    if (suppressClick) {
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    $("#cover-file").click();            // 点大封面直接换 (隐藏的文件选择器)
+  });
+}
+
+$("#track-menu-mask").addEventListener("click", () => {
+  closeTrackMenu();
+  closeCoverMenu();
+});
+
+$("#cover-menu").addEventListener("click", async (event) => {
+  const action = event.target.closest("[data-cover-action]");
+  if (!action) return;
+  closeCoverMenu();
+  if (action.dataset.coverAction === "change") {
+    $("#cover-file").click();
+    return;
+  }
+  if (action.dataset.coverAction === "remove") {
+    if (!window.confirm(`移除「${coverMenuPlaylistName}」的自定义封面?`)) return;
+    try {
+      await fetchJSON(`/music/api/playlists/${coverMenuPlaylistId}/cover`,
+                      { method: "DELETE" });
+      toast("封面已移除");
+      renderPlaylistView(coverMenuPlaylistId);
+    } catch (error) {
+      toast(`没移除掉: ${error.message}`);
+    }
+  }
+});
 
 $("#track-menu").addEventListener("click", async (event) => {
   const action = event.target.closest("[data-track-action]");
@@ -770,7 +878,7 @@ async function renderDownloadsBody(body) {
     <div class="dl-row${entry.state ? " busy" : ""}" data-dl-row="${entry.track_id}">
       <span class="pl-icon sm">♫</span>
       <span class="t-main">
-        <span class="t-title">${escapeHTML(entry.title || `曲目 ${entry.track_id}`)}</span>
+        <span class="t-title"><span class="t-title-text">${escapeHTML(entry.title || `曲目 ${entry.track_id}`)}</span></span>
         <small>${escapeHTML(entry.artist || "下载中…")}</small>
       </span>
       ${entry.state
@@ -1020,9 +1128,6 @@ async function renderPlaylistView(playlistId) {
         ${ICON_ACTION_SHUFFLE} 随机</button>
       <button class="action" id="playlist-delete">${ICON_ACTION_TRASH} 删除列表</button>
     </div>
-    ${cover ? `<div class="cover-row">
-      <button class="cover-chip" id="cover-remove">${ICON_ACTION_TRASH} 移除封面</button>
-    </div>` : ""}
     <div class="track-list" id="playlist-tracks">
       ${page.tracks.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")}
     </div>`;
@@ -1032,22 +1137,7 @@ async function renderPlaylistView(playlistId) {
   $("#playlist-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
-  $("#cover-tap").addEventListener("click", () => {
-    $("#cover-file").click();        // 点大封面直接换 (隐藏的文件选择器)
-  });
-  if (cover) {
-    $("#cover-remove").addEventListener("click", async () => {
-      if (!window.confirm(`移除「${playlist.name}」的自定义封面?`)) return;
-      try {
-        await fetchJSON(`/music/api/playlists/${playlistId}/cover`,
-                        { method: "DELETE" });
-        toast("封面已移除");
-        renderPlaylistView(playlistId);
-      } catch (error) {
-        toast(`没移除掉: ${error.message}`);
-      }
-    });
-  }
+  bindCoverPress(playlistId, playlist.name, !!cover);
   $("#playlist-delete").addEventListener("click", async () => {
     if (!window.confirm(`删除播放列表「${playlist.name}」?`)) return;
     try {
@@ -1097,7 +1187,6 @@ function renderSearchView() {
              value="${escapeHTML(pageState.searchQuery)}">
       <button id="search-clear" hidden aria-label="清空">✕</button>
     </div>
-    <div class="chips" id="search-chips">${chipsHTML()}</div>
     <div id="search-body"></div>`;
   const input = $("#search-input");
   const clearButton = $("#search-clear");
@@ -1114,7 +1203,6 @@ function renderSearchView() {
     clearButton.hidden = true;
     runSearch();
   });
-  bindChips($("#search-chips"));
   bindSearchBody();
   runSearch();
 }
@@ -1162,8 +1250,7 @@ async function runSearch() {
   body.innerHTML = listPlaceholderHTML("搜索中…");
   try {
     const results = await fetchJSON(
-      `/music/api/search?q=${encodeURIComponent(pageState.searchQuery)}`
-      + `&language=${encodeURIComponent(pageState.language)}`,
+      `/music/api/search?q=${encodeURIComponent(pageState.searchQuery)}`,
       { signal: controller.signal });
     if (controller.signal.aborted) return;
     pageState.searchResults = results;
@@ -1197,7 +1284,7 @@ function renderSearchResults(body, results) {
         <button class="lyric-hit" data-lyric-track="${hit.track.track_id}">
           <span class="t-lead">${ICON_BARS}</span>
           <span class="t-main">
-            <span class="t-title">${escapeHTML(hit.track.title)}
+            <span class="t-title"><span class="t-title-text">${escapeHTML(hit.track.title)}</span>
               <i class="t-lyric">词</i></span>
             <small>${escapeHTML(hit.line_text)}</small>
           </span>

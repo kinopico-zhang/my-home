@@ -28,7 +28,9 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
+     /* overflow-x 兜底: 谁也不许把页面撑宽 (撑宽了 iPhone 能整页左右滑,
+        固定的迷你播放条也跟着晃); 真正的溢出源在 .t-title-text/.t-time 收口 */
 body {
   background: var(--bg); color: var(--ink-1);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
@@ -214,6 +216,12 @@ main {
   display: flex; align-items: center; gap: 5px; font-size: 15px;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
+/* 标题文字单独包一层可收缩: 不然 flex 行里裸文本压不扁,
+   长歌名把「词/格式」小标顶出屏幕 (元素超宽, 手机上整页跟着能左右滑) */
+.t-title-text {
+  flex: 1; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
 .track-row.playing .t-title { color: var(--accent); }
 .t-lyric {
   font-style: normal; font-size: 10px; color: var(--ink-2);
@@ -228,7 +236,13 @@ main {
   display: block; font-size: 12px; color: var(--ink-2);
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.t-time { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* 右列多数是时长 (短), 歌词命中行放的是艺人名: 都要能收缩省略,
+   长名字不许把行撑破 */
+.t-time {
+  font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  flex-shrink: 1; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
 
 /* 下载标 (曲目行右侧, 点按 = 下载; 已下载变勾; 明文 HTTP 下整列不渲染) */
 .t-dl {
@@ -355,15 +369,6 @@ img.pl-icon { display: block; }
   background: rgba(0, 0, 0, .55); color: #fff;
 }
 .cover-hint svg { width: 15px; height: 15px; }
-
-/* 播放列表详情的封面管理行 (换封面 / 移除) */
-.cover-row { display: flex; gap: 10px; justify-content: center; margin: 10px 0 4px; }
-.cover-chip {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px; color: var(--ink-2); padding: 7px 16px;
-  border-radius: 999px; background: var(--surface-2);
-}
-.cover-chip:active { background: var(--surface-3); color: var(--ink-1); }
 
 /* 播放列表里每首歌自己的封面 (元数据内嵌图, 44px 小方图替掉序号) */
 .t-art {
@@ -600,12 +605,13 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 .q-artist { font-size: 12px; color: var(--ink-2); flex-shrink: 0; margin-left: auto; }
 
 /* ---------- 曲目长按菜单 ---------- */
-.track-row, .dl-row {
+.track-row, .dl-row, .pl-cover-btn {
   -webkit-touch-callout: none;        /* iOS 长按不弹放大镜/拷贝气泡 */
   -webkit-user-select: none; user-select: none;
 }
+.pl-cover-btn img { -webkit-user-drag: none; }   /* 长按封面别触发拖图 */
 #track-menu-mask { position: fixed; inset: 0; z-index: 105; background: rgba(0,0,0,.4); }
-#track-menu {
+#track-menu, #cover-menu {
   position: fixed; z-index: 106; min-width: 212px; padding: 5px;
   background: rgba(44,44,46,.96);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -613,21 +619,26 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--hairline); border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
 }
-#track-menu .menu-track {
+#track-menu .menu-track, #cover-menu .menu-track {
   padding: 6px 12px 9px; margin-bottom: 4px;
   border-bottom: 1px solid var(--hairline);
 }
-#track-menu .menu-track b {
+#track-menu .menu-track b, #cover-menu .menu-track b {
   display: block; font-size: 14px; overflow: hidden;
   white-space: nowrap; text-overflow: ellipsis;
 }
-#track-menu .menu-track small { font-size: 12px; color: var(--ink-2); }
-#track-menu [data-track-action] {
+#track-menu .menu-track small, #cover-menu .menu-track small {
+  font-size: 12px; color: var(--ink-2);
+}
+#track-menu [data-track-action], #cover-menu [data-cover-action] {
   display: flex; align-items: center; gap: 11px; width: 100%;
   padding: 10px 12px; border-radius: 10px; font-size: 14px; text-align: left;
 }
-#track-menu [data-track-action]:active { background: var(--surface-3); }
-#track-menu [data-track-action] svg { flex-shrink: 0; color: var(--ink-2); }
+#track-menu [data-track-action]:active,
+#cover-menu [data-cover-action]:active { background: var(--surface-3); }
+#track-menu [data-track-action] svg, #cover-menu [data-cover-action] svg {
+  flex-shrink: 0; color: var(--ink-2);
+}
 
 /* ---------- 添加到播放列表 (选择单) ---------- */
 #picker-mask { position: fixed; inset: 0; z-index: 97; background: rgba(0,0,0,.5); }
@@ -771,6 +782,12 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   <button data-track-action="share"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.5v11M8.5 7 12 3.5 15.5 7M6 12v6.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>分享</button>
 </div>
 
+<div id="cover-menu" hidden>
+  <div class="menu-track"><b id="menu-cover-title"></b><small>播放列表封面</small></div>
+  <button data-cover-action="change"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4.5 5.5h15v13h-15zM4.5 15l4.5-4 4 3.5 3-2.5 4 3.5M9 9.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>换封面</button>
+  <button data-cover-action="remove" id="cover-menu-remove"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.7 12.5h9.6l.7-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>移除封面</button>
+</div>
+
 <div id="picker-mask" hidden></div>
 <div id="picker-sheet" hidden>
   <div class="sheet-grab"><div></div></div>
@@ -794,7 +811,7 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=4"></script>
-<script src="/music/static/music-player.js?v=4"></script>
-<script src="/music/static/music.js?v=12"></script>
+<script src="/music/static/music-player.js?v=5"></script>
+<script src="/music/static/music.js?v=13"></script>
 </body>
 </html>
