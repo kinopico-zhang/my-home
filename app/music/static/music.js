@@ -843,7 +843,11 @@ async function addTrackToPlaylist(playlistId, playlistName) {
     toast(`已加入「${playlistName}」`);
     renderPlaylistPicker();               // 刷新计数, 也能接着加别的列表
   } catch (error) {
-    toast(`没加进去: ${error.message}`);
+    if (error.status === 409) {           // 已在列表里: 直说原因, 不算没加成
+      toast(error.message);
+    } else {
+      toast(`没加进去: ${error.message}`);
+    }
   }
 }
 
