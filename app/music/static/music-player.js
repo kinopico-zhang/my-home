@@ -47,7 +47,7 @@ function playerStart(tracks, startIndex, shuffleOn) {
   loadTrack(track, true);
 }
 
-/** 起播统一入口 (音量走 audio.volume 原生通道, 不再绕 WebAudio)。 */
+/** 起播统一入口。 */
 function startAudio() {
   return audioElement().play();
 }
@@ -115,6 +115,10 @@ function loadTrack(track, autoplay) {
   if (prefetchedURL) prefetched = null;    // 占位交给 audio, 别再 revoke
   else discardPrefetch();                  // 其余情况旧预取作废
   audio.src = prefetchedURL || `/music/media/stream/${track.track_id}`;
+  // 点播一律从头。冷启动恢复写过一次"待生效进度" (preload=none 时它一直挂着
+  // 不生效), Safari 会把它漏到之后点开的歌上 —— 从一半播起的真凶。
+  // 显式归零: HAVE_NOTHING 时是覆盖待生效进度, 已载入时是直接倒回开头。
+  audio.currentTime = 0;
   renderPlayerChrome();
   renderQueueSheet();
   if (lyricsViewOpen) loadLyrics();
@@ -422,40 +426,12 @@ function swipeCoverTo(direction) {
     art.style.transition = "none";
     art.style.transform = `translateX(${direction === "left" ? 60 : -60}%)`;
     void art.offsetWidth;           // 起点先落地再放滑入 (rAF 在安静页会饿死)
-    art.style.transition = "transform .24s cubic-bezier(.32,.72,.35,1)";
+    art.style.transition =
+      "transform .24s cubic-bezier(.32,.72,.35,1), opacity .24s ease-out";
     art.style.transform = "";
+    art.style.opacity = "";         // 滑入连带淡入 —— 不恢复就一直透明!
     setTimeout(() => { art.style.transition = ""; }, 260);
   }, 200);
-}
-
-// ------------------------------------------------------------ 音量
-// 桌面/安卓: audio.volume 原生有效, 应用内音量条直接调, 记住上次的位置。
-// iPhone Safari: audio.volume 写了也白写。1.5.0 试过绕 WebAudio 增益调,
-// 结果拖不动、声音还脱开手机音量键 —— 索性 iPhone 上整个收起音量条,
-// 音频走原生通道, 音量键说了算 (苹果自家的音乐应用也没有应用内音量条)。
-function loadSavedVolume() {
-  const raw = localStorage.getItem("music-volume");
-  if (raw === null) return 100;         // 没拖过 = 满音量 (Number(null) 是 0, 不能直接转)
-  const saved = Number(raw);
-  return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 100;
-}
-
-/** audio.volume 写得进吗? (iOS 写了也白写, 读回来还是 1)。开播放器时探一次。 */
-function nativeVolumeWorks() {
-  const audio = audioElement();
-  const before = audio.volume;
-  try {
-    audio.volume = before >= 1 ? 0.5 : 1;
-    const changed = audio.volume !== before;
-    audio.volume = before;
-    return changed;
-  } catch (_e) {
-    return false;
-  }
-}
-
-function applyVolume(value) {
-  try { audioElement().volume = value / 100; } catch (_e) { /* 静默忽略 */ }
 }
 
 /** 歌词结果/外部入口: 打开歌词视图 (已开着就不动; 没歌词的曲子点不开)。 */
@@ -845,8 +821,7 @@ function bindPlayerEvents() {
     wrap.addEventListener("pointerup", release);
     wrap.addEventListener("pointercancel", release);
   };
-  enhanceSliderTouch($("#fp-scrub"));
-  enhanceSliderTouch($("#fp-volume"));
+  enhanceSliderTouch($("#fp-scrub"));   // 进度条 (音量条 1.5.1 撤了, 音量交给设备)
 
   const scrubber = $("#fp-scrub");
   // 时间文案照参考图: 左 = −已播, 右 = −剩余 (倒数式, 两边都带负号)
@@ -870,25 +845,6 @@ function bindPlayerEvents() {
   };
   scrubber.addEventListener("change", applyScrub);
   scrubber.addEventListener("touchend", applyScrub);
-
-  // 音量条: 原生 audio.volume 写得进的平台才留 (桌面/安卓)。
-  // iOS 写了也白写 —— 整条收起, 音量交给手机音量键。
-  const volumeSlider = $("#fp-volume");
-  if (nativeVolumeWorks()) {
-    const savedVolume = loadSavedVolume();
-    volumeSlider.value = String(savedVolume);
-    volumeSlider.style.setProperty("--fill", `${savedVolume}%`);
-    applyVolume(savedVolume);
-    volumeSlider.addEventListener("input", () => {
-      const value = Number(volumeSlider.value);
-      volumeSlider.style.setProperty("--fill", `${value}%`);
-      applyVolume(value);
-      try { localStorage.setItem("music-volume", String(value)); }
-      catch (_e) { /* 存不上就不记, 不影响本次调节 */ }
-    });
-  } else {
-    $("#full-player").classList.add("volume-off");
-  }
 
   audio.addEventListener("playing", () => {
     // 真正出声了才算"听过" (恢复现场直接暂停的不算); 暂停续播不重复报

@@ -45,12 +45,20 @@ def create_playlist(session: Session, name: str) -> PlaylistBrief:
 
 def add_track_to_playlist(session: Session, playlist_id: int,
                           track_id: int) -> PlaylistBrief:
-    """往列表末尾加一首 (可重复加; 长按曲目的「添加到播放列表」)。"""
+    """往列表末尾加一首; 已经在列表里的不再加 (同一首只留一份 ——
+    重复行会让两行一起亮播放态、连播两遍, 2026-09-15 用户点名)。
+
+    已在列表里报 ValueError, 由路由层转 409。"""
     playlist = session.get(Playlist, playlist_id)
     if playlist is None:
         raise KeyError(playlist_id)
     if session.get(Track, track_id) is None:
         raise KeyError(track_id)
+    already = session.scalar(select(PlaylistItem.id).where(
+        PlaylistItem.playlist_id == playlist_id,
+        PlaylistItem.track_id == track_id))
+    if already is not None:
+        raise ValueError("这首歌已经在列表里了")
     next_position = (session.scalar(select(func.max(PlaylistItem.position))
                                     .where(PlaylistItem.playlist_id
                                            == playlist_id)) or 0) + 1
