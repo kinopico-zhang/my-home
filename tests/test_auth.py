@@ -443,7 +443,7 @@ def test_mymoney_app_has_own_icons():
 
 
 def test_mymusic_app_has_own_icons():
-    """My Music 是独立应用: 自己的图标 (Apple 红底白音符, 不透明全出血方形 ——
+    """My Music 是独立应用: 自己的图标 (Apple 红底白唱片, 不透明全出血方形 ——
     iOS 自己圆角, 透明底会被合成纯黑), 不借 My Tesla 的红 T。"""
     base = Path(m.__file__).parent / "music" / "static"
     touch = b""   # apple-touch-icon 的原始字节, 循环里留住
@@ -465,7 +465,7 @@ def test_mymusic_app_has_own_icons():
         assert px(x, y) == (255, 47, 86), f"角({x},{y}) {px(x, y)}"
     whites = sum(1 for yy in range(30, icon_h-30, 3)
                  for xx in range(30, icon_w-30, 3) if min(px(xx, yy)) > 225)
-    assert whites > 60, f"白色音符笔画太少: {whites}"
+    assert whites > 60, f"白色唱片笔画太少: {whites}"
     tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
     assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
 
