@@ -75,7 +75,9 @@ source = ["app"]
 branch = true
 
 [tool.coverage.report]
-# 门槛: 覆盖率 <95% 直接退出非零, pytest --cov 挂门禁
+# 覆盖率门槛配置保留备用: 2026-09-15 起常规 run_tests.sh 不带 --cov
+# (NAS 上拖时间, 用户要求提速); 要验覆盖率时手动
+#   .venv/bin/python -m pytest tests -q --cov=app
 fail_under = 95
 show_missing = true
 skip_covered = false
