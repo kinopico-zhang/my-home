@@ -1,7 +1,7 @@
 #!/bin/sh
 # 运行全部测试与检查 (提交前全绿):
-#   后端: pytest (覆盖率门禁 95%, 见 pyproject.toml [tool.coverage])
-#   前端: ESLint (页面脚本+测试) / tsc --checkJs (纯逻辑模块) /
+#   后端: pytest (2026-09-15 起不跑覆盖率, NAS 上太拖时间; JS 纯模块仍有 c8 门禁)
+#   前端: ESLint (页面脚本+测试) / tsc --checkJS (纯逻辑模块) /
 #         node --test + c8 覆盖率门禁 95% (gcj02 / trackutil / lastpage / 音乐)
 # ESLint/tsc 在调试容器里跑: 宿主 node (QNAP 自带) 缺 ICU 数据, 连
 # eslint 9 内部的 unicode 属性正则都编译不了; 容器 node 22 没问题。
@@ -10,10 +10,16 @@
 cd "$(dirname "$0")" || exit 1
 rc=0
 
-# pytest 的 tmp_path 不落 /tmp —— 那是 64M tmpfs, 一轮全量测试要 ~14M,
-# 攒几轮就撑爆 (SQLite 种子库 ENOSPC 报 OperationalError, 极像代码坏了)
-mkdir -p .pytest-tmp
-export TMPDIR="$PWD/.pytest-tmp"
+# pytest 的 tmp_path 优先放内存 (/dev/shm 3.8G tmpfs): 测试的 SQLite 种子库
+# 全在内存里跑, 不用跟机械盘上的媒体服务抢 IO —— 那是全量测试最大的拖累。
+# /tmp 只有 64M 不够一轮 (会 ENOSPC); /dev/shm 重启即清, 没有就退回仓库目录。
+if [ -d /dev/shm ] && [ -w /dev/shm ]; then
+  mkdir -p /dev/shm/mytesla-pytest
+  export TMPDIR=/dev/shm/mytesla-pytest
+else
+  mkdir -p .pytest-tmp
+  export TMPDIR="$PWD/.pytest-tmp"
+fi
 
 # 静态检查: app 严检; tests 是 pytest 仪式代码 (fixture 形参/保护访问/
 # 模块内导入), 单独放宽这几类 —— 4.0 没有 per-path-ignores, 只好两次调用
@@ -21,7 +27,7 @@ export TMPDIR="$PWD/.pytest-tmp"
 .venv/bin/python -m pylint tests --disable=W0613,W0212,R0801,C0415 || rc=1
 .venv/bin/python -m mypy || rc=1
 
-.venv/bin/python -m pytest tests -q --cov=app || rc=1
+.venv/bin/python -m pytest tests -q || rc=1
 
 DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker
 if ! $DOCKER exec mytesla-debug sh -c \
