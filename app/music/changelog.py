@@ -9,6 +9,39 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.5.1", date="2026-09-15", items=[
+        ChangelogItem(kind="修复", text="播放页和队列面板刚收起就再点开, 偶尔没反应要点第二下 ——"
+                                       " 收放太快赶在同一瞬间发生的竞态修掉了"),
+        ChangelogItem(kind="修复", text="长按歌曲弹出菜单后, 苹果手机抬手补的那一下点击有时会误触到"
+                                       " 正下方的歌 —— 现在这下「尾随点击」会被接住, 不会误播也不会把菜单点没"),
+        ChangelogItem(kind="修复", text="苹果手机上播放页的进度条点不准、拖不动 ——"
+                                       " 触摸区加宽到整条轨道, 按下就跳到指的位置, 拖动跟手"),
+        ChangelogItem(kind="修复", text="苹果手机上音量条拖了没反应、声音还不受手机音量键控制 ——"
+                                       " 苹果手机上干脆收掉应用内音量条, 直接用手机侧面的音量键调;"
+                                       " 电脑和安卓手机上音量条照旧能用"),
+        ChangelogItem(kind="改进", text="进专辑、艺人、播放列表页改成从右边滑进来, 跟苹果系统一个手感;"
+                                       " 返回就在页面上往右划 (或用浏览器回退), 返回按钮撤掉了 ——"
+                                       " 顶栏从此在哪个页面都长一个样,"
+                                       " 顺带修了苹果手机上进播放列表后顶栏和搜索消失的问题"),
+        ChangelogItem(kind="改进", text="顶栏归成一行: 左边主页 / 资料库 / 搜索三个页签,"
+                                       " 右边一枚菜单钮 (统计、设置、重扫、更新日志、退出都在里面);"
+                                       " 原先那行「My Music」招牌和放大镜撤了 —— 应用叫什么自己知道, 搜索进了页签"),
+        ChangelogItem(kind="新增", text="播放页的封面往左划是下一首、往右划是上一首;"
+                                       " 没拖够就松手会弹回去, 不会误切;"
+                                       " 切过去的下一首封面提前备好, 一划过来就见, 不用等"),
+        ChangelogItem(kind="改进", text="主页「最近播放」每行都带上了歌自己的封面"),
+        ChangelogItem(kind="改进", text="列表里有词的歌, 行尾的「词」字换成一枚小引号图标,"
+                                       " 和播放页的歌词键同款, 大小和下载标一样、同一水平线上;"
+                                       " 播放/暂停/下载等小图标也一并修圆润了"),
+        ChangelogItem(kind="改进", text="「已下载」栏每行也带上歌自己的封面了 (和列表页一个样)"),
+        ChangelogItem(kind="改进", text="歌词页的模糊改成按远近分级: 离正在唱的一句越近越清晰, 越远越模糊;"
+                                       " 自己滑动浏览歌词时整页都清晰, 点一句跳播或停下手几秒后恢复"),
+        ChangelogItem(kind="修复", text="关掉浏览器再打开接着上次的歌, 没词的那首「歌词」键亮着却点不开 ——"
+                                       " 现在打开应用就直接灰掉"),
+        ChangelogItem(kind="改进", text="联网补歌词求不到的歌, 一天内不再每次播放都白跑一趟网络"),
+        ChangelogItem(kind="改进", text="顶部菜单和各处下拉菜单, 点一下页面别的地方就收起 (三个应用一致)"),
+        ChangelogItem(kind="改进", text="队列键角上的无损小钻石标撤掉了"),
+    ]),
     ChangelogVersion(version="1.5.0", date="2026-09-15", items=[
         ChangelogItem(kind="新增", text="点开歌曲后的整页播放界面照着参考图重做了:"
                                        " 封面居中放大, 底下一排排排开 —— 歌名带 ⋯ 菜单、"

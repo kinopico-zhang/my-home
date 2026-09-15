@@ -9,9 +9,6 @@ const LIBRARY_SEGMENTS = [
 ];
 const LANGUAGES = ["全部", "中文", "日文", "英文", "韩文", "俄文", "其他"];
 
-// 主页/资料库两个根视图在页头切换; 详情页/搜索/统计都是压在上面的
-const ROOT_VIEWS = new Set(["home", "library"]);
-
 /** 老版本存过的段名 (recent/playlists) 已收窄掉, 认不出的回落专辑。 */
 function storedSegment() {
   const saved = localStorage.getItem("music-segment") || "";
@@ -28,6 +25,8 @@ const pageState = {
   scanPollTimer: 0,
   lastScanSignature: "", // 已消化的一轮扫描 (finished_at+changed): 重复的不再响应
   sawScanRunning: false, // 这轮扫描是不是在本页眼皮底下跑的 (首见的旧结果不惊动)
+  rootView: "",          // 根层挂的是哪个视图 (二级层盖着时它仍在底下)
+  rootScroll: 0,         // 推入二级层那一刻一级页的滚动位置 (滑出后还原)
 };
 
 // 手动「重新扫描曲库」按下后置位: 那一轮收尾要出提示 (后台自动扫的不打扰)
@@ -52,33 +51,179 @@ function currentRoute() {
 }
 
 function navigate(hash) {
-  if (location.hash === `#${hash}`) route();
+  if (location.hash === `#${hash}`) route(true);   // 同页再点 = 刷新
   else location.hash = hash;       // 挂进历史, iOS 返回手势能关页面
 }
 
-function route() {
+function route(force) {
   const { view, albumId, artistId, playlistId } = currentRoute();
   const pushed = view === "album" || view === "artist" || view === "playlist";
-  $("#back-btn").hidden = !pushed;
-  $("#brand-menu").hidden = pushed;
-  $("#back-label").textContent = "返回";
-  // 主页/资料库页签只在这两个根视图亮 (搜索/统计/详情回到各自入口)
-  $("#view-tabs").hidden = !ROOT_VIEWS.has(view);
+  const pushId = view === "album" ? albumId
+    : view === "artist" ? artistId : playlistId;
+  // 主页/资料库页签常驻 (顶栏每个页面都一致, 搜索/统计/详情也能一键切回;
+  // 二级页不换顶栏, 返回一律右划或浏览器回退)
   for (const button of document.querySelectorAll("[data-view-tab]")) {
     button.classList.toggle("on", button.dataset.viewTab === view);
   }
   stopScanPolling();
-  if (view === "search") renderSearchView();
-  else if (view === "stats") renderStatsView();
-  else if (view === "settings") renderSettingsView();
-  else if (view === "album") renderAlbumView(albumId);
-  else if (view === "artist") renderArtistView(artistId);
-  else if (view === "playlist") renderPlaylistView(playlistId);
-  else if (view === "library") renderLibraryView();
-  else renderHomeView();
+  if (pushed) routePushed(view, pushId, { albumId, artistId, playlistId }, force);
+  else routeRoot(view, force);
   if (!pushed) checkScanStatus();
   syncPlayerIndicators();
   syncDownloadIcons();
+}
+
+// ------------------------------------------------------------ 二级页推入层
+// 专辑/艺人/播放列表走 iOS 设置式二级页: 从右滑入盖住一级, 右划 (左缘起手)
+// 或返回键/历史回退滑出。层叠各层保住自己的滚动; 一级页留在底下不动,
+// 滚动位置推入时存档、滑出后还原。
+
+const pushStack = [];   // [{view, id, pane}]
+
+function headerBottom() {
+  return document.querySelector("header").getBoundingClientRect().bottom;
+}
+
+// 教训: 别用 html{overflow:hidden} 锁一级页滚动 —— iOS Safari 里它会把
+// sticky 顶栏打回原位跟着页面滚走 (顶栏整条消失), 而且根本锁不住触摸滚动。
+// 改成只记位置: 面板自身 overscroll-behavior:none 挡住链式滚动, 滑走时归位。
+function lockRootScroll() {
+  if (!pushStack.length) pageState.rootScroll = window.scrollY;
+}
+
+function unlockRootScroll() {
+  window.scrollTo(0, pageState.rootScroll);
+}
+
+/** 一级页路由: 主页/资料库/搜索/统计/设置都铺在 #main 根层。 */
+function routeRoot(view, force) {
+  const mounted = pageState.rootView === view;
+  if (pushStack.length) {
+    // 二级层还盖着: 点页签换根就趁盖着先铺好; 回到原根就只把层滑走
+    if (!mounted) renderRootView(view);
+    closePushStack();
+    return;
+  }
+  if (mounted && !force) {
+    unlockRootScroll();     // 层已被手势收走: 一级页原样躺着, 解锁回位即可
+    return;
+  }
+  renderRootView(view);
+}
+
+function renderRootView(view) {
+  pageState.rootView = view;
+  if (view === "search") renderSearchView();
+  else if (view === "stats") renderStatsView();
+  else if (view === "settings") renderSettingsView();
+  else if (view === "library") renderLibraryView();
+  else renderHomeView();
+}
+
+/** 二级页路由: 新目标推一层; 回退到栈里已有的层只滑走压它的; 同层同页不重开。 */
+function routePushed(view, id, ids, force) {
+  const top = pushStack[pushStack.length - 1];
+  if (force && top && top.view === view && top.id === id) {
+    renderPushedView(view, ids, top.pane.querySelector(".pane-scroll"));
+    return;
+  }
+  const existing = pushStack.findIndex((p) => p.view === view && p.id === id);
+  if (existing >= 0) { closePushStack(existing + 1); return; }
+  renderPushedView(view, ids, openPushPane(view, id));
+}
+
+function renderPushedView(view, ids, target) {
+  if (view === "album") renderAlbumView(ids.albumId, target);
+  else if (view === "artist") renderArtistView(ids.artistId, target);
+  else renderPlaylistView(ids.playlistId, target);
+}
+
+/** 二级层薄层当前该写内容的地方 (换封面等就地重铺用; 没层时兜底 #main)。 */
+function pushPaneTarget() {
+  const top = pushStack[pushStack.length - 1];
+  return (top && top.pane.querySelector(".pane-scroll")) || $("#main");
+}
+
+function openPushPane(view, id) {
+  lockRootScroll();
+  const pane = document.createElement("div");
+  pane.className = "push-pane";
+  pane.style.top = `${headerBottom()}px`;
+  pane.innerHTML = '<div class="pane-scroll"></div>';
+  $("#push-stack").appendChild(pane);
+  pushStack.push({ view, id, pane });
+  bindPaneSwipe(pane);
+  void pane.offsetWidth;   // 起点样式落地再放滑入 (rAF 在安静页会饿死, 不用它)
+  pane.classList.add("open");
+  return pane.querySelector(".pane-scroll");
+}
+
+/** 滑出若干层 (栈里保留 keep 层以下); 动画完移除 DOM。 */
+function closePushStack(keep = 0) {
+  while (pushStack.length > keep) {
+    const item = pushStack.pop();
+    item.pane.classList.remove("open");
+    setTimeout(() => item.pane.remove(), 420);
+  }
+  if (!pushStack.length) unlockRootScroll();
+}
+
+/** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
+    或带甩劲松手就收层, 否则弹回。收层自己滑完再 history.back 对齐地址栏
+    (路由一看那层已就位, 只做收尾不动画第二遍)。 */
+function bindPaneSwipe(pane) {
+  pane.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let horizontal = false;
+    let decided = false;
+    let lastX = startX;
+    let lastT = event.timeStamp;
+    const signals = new AbortController();        // 拆掉 cleanup ↔ 手柄的互相引用
+    const cleanup = () => signals.abort();
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!decided) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        decided = true;
+        horizontal = dx > 0 && Math.abs(dx) > Math.abs(dy);
+        if (!horizontal) { cleanup(); return; }   // 竖向: 交还滚动
+        pane.setPointerCapture(ev.pointerId);
+        pane.style.transition = "none";
+      }
+      pane.style.transform = `translateX(${Math.max(0, dx)}px)`;
+      lastX = ev.clientX;
+      lastT = ev.timeStamp;
+    };
+    const end = (ev) => {
+      cleanup();
+      if (!horizontal) return;
+      const dx = Math.max(0, ev.clientX - startX);
+      const width = pane.offsetWidth || 1;
+      const flick = ev.timeStamp - lastT < 100 && lastX - startX > 40;
+      pane.style.transition = "";
+      pane.style.transform = "";
+      if (dx <= width / 3 && !flick) return;      // 没拖够: 弹回 (.open 的 0)
+      pane.classList.remove("open");              // 从当前位置滑出
+      pushStack.pop();
+      setTimeout(() => pane.remove(), 420);
+      if (!pushStack.length) unlockRootScroll();
+      if (history.length > 1) history.back();     // 地址栏跟上 (与返回键同款兜底)
+      else navigate("home");
+    };
+    const cancel = () => {
+      cleanup();
+      if (horizontal) {
+        pane.style.transition = "";
+        pane.style.transform = "";
+      }
+    };
+    pane.addEventListener("pointermove", move, { signal: signals.signal });
+    pane.addEventListener("pointerup", end, { signal: signals.signal });
+    pane.addEventListener("pointercancel", cancel, { signal: signals.signal });
+  });
 }
 
 // ------------------------------------------------------------ 下载 (离线)
@@ -237,8 +382,9 @@ function albumCardHTML(album) {
     </button>`;
 }
 
-/** 曲目行: 序号/小封面 + 动条 (播放中顶掉序号) + 标题 (词/不可播标) + 艺人
-    + 下载标 + 时长。下载标不是真按钮 (行本身是 button, 嵌套非法)。
+/** 曲目行: 序号/小封面 + 动条 (播放中顶掉序号) + 标题 (不可播标) + 艺人
+    + 词标 (❝, 行右侧与下载标平齐) + 下载标 + 时长。下载标不是真按钮
+    (行本身是 button, 嵌套非法)。
     leadClass="art" 时引导位放宽 (44px 封面图替序号, 播放列表用)。 */
 function trackRowHTML(track, leadHTML, leadClass) {
   return `
@@ -247,11 +393,11 @@ function trackRowHTML(track, leadHTML, leadClass) {
       <span class="t-lead${leadClass ? ` ${leadClass}` : ""}">${leadHTML || ""}${ICON_BARS}</span>
       <span class="t-main">
         <span class="t-title"><span class="t-title-text">${escapeHTML(track.title)}</span>
-          ${track.lyrics_available ? '<i class="t-lyric">词</i>' : ""}
           ${track.playable ? "" : `<i class="t-format">${escapeHTML(track.file_format)}</i>`}
         </span>
         <small>${escapeHTML(track.artist)}</small>
       </span>
+      ${track.lyrics_available ? `<i class="t-lyric">${ICON_LYRICS}</i>` : ""}
       ${downloadsEnabled ? `
       <span class="t-dl${downloads.isDownloaded(track.track_id) ? " done" : ""}"
             data-download-track="${track.track_id}" role="button" tabindex="-1"
@@ -462,6 +608,12 @@ function closeTrackMenu() {
 }
 
 // 封面菜单: 长按/右键播放列表大封面弹「换封面 / 移除封面」(共用曲目菜单的遮罩)。
+// 长按开过菜单的那个元素 (行/封面): 它随后补发的尾随 click 要吞。
+// 按元素吞而不是一次性吞: 有的设备补发得晚 (能落到下一次点击之后),
+// 一次性的标记会被先到的正常点击清掉, 迟到的那下就砸回长按的行上,
+// 表现成"菜单没点到, 却播了别的歌"。落点离开这个元素的手势都放行
+// (长按着滑到菜单项上松手 = 选它, 天经地义)。
+let suppressTrailingTarget = null;
 let coverMenuPlaylistId = 0;
 let coverMenuPlaylistName = "";
 
@@ -488,8 +640,6 @@ function bindCoverPress(playlistId, name, hasCover) {
   let pressTimer = 0;
   let pressPoint = null;
   let pressPointerId = null;
-  let pressOpenedMenu = false;
-  let suppressClick = false;
   const cancelPress = (event) => {
     if (event && event.pointerId !== undefined
         && event.pointerId !== pressPointerId) return;
@@ -498,15 +648,13 @@ function bindCoverPress(playlistId, name, hasCover) {
     pressPoint = null;
   };
   tap.addEventListener("pointerdown", (event) => {
-    pressOpenedMenu = false;
-    suppressClick = false;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     pressPoint = { x: event.clientX, y: event.clientY };
     pressPointerId = event.pointerId;
     clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
       pressTimer = 0;
-      pressOpenedMenu = true;
+      suppressTrailingTarget = tap;    // 抬手补发的 click 不许触发换封面
       openCoverMenu(playlistId, name, hasCover, pressPoint);
     }, 500);
   });
@@ -515,13 +663,7 @@ function bindCoverPress(playlistId, name, hasCover) {
     if (Math.hypot(event.clientX - pressPoint.x,
                    event.clientY - pressPoint.y) > 10) cancelPress(event);
   });
-  tap.addEventListener("pointerup", (event) => {
-    if (event.pointerId === pressPointerId) {
-      if (pressOpenedMenu) suppressClick = true;   // 这只手的尾随 click 要吞
-      pressOpenedMenu = false;
-    }
-    cancelPress(event);
-  });
+  tap.addEventListener("pointerup", cancelPress);
   tap.addEventListener("pointercancel", cancelPress);
   tap.addEventListener("contextmenu", (event) => {
     event.preventDefault();              // 封面上的长按/右键归菜单管
@@ -530,13 +672,7 @@ function bindCoverPress(playlistId, name, hasCover) {
     openCoverMenu(playlistId, name, hasCover,
                   { x: event.clientX, y: event.clientY });
   });
-  tap.addEventListener("click", (event) => {
-    if (suppressClick) {
-      suppressClick = false;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
+  tap.addEventListener("click", () => {
     $("#cover-file").click();            // 点大封面直接换 (隐藏的文件选择器)
   });
 }
@@ -600,8 +736,6 @@ $("#fp-like-btn").addEventListener("click", () => {
 let trackPressTimer = 0;
 let trackPressPoint = null;
 let trackPressPointerId = null;
-let pressOpenedMenu = false;         // 这次按压已开过长按菜单 (抬手防尾随)
-let suppressTrailingClick = false;   // 长按开菜单那次抬手补发的 click (一次即清)
 
 function cancelTrackPress(event) {
   if (event && event.pointerId !== undefined
@@ -612,8 +746,6 @@ function cancelTrackPress(event) {
 }
 
 document.addEventListener("pointerdown", (event) => {
-  pressOpenedMenu = false;
-  suppressTrailingClick = false;     // 新一次按下: 上个手势已经结束, 别再吞点击
   if (event.pointerType === "mouse" && event.button !== 0) return;  // 右键走 contextmenu
   const row = event.target.closest("[data-track-row], .dl-row");
   if (!row || row.classList.contains("disabled")) return;
@@ -622,7 +754,7 @@ document.addEventListener("pointerdown", (event) => {
   clearTimeout(trackPressTimer);
   trackPressTimer = setTimeout(() => {
     trackPressTimer = 0;
-    pressOpenedMenu = true;          // 菜单是这次按压开出来的, 抬手可能有尾随 click
+    suppressTrailingTarget = row;
     openTrackMenu(row, trackPressPoint);
   }, 500);
 });
@@ -631,13 +763,7 @@ document.addEventListener("pointermove", (event) => {
   if (Math.hypot(event.clientX - trackPressPoint.x,
                  event.clientY - trackPressPoint.y) > 10) cancelTrackPress(event);
 });
-document.addEventListener("pointerup", (event) => {
-  if (event.pointerId === trackPressPointerId) {
-    if (pressOpenedMenu) suppressTrailingClick = true;   // 同一手势的尾随 click 要吞
-    pressOpenedMenu = false;
-  }
-  cancelTrackPress(event);
-});
+document.addEventListener("pointerup", cancelTrackPress);
 document.addEventListener("pointercancel", cancelTrackPress);
 document.addEventListener("contextmenu", (event) => {
   const row = event.target.closest("[data-track-row], .dl-row");
@@ -645,16 +771,19 @@ document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
   cancelTrackPress();
   if (!$("#track-menu").hidden) return;  // 安卓长按: 计时器可能已经开了
+  suppressTrailingTarget = row;
   openTrackMenu(row, { x: event.clientX, y: event.clientY });
 });
-// 长按开了菜单, 抬手补发的 click 会落在行/菜单上 —— 吞掉 (只吃一次)。
-// 有的设备长按根本不补发 click: 标记在下一次 pointerdown 就清,
-// 真正的点击第一次就生效, 不会变成"要点两下"。
+// 长按开了菜单, 抬手补发的 click 会落回长按的那个元素上 —— 吞掉;
+// 点了别处 (菜单项/遮罩) 就翻篇。见 suppressTrailingTarget 的说明。
 document.addEventListener("click", (event) => {
-  if (!suppressTrailingClick) return;
-  suppressTrailingClick = false;
-  event.stopPropagation();
-  event.preventDefault();
+  if (!suppressTrailingTarget) return;
+  if (suppressTrailingTarget.contains(event.target)) {
+    event.stopPropagation();
+    event.preventDefault();
+    return;
+  }
+  suppressTrailingTarget = null;
 }, true);
 
 // ------------------------------------------------ 添加到播放列表 (选择单)
@@ -773,7 +902,7 @@ async function loadHomePlaylists() {
     playlists = (await fetchJSON("/music/api/playlists")).playlists;
   } catch (_error) { /* 下面占位文案兜底 */ }
   const element = $("#home-playlists");
-  if (!element || currentRoute().view !== "home") return;   // 已切走
+  if (!element || !element.isConnected) return;   // 已被换掉 (二级层下重铺也一样保护)
   element.innerHTML = playlists && playlists.length
     ? playlists.map(playlistRowHTML).join("")
     : listPlaceholderHTML("还没有播放列表; 长按任意歌曲就能新建一个");
@@ -785,10 +914,11 @@ async function loadHomeRecent() {
     tracks = (await fetchJSON("/music/api/plays/recent?limit=20")).tracks;
   } catch (_error) { /* 下面占位文案兜底 */ }
   const element = $("#home-recent");
-  if (!element || currentRoute().view !== "home") return;   // 已切走
+  if (!element || !element.isConnected) return;   // 已被换掉 (二级层下重铺也一样保护)
   pageState.homeRecent = tracks || [];
   element.innerHTML = pageState.homeRecent.length
-    ? pageState.homeRecent.map((track) => trackRowHTML(track)).join("")
+    ? pageState.homeRecent.map(
+        (track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")
     : listPlaceholderHTML("听过歌就会出现在这里, 各账号各记各的");
 }
 
@@ -910,7 +1040,11 @@ async function renderDownloadsBody(body) {
     </div>
     ${entries.map((entry) => `
     <div class="dl-row${entry.state ? " busy" : ""}" data-dl-row="${entry.track_id}">
-      <span class="pl-icon sm">♫</span>
+      ${entry.state
+        ? '<span class="t-art">♪</span>'
+        : `<img class="t-art" loading="lazy" decoding="async" alt=""
+                src="/music/media/tracks/${entry.track_id}/artwork"
+                onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'t-art',textContent:'♪'}))">`}
       <span class="t-main">
         <span class="t-title"><span class="t-title-text">${escapeHTML(entry.title || `曲目 ${entry.track_id}`)}</span></span>
         <small>${escapeHTML(entry.artist || "下载中…")}</small>
@@ -950,7 +1084,7 @@ async function loadListPage(segment) {
   pageState.lists[segment] = list;
   await fetchListPage(segment, list);
   const body = $("#lib-body");
-  if (!body || currentRoute().view !== "library") return;      // 视图已切走
+  if (!body || !body.isConnected) return;      // 已被换掉
   body.innerHTML = "";
   appendListPage(body, segment, list);
   syncPlayerIndicators();
@@ -1032,18 +1166,19 @@ function observeSentinel(body, segment, list) {
 
 // ------------------------------------------------------------ 专辑页
 
-async function renderAlbumView(albumId) {
-  $("#main").innerHTML = listPlaceholderHTML("加载中…");
+async function renderAlbumView(albumId, target) {
+  target = target || pushPaneTarget();    // 二级层薄层; 兜底 #main (无层时)
+  target.innerHTML = listPlaceholderHTML("加载中…");
   let page = null;
   try {
     page = await fetchJSON(`/music/api/albums/${albumId}`);
   } catch (error) {
-    $("#main").innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
+    target.innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
     return;
   }
   const album = page.album;
   const playable = page.tracks.filter((track) => track.playable);
-  $("#main").innerHTML = `
+  target.innerHTML = `
     <div class="album-hero">
       <img alt="" src="${albumArtworkURL(album)}"
            onerror="this.onerror=null;this.src='${PLACEHOLDER_ARTWORK}'">
@@ -1066,32 +1201,33 @@ async function renderAlbumView(albumId) {
       ${page.tracks.map((track, index) => trackRowHTML(track,
         `<span class="t-index">${track.track_number || index + 1}</span>`)).join("")}
     </div>`;
-  $("#main .hero-artist").addEventListener("click", (event) => {
+  target.querySelector(".hero-artist").addEventListener("click", (event) => {
     navigate(`artist/${event.currentTarget.dataset.artistId}`);
   });
-  $("#album-play").addEventListener("click", () => {
+  target.querySelector("#album-play").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]));
   });
-  $("#album-shuffle").addEventListener("click", () => {
+  target.querySelector("#album-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
-  bindTrackLists($("#album-tracks"), () => page.tracks);
+  bindTrackLists(target.querySelector("#album-tracks"), () => page.tracks);
   syncPlayerIndicators();
 }
 
 // ------------------------------------------------------------ 艺人页
 
-async function renderArtistView(artistId) {
-  $("#main").innerHTML = listPlaceholderHTML("加载中…");
+async function renderArtistView(artistId, target) {
+  target = target || pushPaneTarget();    // 二级层薄层; 兜底 #main (无层时)
+  target.innerHTML = listPlaceholderHTML("加载中…");
   let page = null;
   try {
     page = await fetchJSON(`/music/api/artists/${artistId}`);
   } catch (error) {
-    $("#main").innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
+    target.innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
     return;
   }
   const artist = page.artist;
-  $("#main").innerHTML = `
+  target.innerHTML = `
     <div class="artist-hero">
       <img alt="" src="${artistArtworkURL(artist)}"
            onerror="this.onerror=null;this.src='${PLACEHOLDER_ARTWORK}'">
@@ -1117,9 +1253,9 @@ async function renderArtistView(artistId) {
       toast(`加载失败: ${error.message}`);
     }
   };
-  $("#artist-play").addEventListener("click", () => playArtist(false));
-  $("#artist-shuffle").addEventListener("click", () => playArtist(true));
-  $("#artist-albums").addEventListener("click", (event) => {
+  target.querySelector("#artist-play").addEventListener("click", () => playArtist(false));
+  target.querySelector("#artist-shuffle").addEventListener("click", () => playArtist(true));
+  target.querySelector("#artist-albums").addEventListener("click", (event) => {
     const card = event.target.closest("[data-album-id]");
     if (card) navigate(`album/${card.dataset.albumId}`);
   });
@@ -1127,20 +1263,21 @@ async function renderArtistView(artistId) {
 
 // ------------------------------------------------------------ 播放列表页
 
-async function renderPlaylistView(playlistId) {
-  $("#main").innerHTML = listPlaceholderHTML("加载中…");
+async function renderPlaylistView(playlistId, target) {
+  target = target || pushPaneTarget();    // 二级层薄层; 兜底 #main (无层时)
+  target.innerHTML = listPlaceholderHTML("加载中…");
   let page = null;
   try {
     page = await fetchJSON(`/music/api/playlists/${playlistId}`);
   } catch (error) {
-    $("#main").innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
+    target.innerHTML = listPlaceholderHTML(`加载失败: ${error.message}`);
     return;
   }
   const playlist = page.playlist;
   const playable = page.tracks.filter((track) => track.playable);
   const cover = playlistCoverURL(playlist);
   const coverLabel = cover ? "换封面" : "设置封面";
-  $("#main").innerHTML = `
+  target.innerHTML = `
     <div class="album-hero">
       <button class="pl-cover-btn" id="cover-tap" aria-label="${coverLabel}"
               title="${coverLabel}">
@@ -1165,24 +1302,25 @@ async function renderPlaylistView(playlistId) {
     <div class="track-list" id="playlist-tracks">
       ${page.tracks.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")}
     </div>`;
-  $("#playlist-play").addEventListener("click", () => {
+  target.querySelector("#playlist-play").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]));
   });
-  $("#playlist-shuffle").addEventListener("click", () => {
+  target.querySelector("#playlist-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
   bindCoverPress(playlistId, playlist.name, !!cover);
-  $("#playlist-delete").addEventListener("click", async () => {
+  target.querySelector("#playlist-delete").addEventListener("click", async () => {
     if (!window.confirm(`删除播放列表「${playlist.name}」?`)) return;
     try {
       await fetchJSON(`/music/api/playlists/${playlistId}`, { method: "DELETE" });
       toast("已删除");
       navigate("home");                  // 回主页, 列表段重铺自然不再有它
+      if (pushStack.length) renderRootView("home");   // 一级页就在层底下, 趁滑走前重铺
     } catch (error) {
       toast(`没删掉: ${error.message}`);
     }
   });
-  bindTrackLists($("#playlist-tracks"), () => page.tracks);
+  bindTrackLists(target.querySelector("#playlist-tracks"), () => page.tracks);
   coverUploadPlaylistId = playlistId;
   syncPlayerIndicators();
 }
@@ -1318,10 +1456,10 @@ function renderSearchResults(body, results) {
         <button class="lyric-hit" data-lyric-track="${hit.track.track_id}">
           <span class="t-lead">${ICON_BARS}</span>
           <span class="t-main">
-            <span class="t-title"><span class="t-title-text">${escapeHTML(hit.track.title)}</span>
-              <i class="t-lyric">词</i></span>
+            <span class="t-title"><span class="t-title-text">${escapeHTML(hit.track.title)}</span></span>
             <small>${escapeHTML(hit.line_text)}</small>
           </span>
+          <i class="t-lyric">${ICON_LYRICS}</i>
           <span class="t-time">${escapeHTML(hit.track.artist)}</span>
         </button>`).join("")}` : ""}`;
   syncPlayerIndicators();
@@ -1498,7 +1636,8 @@ function digestScanSettled(scan, watched) {
   userRescanPending = false;
   if (!manual && !scan.changed) return;   // 后台自动扫, 什么都没变: 不打扰
   resetLibraryLists();
-  route();                                // 曲目/专辑列表重铺 (当前页自动刷新)
+  route(true);                            // 曲目/专辑列表重铺 (当前页自动刷新)
+  if (pushStack.length) renderRootView(pageState.rootView);   // 层底下的一级页也重铺
   if (manual) toast("曲库扫描完成");
 }
 
@@ -1531,16 +1670,12 @@ function closeBrandMenu() {
 }
 
 function bindGlobalEvents() {
-  $("#back-btn").addEventListener("click", () => {
-    if (history.length > 1) history.back();
-    else navigate("home");
-  });
   $("#view-tabs").addEventListener("click", (event) => {
     const button = event.target.closest("[data-view-tab]");
-    if (button) navigate(button.dataset.viewTab);
-  });
-  $("#search-btn").addEventListener("click", () => {
-    navigate("search");
+    if (!button) return;
+    navigate(button.dataset.viewTab);
+    if (button.dataset.viewTab !== "search") return;
+    // 进搜索页签顺手聚焦输入框 (老放大镜按钮的手感)
     const input = $("#search-input");
     if (input) input.focus();     // 同页 route() 已同步跑完, 直接聚焦
     else setTimeout(() => {       // 跨页要等 hashchange 渲染好
@@ -1579,6 +1714,9 @@ function bindGlobalEvents() {
     if (!document.hidden) checkScanStatus();
   }, SCAN_POLL_INTERVAL_MS);
   window.addEventListener("hashchange", route);
+  window.addEventListener("resize", () => {
+    for (const item of pushStack) item.pane.style.top = `${headerBottom()}px`;
+  });
 }
 
 // ------------------------------------------------------------ 蜂窝流量
