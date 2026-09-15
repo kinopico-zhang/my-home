@@ -1,6 +1,7 @@
 // menu-user.js — 品牌下拉菜单顶部显示当前登录的账号 (全站共用小件)。
 // 挂在根 /static (门厅的静态目录), 各应用页面都引这一个文件;
 // 样式自带 (各应用配色略异, 用一套中性的深色指标), 找不到菜单就静默不装。
+// 顺带管一件全站的事: 点在菜单外任意位置 → 收起所有展开的下拉。
 "use strict";
 
 (function () {
@@ -43,4 +44,13 @@
       if (me && me.name) install(me.name, !!me.is_admin);
     })
     .catch(() => { /* 会话过期/断网: 菜单照旧, 只是不显示名字 */ });
+
+  // 菜单外任意点击 → 收起所有展开的下拉 (details.nav-menu, 三应用通用)。
+  // capture 阶段挂: 页面自己的 click 处理器就算 stopPropagation 也拦不住;
+  // 点的是另一份菜单的 summary 时, 那份留给原生开关处理, 其余的收掉。
+  document.addEventListener("click", (event) => {
+    for (const menu of document.querySelectorAll("details.nav-menu[open]")) {
+      if (!menu.contains(event.target)) menu.removeAttribute("open");
+    }
+  }, true);
 })();

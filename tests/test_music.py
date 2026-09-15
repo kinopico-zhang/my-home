@@ -512,6 +512,35 @@ def test_list_tracks_and_lyrics(tmp_path):
         assert library_queries.lyrics_for_track(session, 99999) is None
 
 
+def test_lyrics_online_fetch_and_negative_cache(tmp_path, monkeypatch):
+    """联网补歌词: 求到写回索引; 求不到记 24 小时负缓存 (同一首不再打外网)。"""
+    _seed_library()
+    library_queries._lyrics_fetch_misses.clear()   # 模块级账本, 别让别的测试留旧账
+    calls = []
+
+    def fake_fetch(api_base, title, artist, album_title):
+        calls.append(title)
+        return "[00:01.00]联网歌词" if title == "曲B" else ""
+
+    monkeypatch.setattr(library_queries, "fetch_lyrics", fake_fetch)
+    api = (True, "https://lrc.invalid/api")
+    with session_factory()() as session:
+        page = library_queries.list_tracks(session, limit=10)
+        ids = {track.title: track.track_id for track in page.tracks}
+
+        # 曲B: 求到 → 写回, 之后再问直接走库 (不再打外网)
+        got = library_queries.lyrics_for_track(session, ids["曲B"], api)
+        assert got.lyrics == "[00:01.00]联网歌词" and got.lyrics_synced
+        assert library_queries.lyrics_for_track(session, ids["曲B"], api) == got
+        assert calls == ["曲B"]
+
+        # 曲C: 求不到 → 保持空, 负缓存挡住紧跟着的再问
+        miss = library_queries.lyrics_for_track(session, ids["曲C"], api)
+        assert miss.lyrics == "" and not miss.lyrics_synced
+        again = library_queries.lyrics_for_track(session, ids["曲C"], api)
+        assert again.lyrics == "" and calls == ["曲B", "曲C"]
+
+
 def test_search_four_boards(tmp_path):
     """搜索: 歌名/专辑/艺人/歌词四板块 + 语种过滤 + LIKE 转义。"""
     _seed_library()
@@ -783,12 +812,14 @@ def test_music_stats_page_wiring():
 
 
 def test_music_home_page_wiring():
-    """主页接线: 页头主页/资料库页签 + 播放列表/最近播放两段 +
+    """主页接线: 顶栏页签主页/资料库/搜索 + 播放列表/最近播放两段 +
     播放列表详情路由 (E2E 再验真数据)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     assert 'id="view-tabs"' in html
-    assert 'data-view-tab="home"' in html and 'data-view-tab="library"' in html
+    assert ('data-view-tab="home"' in html and 'data-view-tab="library"' in html
+            and 'data-view-tab="search"' in html)   # 搜索收进页签
+    assert 'id="search-btn"' not in html    # 放大镜按钮已撤 (顶栏单行)
     assert 'id="sync-playlists"' not in html     # Plex 同步入口已撤
     assert "playlist-row" in html                  # 行样式在
     js = (static / "music.js").read_text(encoding="utf-8")
@@ -815,12 +846,15 @@ def test_music_downloads_wiring():
     assert "storageUsage" in js and "formatBytes" in js    # 下载管理: 量大小并显示
     assert "dl-clear-all" in js and "removeAll" in js      # 一键清空 (confirm 后)
     assert "navigator.storage.estimate" in js      # 手机存储占用
+    # 已下载行也带封面: 曲目封面接口 + 裂图退音符 (和播放列表行同款)
+    assert 'src="/music/media/tracks/${entry.track_id}/artwork"' in js
     downloads_js = (static / "downloads.js").read_text(encoding="utf-8")
     assert "/music/media/stream/" in downloads_js  # 缓存键 = 音频流地址
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=14" in html   # 版本号刷新
+    assert ("downloads.js?v=2" in html and "music.js?v=18" in html
+            and "music-player.js?v=13" in html)   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1029,7 +1063,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=14" in html
+    assert "music.js?v=18" in html
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
@@ -1144,6 +1178,40 @@ def test_music_controls_apple_style_wiring():
     assert ".fp-controls > button:active { transform: scale(.86)" in html  # 按压反馈
     assert ".queue-modes" in html                             # 随机/循环进队列面板
     assert "#fp-volume" in html and "#fp-grab" in html        # 音量条 + 收起抓手
+
+
+def test_music_volume_native_routing():
+    """音量走 audio.volume 原生通道: 1.5.0 的 WebAudio 增益在 iPhone 上
+    拖不动还把声音脱开音量键, 整套撤掉; iOS 探测不到原生音量就把
+    应用内音量条整个收起 (音量键说了算), 桌面/安卓照常保留。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    player = (static / "music-player.js").read_text(encoding="utf-8")
+    for gone in ["AudioContext", "createGain", "createMediaElementSource",
+                 "ensureVolumeRouting"]:
+        assert gone not in player, f"WebAudio 残留: {gone}"
+    assert "function nativeVolumeWorks" in player    # 探针: 写了读得回才算数
+    assert 'classList.add("volume-off")' in player   # iOS: 收起音量条
+    assert "function applyVolume(value)" in player   # 只写 audio.volume
+    # 元素留着 (桌面/安卓用), iOS 靠类藏起来; 横屏本来就藏
+    assert "#full-player.volume-off .fp-volume" in html
+
+
+def test_music_lyrics_mark_row_badge():
+    """词标 ❝: 行右侧图标簇的一员 (下载标前面), 17×17 与下载标同大、
+    同 26px 高度框里垂直居中 —— 两个图标同一水平线, 不再像小上标。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    common = (static / "music-common.js").read_text(encoding="utf-8")
+    assert 'width="17" height="17"' in common              # 与下载标同大
+    assert ".t-lyric" in html and "height: 26px" in html   # 与 .t-dl 同框高
+    # 挪出 .t-title: 行级元素, 排在下载标前面 (❝ 在前, 下载标在它后面)
+    assert '${track.lyrics_available ? `<i class="t-lyric">' in js
+    t_title_pos = js.index('<span class="t-title">')
+    lyric_pos = js.index('<i class="t-lyric">${ICON_LYRICS}')
+    dl_pos = js.index('<span class="t-dl${downloads.isDownloaded')
+    assert t_title_pos < lyric_pos < dl_pos, "词标应排在标题之后、下载标之前"
 
 
 def test_music_scan_polling_wiring():
