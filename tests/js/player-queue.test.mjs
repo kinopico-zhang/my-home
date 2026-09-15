@@ -1,6 +1,6 @@
 /* player-queue.js (播放队列纯逻辑) 的 node --test 单元测试。
    覆盖: 建队/当前曲、前进 (队尾停/循环回绕)、后退 (队首原地)、跳转、
-   随机开关 (当前曲不换位)、循环模式轮换、剩余队列。 */
+   随机开关 (当前曲不换位)、循环模式轮换、剩余队列、拖行换位。 */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
 const { createPlayQueue, queueCurrent, queueSetShuffle, queueCycleRepeat,
-        queueAdvance, queueGoBack, queueJump, queueUpcoming } =
+        queueAdvance, queueGoBack, queueJump, queueUpcoming, queueReorder } =
   require(path.join(dir, "player-queue.js"));
 
 const titles = ["A", "B", "C", "D"].map((title, index) => ({ track_id: index + 1, title }));
@@ -99,4 +99,44 @@ test("queueSetShuffle: 空队列开关随机都不炸, 仍是空队列", () => {
   queueSetShuffle(queue, false);
   assert.deepEqual(queue.order, []);
   assert.equal(queueCurrent(queue), null);
+});
+
+test("queueReorder: 下面的行往上拖, 当前曲位置相应后移", () => {
+  const queue = createPlayQueue(titles, 0);             // 当前 A, 顺序 ABCD
+  assert.equal(queueReorder(queue, 2, 0), true);        // C 拖到最前
+  assert.deepEqual(queue.order, [2, 0, 1, 3]);          // CABD
+  assert.equal(queue.position, 1);                      // A 还在播, 顺位变 2
+  assert.equal(queueCurrent(queue).title, "A");
+  assert.deepEqual(queueUpcoming(queue).map((t) => t.title), ["A", "B", "D"]);
+});
+
+test("queueReorder: 上面的行往下拖, 当前曲位置前移", () => {
+  const queue = createPlayQueue(titles, 2);             // 当前 C, 顺序 ABCD
+  assert.equal(queueReorder(queue, 0, 3), true);        // A 拖到队尾
+  assert.deepEqual(queue.order, [1, 2, 3, 0]);          // BCDA
+  assert.equal(queue.position, 1);                      // C 顺位提前
+  assert.equal(queueCurrent(queue).title, "C");
+});
+
+test("queueReorder: 拖当前曲自己, 当前曲跟着走", () => {
+  const queue = createPlayQueue(titles, 1);             // 当前 B
+  assert.equal(queueReorder(queue, 1, 3), true);        // B 拖到队尾
+  assert.deepEqual(queue.order, [0, 2, 3, 1]);          // ACDB
+  assert.equal(queue.position, 3);
+  assert.equal(queueCurrent(queue).title, "B");
+  assert.deepEqual(queueUpcoming(queue).map((t) => t.title), ["B"]);
+});
+
+test("queueReorder: 与当前位无关的换位不动 position; 越界/原地拒绝", () => {
+  const queue = createPlayQueue(titles, 3);             // 当前 D
+  assert.equal(queueReorder(queue, 0, 1), true);        // A B 互换, 在 D 前
+  assert.deepEqual(queue.order, [1, 0, 2, 3]);
+  assert.equal(queue.position, 3);
+  assert.equal(queueReorder(queue, 0, 0), false);       // 原地
+  assert.equal(queueReorder(queue, -1, 2), false);      // 越界
+  assert.equal(queueReorder(queue, 0, 9), false);
+  assert.equal(queueReorder(queue, 9, 0), false);
+  assert.deepEqual(queue.order, [1, 0, 2, 3]);          // 拒绝的都不动队
+  const empty = createPlayQueue([], 0);
+  assert.equal(queueReorder(empty, 0, 0), false);
 });

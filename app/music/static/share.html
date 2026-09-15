@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>分享 · My Music</title>
+<style>
+  /* 公开分享页: 自包含 (不引应用 JS —— 访客没有会话, 页面也走不到
+     /music/static 之外的资源), 深色基调与应用一致 */
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --ink-1: #f5f5f7;
+    --ink-2: rgba(235,235,245,.62);
+    --ink-3: rgba(235,235,245,.32);
+    --hairline: rgba(255,255,255,.09);
+    --accent: #fa2d48;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
+  body {
+    background: var(--bg); color: var(--ink-1);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+                 "Helvetica Neue", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.45;
+    min-height: 100vh; min-height: 100dvh;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  .share-mark {
+    margin: 20px 0 4px; text-align: center;
+    font-size: 13px; font-weight: 700; letter-spacing: .4px; color: var(--accent);
+  }
+  main { max-width: 520px; margin: 0 auto;
+         padding: 8px 20px calc(110px + env(safe-area-inset-bottom)); }
+
+  /* ---------- 失效态 ---------- */
+  #share-error { padding: 96px 24px 0; text-align: center; color: var(--ink-2); }
+  #share-error svg { color: var(--ink-3); margin-bottom: 16px; }
+  #share-error h1 { font-size: 17px; font-weight: 600; color: var(--ink-1); }
+  #share-error p { font-size: 13px; margin-top: 6px; color: var(--ink-3); }
+
+  /* ---------- 卡片 ---------- */
+  #share-card { text-align: center; padding-top: 18px; }
+  .hero-art {
+    width: min(52vw, 208px); aspect-ratio: 1; margin: 0 auto;
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 18px 40px rgba(0,0,0,.55);
+    background: var(--surface-2);
+  }
+  .hero-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-art.ph {          /* 没有封面: 渐变音符块 (与列表无封面占位同一语言) */
+    background: linear-gradient(135deg, #48484c, #232326);
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,.5); font-size: 64px; font-weight: 700;
+  }
+  #share-title { font-size: 20px; font-weight: 700; margin-top: 18px;
+                 overflow-wrap: anywhere; }
+  #share-subtitle { font-size: 14px; color: var(--ink-2); margin-top: 4px;
+                    overflow-wrap: anywhere; }
+  #hero-play {
+    width: 54px; height: 54px; border-radius: 50%; border: 0; cursor: pointer;
+    margin-top: 16px; background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #hero-play:active { transform: scale(.94); }
+  #hero-play.off { background: var(--surface-3); pointer-events: none; }
+  #hero-play svg { width: 22px; height: 22px; }
+
+  /* ---------- 曲目清单 ---------- */
+  .list-head { margin-top: 26px; text-align: left;
+               font-size: 12px; color: var(--ink-3); }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--hairline);
+    cursor: pointer; text-align: left; width: 100%; background: none; border: 0;
+    border-bottom: 1px solid var(--hairline); color: inherit; font: inherit;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .lead { width: 22px; flex-shrink: 0; text-align: center;
+               color: var(--ink-3); font-size: 13px;
+               font-variant-numeric: tabular-nums; }
+  .row .lead i { font-style: normal; }
+  .row .txt { flex: 1; min-width: 0; }
+  .row .t { font-size: 15px; overflow: hidden; white-space: nowrap;
+            text-overflow: ellipsis; }
+  .row .a { font-size: 12px; color: var(--ink-2); margin-top: 1px;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row .dur { color: var(--ink-3); font-size: 12px; flex-shrink: 0;
+              font-variant-numeric: tabular-nums; }
+  .row.on .t { color: var(--accent); }
+  .row.na { opacity: .45; pointer-events: none; }
+  .bars { width: 14px; height: 14px; fill: var(--accent); }
+  .bars rect { transform-origin: center 11px; animation: eq 1s ease-in-out infinite; }
+  .bars rect:nth-child(2) { animation-delay: .25s; }
+  .bars rect:nth-child(3) { animation-delay: .5s; }
+  .bars.paused rect { animation-play-state: paused; }
+  @keyframes eq { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+  @media (prefers-reduced-motion: reduce) { .bars rect { animation: none; } }
+
+  .expire { margin-top: 26px; font-size: 12px; color: var(--ink-3); }
+
+  /* ---------- 底部迷你条 ---------- */
+  #player {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: rgba(10,10,12,.82);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    padding: 4px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+  .p-seek { display: flex; align-items: center; gap: 8px; }
+  .p-seek span { width: 38px; font-size: 11px; color: var(--ink-3);
+                 font-variant-numeric: tabular-nums; }
+  .p-seek span:last-child { text-align: right; }
+  #seek {
+    -webkit-appearance: none; appearance: none; flex: 1; height: 26px;
+    background: transparent; cursor: pointer;
+  }
+  #seek::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+                                         background: var(--surface-3); }
+  #seek::-webkit-slider-thumb { -webkit-appearance: none; width: 14px;
+                                height: 14px; border-radius: 50%; background: #fff;
+                                margin-top: -5px; }
+  #seek::-moz-range-track { height: 4px; border-radius: 2px;
+                            background: var(--surface-3); }
+  #seek::-moz-range-thumb { width: 14px; height: 14px; border: 0;
+                            border-radius: 50%; background: #fff; }
+  .p-main { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+  .p-art { width: 42px; height: 42px; border-radius: 8px; overflow: hidden;
+           flex-shrink: 0; background: var(--surface-2);
+           display: flex; align-items: center; justify-content: center;
+           color: rgba(255,255,255,.5); font-size: 20px; font-weight: 700; }
+  .p-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .p-text { flex: 1; min-width: 0; }
+  .p-text b { display: block; font-size: 14px; font-weight: 600;
+              overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .p-text span { display: block; font-size: 12px; color: var(--ink-2);
+                 overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #p-toggle {
+    width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer;
+    background: #fff; color: #000; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #p-toggle:active { transform: scale(.94); }
+  #p-toggle svg { width: 17px; height: 17px; }
+</style>
+</head>
+<body>
+
+<div class="share-mark"><a href="/music">♪ My Music</a></div>
+<main>
+  <section id="share-error" hidden>
+    <svg viewBox="0 0 24 24" width="44" height="44" fill="none"
+         stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 17H7A5 5 0 1 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h3M13.5 12h2.5"/>
+    </svg>
+    <h1>链接不存在或已过期</h1>
+    <p>分享链接在创建 24 小时后失效</p>
+  </section>
+
+  <section id="share-card" hidden>
+    <div class="hero-art" id="hero-art" aria-hidden="true"></div>
+    <h1 id="share-title"></h1>
+    <p id="share-subtitle"></p>
+    <button id="hero-play" aria-label="播放">
+      <svg id="ic-play" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8.2 5.1c0-1.2 1.3-1.9 2.3-1.3l10.1 6.4c1 .6 1 2 0 2.6L10.5 19.2c-1 .6-2.3-.1-2.3-1.3V5.1z" fill="currentColor"/>
+      </svg>
+      <svg id="ic-pause" viewBox="0 0 24 24" hidden aria-hidden="true">
+        <rect x="6" y="4.5" width="4.4" height="15" rx="2.2" fill="currentColor"/>
+        <rect x="13.6" y="4.5" width="4.4" height="15" rx="2.2" fill="currentColor"/>
+      </svg>
+    </button>
+    <div class="list-head" id="list-head" hidden></div>
+    <div id="share-list"></div>
+    <p class="expire" id="share-expire"></p>
+  </section>
+</main>
+
+<div id="player" hidden>
+  <div class="p-seek">
+    <span id="t-now">0:00</span>
+    <input id="seek" type="range" min="0" max="1000" step="1" value="0"
+           aria-label="播放进度">
+    <span id="t-total">-:--</span>
+  </div>
+  <div class="p-main">
+    <div class="p-art" id="p-art" aria-hidden="true"></div>
+    <div class="p-text"><b id="p-title"></b><span id="p-artist"></span></div>
+    <button id="p-toggle" aria-label="播放/暂停">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="use-play" d="M8.2 5.1c0-1.2 1.3-1.9 2.3-1.3l10.1 6.4c1 .6 1 2 0 2.6L10.5 19.2c-1 .6-2.3-.1-2.3-1.3V5.1z" fill="currentColor"/>
+        <g class="use-pause">
+          <rect x="6" y="4.5" width="4.4" height="15" rx="2.2" fill="currentColor"/>
+          <rect x="13.6" y="4.5" width="4.4" height="15" rx="2.2" fill="currentColor"/>
+        </g>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<audio id="audio" playsinline></audio>
+
+<script>
+"use strict";
+// 分享页逻辑: 拿 uuid 换数据 → 渲染 → 流地址播放; 失效 (410) 走错误态。
+// 一切状态以 <audio> 的 play/pause 事件为准, 按钮只改 audio。
+
+const $ = (sel) => document.querySelector(sel);
+const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => (
+  {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[ch]));
+
+const PATH_PARTS = location.pathname.split("/");   // ["", "music", "share", token]
+const token = PATH_PARTS.length > 3 ? PATH_PARTS[3] : "";
+
+const audio = $("#audio");
+let queue = [];            // 可播的曲目 (按分享里的顺序)
+let queuePos = -1;         // 正在播的下标
+let seeking = false;
+
+const BARS_SVG = '<svg class="bars paused" viewBox="0 0 14 14" aria-hidden="true">'
+  + '<rect x="1" y="2" width="2.6" height="10" rx="1.3"/>'
+  + '<rect x="5.7" y="2" width="2.6" height="10" rx="1.3"/>'
+  + '<rect x="10.4" y="2" width="2.6" height="10" rx="1.3"/></svg>';
+
+function fmtTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "-:--";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function fmtDateTime(epochSeconds) {
+  const d = new Date(epochSeconds * 1000);
+  const two = (n) => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}月${d.getDate()}日 `
+    + `${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+// 封面: 这一首自己的 → 它的专辑的 → 渐变占位 (onerror 兜底)
+function artURL(track) {
+  if (track.has_artwork) {
+    return `/music/share/${token}/artwork/track/${track.track_id}?v=${track.mtime}`;
+  }
+  return `/music/share/${token}/artwork/album/${track.album_id}`;
+}
+
+function setArt(el, url) {
+  el.classList.remove("ph");
+  el.textContent = "";
+  const img = document.createElement("img");
+  img.alt = "";
+  img.decoding = "async";
+  img.onerror = () => {
+    el.classList.add("ph");
+    el.textContent = "♪";
+    img.remove();
+  };
+  img.src = url;
+  el.appendChild(img);
+}
+
+function setPlaceholder(el) {
+  el.classList.add("ph");
+  el.textContent = "♪";
+}
+
+async function boot() {
+  if (!token) return showError();
+  let data = null;
+  try {
+    const resp = await fetch(`/music/share/${token}/api`,
+                             {cache: "no-store"});
+    if (!resp.ok) return showError();          // 410 / 404 → 失效态
+    data = await resp.json();
+  } catch {
+    return showError();
+  }
+  render(data);
+}
+
+function showError() {
+  $("#share-error").hidden = false;
+}
+
+function render(data) {
+  document.title = `${data.title} · My Music`;
+  $("#share-title").textContent = data.title;
+  $("#share-subtitle").textContent = data.subtitle;
+  $("#share-expire").textContent = `链接有效期至 ${fmtDateTime(data.expires_at)}`;
+
+  const heroArt = $("#hero-art");
+  if (data.kind === "playlist" && data.playlist) {
+    if (data.playlist.cover_version > 0) {
+      setArt(heroArt, `/music/share/${token}/artwork/playlist/`
+             + `${data.playlist.playlist_id}?v=${data.playlist.cover_version}`);
+    } else {
+      setPlaceholder(heroArt);
+    }
+  } else if (data.tracks.length > 0) {
+    setArt(heroArt, artURL(data.tracks[0]));
+  } else {
+    setPlaceholder(heroArt);
+  }
+
+  queue = data.tracks.filter((t) => t.playable);
+  if (data.kind === "playlist") {
+    $("#list-head").hidden = false;
+    $("#list-head").textContent = `${data.tracks.length} 首歌曲`;
+    $("#share-list").innerHTML = data.tracks.map((t, i) => (
+      `<div class="row${t.playable ? "" : " na"}" data-track-id="${t.track_id}">`
+      + `<span class="lead"><i class="num">${i + 1}</i></span>`
+      + `<span class="txt"><span class="t">${esc(t.title)}</span>`
+      + `<span class="a">${esc(t.artist)}</span></span>`
+      + `<span class="dur">${fmtTime(t.duration_seconds)}</span></div>`
+    )).join("");
+  }
+  if (queue.length === 0) $("#hero-play").classList.add("off");
+  $("#share-card").hidden = false;
+}
+
+function playQueue(pos) {
+  if (pos < 0 || pos >= queue.length) return;
+  queuePos = pos;
+  const track = queue[pos];
+  audio.src = `/music/share/${token}/stream/${track.track_id}`;
+  $("#seek").value = "0";
+  $("#t-now").textContent = "0:00";
+  $("#t-total").textContent = "-:--";
+  $("#player").hidden = false;
+  $("#p-title").textContent = track.title;
+  $("#p-artist").textContent = track.artist;
+  setArt($("#p-art"), artURL(track));
+  document.querySelectorAll(".row").forEach((row) => {
+    const on = Number(row.dataset.trackId) === track.track_id;
+    row.classList.toggle("on", on);
+    const lead = row.querySelector(".lead");
+    if (on) {
+      lead.innerHTML = BARS_SVG;
+    } else {
+      const idx = Array.prototype.indexOf.call(row.parentNode.children, row);
+      lead.innerHTML = `<i class="num">${idx + 1}</i>`;
+    }
+  });
+  audio.play().catch(() => {});
+}
+
+function togglePlay() {
+  if (audio.paused) {
+    if (!audio.src) return playQueue(0);
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+  }
+}
+
+function updateIcons() {
+  const playing = !audio.paused;
+  $("#ic-play").hidden = playing;
+  $("#ic-pause").hidden = !playing;
+  const toggleSvg = $("#p-toggle svg");
+  toggleSvg.querySelector(".use-play").style.display = playing ? "none" : "";
+  toggleSvg.querySelector(".use-pause").style.display = playing ? "" : "none";
+  const bars = document.querySelector(".row .bars");
+  if (bars) bars.classList.toggle("paused", audio.paused);
+}
+
+$("#hero-play").addEventListener("click", togglePlay);
+$("#p-toggle").addEventListener("click", togglePlay);
+
+$("#share-list").addEventListener("click", (event) => {
+  const row = event.target.closest(".row");
+  if (!row || row.classList.contains("na")) return;
+  const trackId = Number(row.dataset.trackId);
+  const pos = queue.findIndex((t) => t.track_id === trackId);
+  if (pos >= 0) playQueue(pos);
+});
+
+audio.addEventListener("play", updateIcons);
+audio.addEventListener("pause", updateIcons);
+audio.addEventListener("loadedmetadata", () => {
+  $("#t-total").textContent = fmtTime(audio.duration);
+});
+audio.addEventListener("timeupdate", () => {
+  if (!seeking && Number.isFinite(audio.duration) && audio.duration > 0) {
+    $("#seek").value = String(Math.round(audio.currentTime
+                                         / audio.duration * 1000));
+  }
+  $("#t-now").textContent = fmtTime(audio.currentTime);
+});
+audio.addEventListener("ended", () => {
+  if (queuePos + 1 < queue.length) playQueue(queuePos + 1);
+});
+audio.addEventListener("error", () => {
+  $("#p-title").textContent = "播放失败";
+  $("#p-artist").textContent = "";
+});
+
+// 拖进度: input 里只做标记 + 标签跟随, 真正 seek 落在 change (iOS 拖完才发);
+// metadata 没到时 iOS 会拒 currentTime, try/catch 吞掉等 loadedmetadata。
+$("#seek").addEventListener("input", () => {
+  seeking = true;
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    $("#t-now").textContent = fmtTime(
+      Number($("#seek").value) / 1000 * audio.duration);
+  }
+});
+$("#seek").addEventListener("change", () => {
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    try {
+      audio.currentTime = Number($("#seek").value) / 1000 * audio.duration;
+    } catch { /* iOS 换源瞬间还没 metadata */ }
+  }
+  seeking = false;
+});
+
+boot();
+</script>
+</body>
+</html>

@@ -855,9 +855,10 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=20" in html
-            and "music-player.js?v=16" in html
-            and "music-common.js?v=12" in html)   # 版本号刷新
+    assert ("downloads.js?v=2" in html and "music.js?v=21" in html
+            and "music-player.js?v=17" in html
+            and "music-common.js?v=13" in html
+            and "player-queue.js?v=2" in html)   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1001,6 +1002,20 @@ def test_playlist_create_add_delete(tmp_path):
         with pytest.raises(KeyError):                # 曲目不在库
             library_playlists.add_track_to_playlist(
                 session, created.playlist_id, 9999)
+        # 移出一首 (左滑删除): 再加两首构成顺序, 抽中间那首, 首尾顺序不动
+        library_playlists.add_track_to_playlist(session, created.playlist_id, 3)
+        library_playlists.add_track_to_playlist(session, created.playlist_id, 5)
+        brief = library_playlists.remove_track_from_playlist(
+            session, created.playlist_id, 3)
+        assert brief.track_count == 2
+        assert brief.duration_seconds == pytest.approx(4.0)
+        page = library_queries.playlist_page(session, created.playlist_id)
+        assert page is not None
+        assert [t.title for t in page.tracks] == ["曲A", "无题曲"]
+        for bad_playlist, bad_track in ((created.playlist_id, 3), (99999, 1)):
+            with pytest.raises(KeyError):         # 不在列表里 / 列表不在库
+                library_playlists.remove_track_from_playlist(
+                    session, bad_playlist, bad_track)
         # 列表: 连成员一起清; 再删 404 路径 (KeyError)
         library_playlists.delete_playlist(session, created.playlist_id)
         assert library_queries.playlist_page(session, created.playlist_id) is None
@@ -1031,6 +1046,20 @@ def test_playlist_endpoints(auth):
     assert page["tracks"][0]["artist_id"] == 1
     assert auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
                      json={"track_id": 999}).status_code == 404
+    # 左滑移出一首: (曲A 已在) 再加两首抽中间, 计数回走、顺序不乱;
+    # 不在列表里 404、列表不存在 404
+    for track_id in (3, 5):
+        assert auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
+                         json={"track_id": track_id}).status_code == 200
+    removed = auth.delete(
+        f"/music/api/playlists/{created['playlist_id']}/tracks/3")
+    assert removed.json()["track_count"] == 2
+    assert [t["title"] for t in auth.get(
+        f"/music/api/playlists/{created['playlist_id']}").json()["tracks"]] \
+        == ["曲A", "无题曲"]
+    assert auth.delete(f"/music/api/playlists/{created['playlist_id']}"
+                       "/tracks/3").status_code == 404
+    assert auth.delete("/music/api/playlists/99999/tracks/1").status_code == 404
     # Plex 同步接口撤了 (路径撞详情路由, 撤后只剩 GET → 405)
     assert auth.post("/music/api/playlists/sync").status_code == 405
     # 删除: 任何列表都删得掉; 再删 404
@@ -1072,7 +1101,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=20" in html
+    assert "music.js?v=21" in html
     # 长歌名不许把菜单撑超宽 (用户报"菜单非常宽, 建议截断"): 固定定位菜单
     # 收缩到内容, 不封顶会一路撑到视口; 320px 封顶后 nowrap 截断才接管
     assert "max-width: min(320px, calc(100vw - 24px))" in html

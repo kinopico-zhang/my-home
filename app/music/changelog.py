@@ -9,6 +9,22 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.7.0", date="2026-09-16", items=[
+        ChangelogItem(kind="新增", text="歌曲和歌单能分享给任何人了: 点 ⋯ 或长按歌/列表详情页的分享键,"
+                                       " 生成一条 24 小时有效的链接 —— 对方不用登录, 点开就能看封面、"
+                                       " 看歌单、直接在线听, 一天之后链接自动作废"),
+        ChangelogItem(kind="新增", text="播放页的「待播放」歌单照苹果音乐重排: 正在播的显示跳动音条,"
+                                       " 其余编号排下去, 歌名靠左歌手靠右;"
+                                       " 按住每行右边的 ≡ 拖动就能调整播放顺序, 拖到哪歌就从哪接着播"),
+        ChangelogItem(kind="新增", text="播放列表里的歌支持左滑删除: 行往左一滑露出红色删除键,"
+                                       " 点掉就从列表里移出, 其他歌的顺序不变"),
+        ChangelogItem(kind="新增", text="首页的播放列表也能左滑整列删除 (原来只有详情页能删)"),
+        ChangelogItem(kind="改进", text="歌单详情页顶部的一排操作键 (播放/随机/下载/分享/删除)"
+                                       " 全部改成图标, 站在同一行不再换行"),
+        ChangelogItem(kind="修复", text="播放页开着「待播放」歌单时, 拖最上面的横条关不上播放页"
+                                       " —— 手势冲突修好了, 拖横条照旧能把播放页拉下来"),
+        ChangelogItem(kind="改进", text="随机/循环的开关状态和拖过的播放顺序, 关页面再进来还记得"),
+    ]),
     ChangelogVersion(version="1.6.0", date="2026-09-15", items=[
         ChangelogItem(kind="新增", text="播放队列不再从底部弹面板: 点队列键, 封面原地翻开成接下来的歌单,"
                                        " 最上面两枚「随机播放 / 循环播放」键 (循环播放再点一下变单曲循环);"

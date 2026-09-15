@@ -40,7 +40,7 @@ def create_playlist(session: Session, name: str) -> PlaylistBrief:
                         is_local=True)
     session.add(playlist)
     session.commit()
-    return _playlist_brief(playlist)
+    return playlist_brief(playlist)
 
 
 def add_track_to_playlist(session: Session, playlist_id: int,
@@ -68,7 +68,27 @@ def add_track_to_playlist(session: Session, playlist_id: int,
     session.commit()
     _refresh_playlist_aggregates(session)
     session.expire(playlist, ["track_count", "duration_seconds"])
-    return _playlist_brief(playlist)   # 聚合 SQL 刚更新过, 定向失效取库里的新值
+    return playlist_brief(playlist)   # 聚合 SQL 刚更新过, 定向失效取库里的新值
+
+
+def remove_track_from_playlist(session: Session, playlist_id: int,
+                               track_id: int) -> PlaylistBrief:
+    """从列表里移出一首 (左滑删除); 列表里没有这首 KeyError → 404。
+
+    position 留洞不补 (查询按 ORDER BY position, 顺序不受影响)。"""
+    playlist = session.get(Playlist, playlist_id)
+    if playlist is None:
+        raise KeyError(playlist_id)
+    item = session.scalar(select(PlaylistItem).where(
+        PlaylistItem.playlist_id == playlist_id,
+        PlaylistItem.track_id == track_id))
+    if item is None:
+        raise KeyError(track_id)
+    session.delete(item)
+    session.commit()
+    _refresh_playlist_aggregates(session)
+    session.expire(playlist, ["track_count", "duration_seconds"])
+    return playlist_brief(playlist)
 
 
 def delete_playlist(session: Session, playlist_id: int) -> None:
@@ -108,7 +128,7 @@ def set_playlist_cover(session: Session, playlist_id: int, data: bytes,
     temporary_path.replace(path)
     playlist.cover_version = max(1, playlist.cover_version + 1)
     session.commit()
-    return _playlist_brief(playlist)
+    return playlist_brief(playlist)
 
 
 def clear_playlist_cover(session: Session, playlist_id: int) -> PlaylistBrief:
@@ -119,7 +139,7 @@ def clear_playlist_cover(session: Session, playlist_id: int) -> PlaylistBrief:
     _unlink_cover(playlist_id)
     playlist.cover_version = 0
     session.commit()
-    return _playlist_brief(playlist)
+    return playlist_brief(playlist)
 
 
 def _unlink_cover(playlist_id: int) -> None:
@@ -132,7 +152,8 @@ def _unlink_cover(playlist_id: int) -> None:
             pass
 
 
-def _playlist_brief(playlist: Playlist) -> PlaylistBrief:
+def playlist_brief(playlist: Playlist) -> PlaylistBrief:
+    """列表行/卡片的数据形状 (queries / shares 也用它, 别再手抄这份构造)。"""
     return PlaylistBrief(playlist_id=playlist.id, name=playlist.name,
                          track_count=playlist.track_count,
                          duration_seconds=playlist.duration_seconds,
@@ -141,8 +162,10 @@ def _playlist_brief(playlist: Playlist) -> PlaylistBrief:
 
 
 def _refresh_playlist_aggregates(session: Session) -> None:
-    """列表总时长重算 (成员曲目时长求和, 与专辑汇总同一套相关子查询写法)。"""
+    """列表 计数/总时长 重算 (成员曲目聚合, 与专辑汇总同一套相关子查询写法)。"""
     session.execute(update(Playlist).values(
+        track_count=select(func.count()).where(
+            PlaylistItem.playlist_id == Playlist.id).scalar_subquery(),
         duration_seconds=select(func.coalesce(
             func.sum(Track.duration_seconds), 0.0)).where(
             PlaylistItem.playlist_id == Playlist.id,

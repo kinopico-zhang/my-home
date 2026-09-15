@@ -124,6 +124,9 @@ _PUBLIC_PATHS = frozenset((
     "/bookkeeping/api/logout", "/music/api/logout"))
 _STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/",
                     "/music/static/")
+# 分享链接面 (My Music): uuid 即凭证, 页面/数据/流/封面全免登录,
+# 24 小时过期由各路由自己验 (中间件只管放行前缀)
+_PUBLIC_PREFIXES = ("/music/share/",)
 
 # 账号体系从 /tesla 搬到根路径 (账号属于 My Home, 不属于任何一个应用);
 # 旧地址 302/307 兼容 —— 手机上的老书签和已经发出去的邀请链接还能用
@@ -210,7 +213,8 @@ async def auth_middleware(
     elif path in _APP_LOGIN_ROOTS and token_ok:
         # 应用自己的登录页: 已登录直接回该应用
         resp = RedirectResponse(_APP_LOGIN_ROOTS[path], status_code=302)
-    elif path in _PUBLIC_PATHS or path.startswith(_STATIC_PREFIXES):
+    elif (path in _PUBLIC_PATHS or path.startswith(_STATIC_PREFIXES)
+          or path.startswith(_PUBLIC_PREFIXES)):
         resp = await call_next(request)
     elif is_api and not token_ok:
         resp = JSONResponse({"detail": "未登录"}, status_code=401)
