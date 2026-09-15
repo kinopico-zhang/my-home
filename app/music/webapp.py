@@ -248,13 +248,16 @@ def music_playlist_add_track(request: Request,
                              body: PlaylistTrackRequest,
                              users: Session = Depends(database.get_users_db),
                              library: Session = Depends(get_db)) -> PlaylistBrief:
-    """往播放列表末尾加一首 (长按曲目的「添加到播放列表」)。"""
+    """往播放列表末尾加一首 (长按曲目的「添加到播放列表」);
+    已在列表里 409 (同一首只留一份)。"""
     _require_user(request, users)
     try:
         return library_playlists.add_track_to_playlist(
             library, playlist_id, body.track_id)
     except KeyError as exc:
         raise HTTPException(404, "播放列表或曲目不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @api.delete("/playlists/{playlist_id}", response_model=OkResponse)

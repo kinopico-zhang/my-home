@@ -853,8 +853,8 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=18" in html
-            and "music-player.js?v=13" in html)   # 版本号刷新
+    assert ("downloads.js?v=2" in html and "music.js?v=19" in html
+            and "music-player.js?v=15" in html)   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -971,7 +971,8 @@ def test_music_rescan_conflict(auth, monkeypatch, tmp_path):
 
 
 def test_playlist_create_add_delete(tmp_path):
-    """查询层: 列表建/加/删全在应用内; 撞名/空名报错; 重复加歌按次计。"""
+    """查询层: 列表建/加/删全在应用内; 撞名/空名报错; 同一首只留一份
+    (重复行会两行一起亮播放态、连播两遍, 2026-09-15 用户点名)。"""
     _seed_library()
     with session_factory()() as session:
         created = library_playlists.create_playlist(session, " 我的日常 ")
@@ -987,11 +988,12 @@ def test_playlist_create_add_delete(tmp_path):
             session, created.playlist_id, 1)
         assert brief.track_count == 1
         assert brief.duration_seconds == pytest.approx(2.0)
-        library_playlists.add_track_to_playlist(
-            session, created.playlist_id, 1)         # 同首可重复加
+        with pytest.raises(ValueError, match="已经在列表里"):
+            library_playlists.add_track_to_playlist(
+                session, created.playlist_id, 1)     # 同首不再重复加
         page = library_queries.playlist_page(session, created.playlist_id)
         assert page is not None
-        assert [t.title for t in page.tracks] == ["曲A", "曲A"]
+        assert [t.title for t in page.tracks] == ["曲A"]
         assert page.tracks[0].artist_id == 1         # 艺人号随行走 (长按菜单用)
         with pytest.raises(KeyError):                # 曲目不在库
             library_playlists.add_track_to_playlist(
@@ -1014,12 +1016,15 @@ def test_playlist_endpoints(auth):
                      json={"name": "开车听"}).status_code == 409
     assert auth.post("/music/api/playlists",
                      json={"name": " "}).status_code == 409
-    # 加歌 + 回读: 详情带曲目行, 行里带艺人号
+    # 加歌 + 回读: 详情带曲目行, 行里带艺人号; 同首再加 409 (不重复入列)
     added = auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
                       json={"track_id": 1})
     assert added.json()["track_count"] == 1
+    dup = auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
+                    json={"track_id": 1})
+    assert dup.status_code == 409 and "已经在列表里" in dup.json()["detail"]
     page = auth.get(f"/music/api/playlists/{created['playlist_id']}").json()
-    assert page["tracks"][0]["title"] == "曲A"
+    assert [t["title"] for t in page["tracks"]] == ["曲A"]
     assert page["tracks"][0]["artist_id"] == 1
     assert auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
                      json={"track_id": 999}).status_code == 404
@@ -1054,16 +1059,20 @@ def test_music_track_context_menu_wiring():
                  "trackPressTimer = setTimeout",            # 500ms 长按计时
                  'document.addEventListener("contextmenu"',
                  "navigator.share", "execCommand",          # 分享 + 复制回落
-                 "suppressTrailingClick",                    # 长按尾随点击只吞一次
+                 "suppressTrailingTarget",                 # 长按尾随点击按元素吞
                  "navigate(`artist/${track.artist_id}`)",
                  'fetchJSON("/music/api/playlists"',
                  '`/music/api/playlists/${playlistId}/tracks`',
+                 "error.status === 409",            # 已在列表里: 直说原因不算失败
                  '`/music/api/playlists/${playlistId}`, { method: "DELETE" }',
                  'id="playlist-delete"',           # 列表删除在详情页 (选择单只加歌)
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=18" in html
+    assert "music.js?v=19" in html
+    # fetchJSON 把 HTTP 状态码挂上错误对象 (加歌 409 分叉靠它)
+    common = (static / "music-common.js").read_text(encoding="utf-8")
+    assert "status: response.status" in common
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
@@ -1169,43 +1178,76 @@ def test_music_lyrics_animation_wiring():
 
 
 def test_music_controls_apple_style_wiring():
-    """播放控制按钮 (参考图 1:1 批): 裸白三键 64px 等距 + 按压缩放反馈;
+    """传输行 (1.5.1 三键并进进度条行): [−已播|进度条|−剩余|上一首/播放/下一首]
+    一行装下, 播放键 44px 当主键、其余 38px, 与底部功能键行分开;
+    进度条 range 住在 flex 行里要 flex:1+min-width:0 才肯让位收缩。
     图标包围盒中心对准按键中心的不变量在 player-icons.test.mjs。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
-    assert "width: 64px; height: 64px; color: #fff; padding: 0" in html  # 等大三键
-    assert "gap: 43px" in html                                # 参考图键距
+    common = (static / "music-common.js").read_text(encoding="utf-8")
+    transport = html[html.index(".fp-transport {"):html.index(".fp-actions {")]
+    assert "display: flex; align-items: center; gap: 10px" in transport  # 单行五件套
+    assert ".fp-scrub { flex: 1; min-width: 0; }" in transport  # range 让位收缩
+    assert 'id="fp-time-cur"' in html and 'id="fp-time-total"' in html  # 时间标签还在
+    assert "width: 38px; height: 38px; color: #fff; padding: 0" in html  # 上下曲小键
+    assert "#fp-play { width: 44px; height: 44px; }" in html      # 播放键大一圈
+    assert 'width="28" height="28"' in html                       # 上下曲字形缩小
+    assert 'width="36" height="36"' in common                     # 播放/暂停 36
+    assert ".fp-times" not in html                                # 旧三行布局撤了
     assert ".fp-controls > button:active { transform: scale(.86)" in html  # 按压反馈
     assert ".queue-modes" in html                             # 随机/循环进队列面板
-    assert "#fp-volume" in html and "#fp-grab" in html        # 音量条 + 收起抓手
+    assert "#fp-grab" in html                                 # 收起抓手
+    # 音量条整个撤了 (1.5.1, 用户点名): 音量交给设备音量键/系统音量
+    assert "#fp-volume" not in html and ".fp-volume" not in html
 
 
-def test_music_volume_native_routing():
-    """音量走 audio.volume 原生通道: 1.5.0 的 WebAudio 增益在 iPhone 上
-    拖不动还把声音脱开音量键, 整套撤掉; iOS 探测不到原生音量就把
-    应用内音量条整个收起 (音量键说了算), 桌面/安卓照常保留。"""
+def test_music_click_play_starts_from_beginning():
+    """点播一律从头 (用户报"有时点一首歌从一半播起, 怀疑存了每首的进度"):
+    并没有按曲存进度 —— 冷启动恢复在 preload=none 的 audio 上写
+    currentTime 是"待生效进度", Safari 会把它漏到之后点开的歌上。
+    loadTrack 换源后显式归零兜底; 冷启动续听 (playerRestore) 不走
+    loadTrack, 特性照旧。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    player = (static / "music-player.js").read_text(encoding="utf-8")
+    html = (static / "music.html").read_text(encoding="utf-8")
+    load_track = player[player.index("function loadTrack"):
+                        player.index("function prefetchNextTrack")]
+    assert "audio.currentTime = 0;" in load_track  # 点播归零, 待生效进度不外漏
+    assert 'preload="none"' in html          # 恢复态不拉元数据 (待生效进度的温床)
+    restore = player[player.index("function playerRestore"):
+                     player.index("function renderPlayerChrome")]
+    assert "if (saved.time) audio.currentTime = saved.time;" in restore  # 续听保留
+
+
+def test_music_volume_ui_removed():
+    """音量条全平台撤除 (用户点名"音量条去掉吧"): iOS 的 audio.volume
+    写了也白写, 1.5.0 的 WebAudio 增益又拖不动还脱开音量键 —— 桌面也
+    不留了, 音量统一设备自己的键。回归: 旧的音量代码不许再爬回来。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     player = (static / "music-player.js").read_text(encoding="utf-8")
     for gone in ["AudioContext", "createGain", "createMediaElementSource",
-                 "ensureVolumeRouting"]:
-        assert gone not in player, f"WebAudio 残留: {gone}"
-    assert "function nativeVolumeWorks" in player    # 探针: 写了读得回才算数
-    assert 'classList.add("volume-off")' in player   # iOS: 收起音量条
-    assert "function applyVolume(value)" in player   # 只写 audio.volume
-    # 元素留着 (桌面/安卓用), iOS 靠类藏起来; 横屏本来就藏
-    assert "#full-player.volume-off .fp-volume" in html
+                 "ensureVolumeRouting", "loadSavedVolume", "nativeVolumeWorks",
+                 "applyVolume", "music-volume", "volume-off", "fp-volume"]:
+        assert gone not in player, f"音量残留: {gone}"
+        assert gone not in html, f"音量残留 (html): {gone}"
 
 
 def test_music_lyrics_mark_row_badge():
     """词标 ❝: 行右侧图标簇的一员 (下载标前面), 17×17 与下载标同大、
-    同 26px 高度框里垂直居中 —— 两个图标同一水平线, 不再像小上标。"""
+    同 26px 高度框里垂直居中 —— 两个图标同一水平线, 不再像小上标;
+    颜色同一档, 行右侧图标簇没有色差 (用户点名)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
     common = (static / "music-common.js").read_text(encoding="utf-8")
     assert 'width="17" height="17"' in common              # 与下载标同大
     assert ".t-lyric" in html and "height: 26px" in html   # 与 .t-dl 同框高
+    # 同色: 词标和下载标都是 ink-2 (下载完的勾加深到 ink-1 是另一态)
+    lyric_block = html[html.index(".t-lyric {"):]
+    assert "color: var(--ink-2)" in lyric_block[:lyric_block.index("}")]
+    dl_block = html[html.index(".t-dl {"):]
+    assert "color: var(--ink-2)" in dl_block[:dl_block.index("}")]
     # 挪出 .t-title: 行级元素, 排在下载标前面 (❝ 在前, 下载标在它后面)
     assert '${track.lyrics_available ? `<i class="t-lyric">' in js
     t_title_pos = js.index('<span class="t-title">')

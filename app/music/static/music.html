@@ -261,11 +261,12 @@ main {
   white-space: nowrap; text-overflow: ellipsis;
 }
 
-/* 下载标 (曲目行右侧, 点按 = 下载; 已下载变勾; 明文 HTTP 下整列不渲染) */
+/* 下载标 (曲目行右侧, 点按 = 下载; 已下载变勾; 明文 HTTP 下整列不渲染)。
+   颜色与词标 ❝ 同一档 (行右侧图标簇一个色, 没有色差)。 */
 .t-dl {
   width: 26px; height: 26px; flex-shrink: 0; display: flex;
   align-items: center; justify-content: center;
-  color: var(--ink-3); border-radius: 50%; margin: -4px -6px -4px 0;
+  color: var(--ink-2); border-radius: 50%; margin: -4px -6px -4px 0;
 }
 .t-dl:active { color: var(--ink-1); background: var(--surface-2); }
 .t-dl.done { color: var(--ink-1); }
@@ -573,8 +574,15 @@ span.t-art { display: flex; align-items: center; justify-content: center;
                 margin-top: 2px; overflow: hidden; white-space: nowrap;
                 text-overflow: ellipsis; }
 #fp-menu-btn { color: #fff; opacity: .9; padding: 12px; flex-shrink: 0; }
-/* 细进度条: 无旋钮 (滑块和填充同色, 静止时看不出) */
-.fp-scrub { margin-top: 20px; padding: 0 32px; }
+/* 传输行: [−已播 | 进度条 | −剩余 | 上一首/播放/下一首] 一行装下,
+   和底部三个功能键各行其是, 不再摞成三行 */
+.fp-transport { display: flex; align-items: center; gap: 10px;
+                margin-top: 18px; padding: 0 22px; }
+.fp-time { flex-shrink: 0; font-size: 10px; color: rgba(255,255,255,.5);
+           font-variant-numeric: tabular-nums; }
+/* 细进度条: 无旋钮 (滑块和填充同色, 静止时看不出)。range 住在 flex 行里
+   不会自动让位 (固有宽度顶住), flex:1 + min-width:0 才肯撑满剩余空间 */
+.fp-scrub { flex: 1; min-width: 0; }
 /* 滑杆命中层: iOS 的 range 点轨道不跳值、小滑钮抓不住 (音量条整个点不动),
    输入框蒙一层透明垫子自己算比例 —— 按下即跳、拖动跟手 (见 music-player.js) */
 .slider-hit { position: relative; touch-action: none;
@@ -592,37 +600,19 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   -webkit-appearance: none; width: 7px; height: 7px; border-radius: 50%;
   background: rgba(255,255,255,.7); margin-top: 0;
 }
-.fp-times { display: flex; justify-content: space-between; margin-top: 9px;
-            padding: 0 33px; font-size: 10px; color: rgba(255,255,255,.5);
-            font-variant-numeric: tabular-nums; }
-/* 传输行: 裸白字形 (上一首/播放/下一首), 随机循环挪去了队列面板 */
-.fp-controls { display: flex; align-items: center; justify-content: center;
-               gap: 43px; margin-top: 16px; }
+/* 传输三键: 裸白字形 (随机循环挪去了队列面板), 播放键大一圈当主键 */
+.fp-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .fp-controls > button {
-  width: 64px; height: 64px; color: #fff; padding: 0;
+  width: 38px; height: 38px; color: #fff; padding: 0;
   display: flex; align-items: center; justify-content: center;
   transition: transform .16s ease, opacity .16s ease;
 }
+#fp-play { width: 44px; height: 44px; }
 .fp-controls > button:active { transform: scale(.86); opacity: .75; }
-/* 音量条: 左小喇叭右大喇叭, 中间滑杆。
-   iOS 的 Safari 不认 audio.volume (写了也白写), 应用内调不了 ——
-   整条收起, 音量交给手机音量键 (见 music-player.js 的 volume-off)。 */
-.fp-volume { display: flex; align-items: center; gap: 12px; margin-top: 27px;
-             padding: 0 33px; color: rgba(255,255,255,.55); }
-#full-player.volume-off .fp-volume { display: none; }
-.fp-volume .slider-hit { flex: 1; height: 28px; }
-#fp-volume::-webkit-slider-runnable-track {
-  height: 6px; border-radius: 3px;
-  background: linear-gradient(to right, rgba(255,255,255,.7) var(--fill, 100%),
-                              rgba(255,255,255,.3) 0);
-}
-#fp-volume::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 6px; border-radius: 3px;
-  background: rgba(255,255,255,.7); margin-top: 0;
-}
-/* 底部三键: 加列表 / 歌词 / 队列 (无损标挂在队列键右上角) */
+/* 底部三键: 加列表 / 歌词 / 队列 (无损标挂在队列键右上角) —— 与传输行
+   分成两拨, 中间留白给足 */
 .fp-actions { display: flex; align-items: center; justify-content: space-between;
-              margin-top: 14px; padding: 0 53px; color: rgba(255,255,255,.58); }
+              margin-top: 20px; padding: 0 53px; color: rgba(255,255,255,.58); }
 .fp-actions > button { position: relative; width: 40px; height: 40px; padding: 0;
   display: flex; align-items: center; justify-content: center; }
 .fp-actions > button:active { opacity: .6; }
@@ -632,11 +622,11 @@ span.t-art { display: flex; align-items: center; justify-content: center;
              color: rgba(255,255,255,.75); overflow: hidden; white-space: nowrap;
              text-overflow: ellipsis; }
 .fp-pad { height: 22px; flex-shrink: 0; }
-/* 横屏 (矮屏): 藏音量/来源行, 收紧留白, 保控件行完整 */
+/* 横屏 (矮屏): 藏来源行, 收紧留白, 保控件行完整 */
 @media (max-height: 520px) {
   .fp-body { padding: 12px 24px; }
-  .fp-volume, .fp-source { display: none; }
-  .fp-controls { margin-top: 8px; }
+  .fp-source { display: none; }
+  .fp-transport { margin-top: 10px; }
   .fp-actions { margin-top: 10px; }
 }
 
@@ -832,17 +822,15 @@ span.t-art { display: flex; align-items: center; justify-content: center;
       <div class="fp-now"><b id="fp-title"></b><small id="fp-artist"></small></div>
       <button id="fp-menu-btn" aria-label="更多操作"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M2.5 12Q2.5 10.8954 4.5 10Q5.6046 10 6.5 12Q6.5 13.1046 4.5 14Q3.3954 14 2.5 12zM10 12Q10 10.8954 12 10Q13.1046 10 14 12Q14 13.1046 12 14Q10.8954 14 10 12zM17.5 12Q17.5 10.8954 19.5 10Q20.6046 10 21.5 12Q21.5 13.1046 19.5 14Q18.3954 14 17.5 12z" fill="currentColor"/></svg></button>
     </div>
-    <div class="fp-scrub"><input type="range" id="fp-scrub" min="0" max="1000" step="1" value="0" aria-label="进度"></div>
-    <div class="fp-times"><span id="fp-time-cur">-0:00</span><span id="fp-time-total">-0:00</span></div>
-    <div class="fp-controls">
-      <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path d="M21.981 6.098L14.6 10.949Q13 12 14.6 13.051L21.981 17.902Q23.5 18.9 23.5 17.082L23.5 6.918Q23.5 5.1 21.981 6.098M9.481 6.098L2.1 10.949Q0.5 12 2.1 13.051L9.481 17.902Q11 18.9 11 17.082L11 6.918Q11 5.1 9.481 6.098" fill="currentColor"/></svg></button>
-      <button id="fp-play" aria-label="播放/暂停"></button>
-      <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path d="M2.019 6.098L9.4 10.949Q11 12 9.4 13.051L2.019 17.902Q0.5 18.9 0.5 17.082L0.5 6.918Q0.5 5.1 2.019 6.098zM14.519 6.098L21.9 10.949Q23.5 12 21.9 13.051L14.519 17.902Q13 18.9 13 17.082L13 6.918Q13 5.1 14.519 6.098z" fill="currentColor"/></svg></button>
-    </div>
-    <div class="fp-volume">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M8 9.5h3v5h-3zM11 9.5l5-4v13l-5-4z" fill="currentColor"/></svg>
-      <input type="range" id="fp-volume" min="0" max="100" step="1" value="100" aria-label="音量">
-      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 9.5h3v5h-3zM6 9.5l5-4v13l-5-4z" fill="currentColor"/><path d="M12.5 9.3q2.7 2.7 0 5.4M16 7.2q4.3 4.8 0 9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <div class="fp-transport">
+      <span class="fp-time" id="fp-time-cur">-0:00</span>
+      <div class="fp-scrub"><input type="range" id="fp-scrub" min="0" max="1000" step="1" value="0" aria-label="进度"></div>
+      <span class="fp-time" id="fp-time-total">-0:00</span>
+      <div class="fp-controls">
+        <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M21.981 6.098L14.6 10.949Q13 12 14.6 13.051L21.981 17.902Q23.5 18.9 23.5 17.082L23.5 6.918Q23.5 5.1 21.981 6.098M9.481 6.098L2.1 10.949Q0.5 12 2.1 13.051L9.481 17.902Q11 18.9 11 17.082L11 6.918Q11 5.1 9.481 6.098" fill="currentColor"/></svg></button>
+        <button id="fp-play" aria-label="播放/暂停"></button>
+        <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M2.019 6.098L9.4 10.949Q11 12 9.4 13.051L2.019 17.902Q0.5 18.9 0.5 17.082L0.5 6.918Q0.5 5.1 2.019 6.098zM14.519 6.098L21.9 10.949Q23.5 12 21.9 13.051L14.519 17.902Q13 18.9 13 17.082L13 6.918Q13 5.1 14.519 6.098z" fill="currentColor"/></svg></button>
+      </div>
     </div>
     <div class="fp-actions">
       <button id="fp-like-btn" aria-label="添加到播放列表"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M3.024 4.992H12.961Q13.969 4.992 13.969 6Q13.969 7.008 12.961 7.008H3.024Q2.016 7.008 2.016 6Q2.016 4.992 3.024 4.992zM3.024 8.976H12.961Q13.969 8.976 13.969 9.984Q13.969 10.992 12.961 10.992H3.024Q2.016 10.992 2.016 9.984Q2.016 8.976 3.024 8.976zM3.0005 13.008H8.9995Q9.984 13.008 9.984 13.9925Q9.984 14.977 8.9995 14.977H3.0005Q2.016 14.977 2.016 13.9925Q2.016 13.008 3.0005 13.008zM12.9845 13.008H20.9995Q21.984 13.008 21.984 13.9925Q21.984 14.977 20.9995 14.977H12.9845Q12 14.977 12 13.9925Q12 13.008 12.9845 13.008zM15.984 9.984V18Q15.984 19.008 16.992 19.008Q18 19.008 18 18V9.984Q18 8.976 16.992 8.976Q15.984 8.976 15.984 9.984z" fill="currentColor"/></svg></button>
@@ -902,8 +890,8 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/player-queue.js?v=1"></script>
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/cellular-usage.js?v=1"></script>
-<script src="/music/static/music-common.js?v=10"></script>
-<script src="/music/static/music-player.js?v=13"></script>
-<script src="/music/static/music.js?v=18"></script>
+<script src="/music/static/music-common.js?v=11"></script>
+<script src="/music/static/music-player.js?v=15"></script>
+<script src="/music/static/music.js?v=19"></script>
 </body>
 </html>
