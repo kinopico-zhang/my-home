@@ -460,18 +460,22 @@ function artistRowHTML(artist) {
     </button>`;
 }
 
-/** 播放列表行: 自定义封面 (传过) / 渐变音符块 + 名字 + 规模。 */
+/** 播放列表行: 自定义封面 (传过) / 渐变音符块 + 名字 + 规模。
+    外面套一层左滑删除的壳 (主页列表行专属, 别的用法没有)。 */
 function playlistRowHTML(playlist) {
   const cover = playlistCoverURL(playlist);
   return `
-    <button class="playlist-row" data-playlist-id="${playlist.playlist_id}">
-      ${cover
-        ? `<img class="pl-icon art" loading="lazy" decoding="async" alt="" src="${cover}">`
-        : '<span class="pl-icon">♫</span>'}
-      <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
-        <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
-      <span class="chev">›</span>
-    </button>`;
+    <div class="swipe-wrap" data-swipe-playlist="${playlist.playlist_id}">
+      <button class="playlist-row" data-playlist-id="${playlist.playlist_id}">
+        ${cover
+          ? `<img class="pl-icon art" loading="lazy" decoding="async" alt="" src="${cover}">`
+          : '<span class="pl-icon">♫</span>'}
+        <span class="a-main"><b>${escapeHTML(playlist.name)}</b>
+          <small>${describeDuration(playlist.duration_seconds, playlist.track_count)}</small></span>
+        <span class="chev">›</span>
+      </button>
+      <button class="swipe-del" aria-label="删除列表">删除</button>
+    </div>`;
 }
 
 function listPlaceholderHTML(message) {
@@ -506,6 +510,112 @@ function bindTrackLists(container, tracksOf) {
     }
     playerStart(tracks, index);
   });
+}
+
+// ------------------------------------------------------------ 左滑删除
+// .swipe-wrap 的行左滑露出「删除」钮 (iOS 同款): 横向拖动跟手, 竖向让给
+// 滚动 (行 touch-action: pan-y); 松手过半开/不过半弹回。一次只开一行,
+// 点别处/滚动/滑另一行都收起, 开着的行点一下也是收起 (不进页不开播)。
+// 与长按菜单共存: 长按计时器移动超 10px 自动作废, 这里 8px 内不接管。
+// 尾随 click 的吞法吸取长按菜单的教训 (3f5cd5f): 标记在新按下时清,
+// 松手后设备不补发 click 也不至于粘住吞掉下一次真点击。
+const SWIPE_REVEAL = 72;             // 删除钮宽度 (px)
+let swipeOpenWrap = null;            // 开着的行 (null = 全收)
+let swipeDrag = null;                // 拖拽进行中 {wrap,row,startX,startY,base,horizontal,offset,moved}
+let swipeSuppressClick = false;      // 松手前横移过: 尾随的 click 吞掉
+
+function closeSwipeRow() {
+  if (!swipeOpenWrap) return;
+  if (swipeOpenWrap.isConnected && swipeOpenWrap.firstElementChild) {
+    swipeOpenWrap.firstElementChild.style.transform = "";
+  }
+  swipeOpenWrap = null;
+}
+
+// 任何滚动 (列表/推入层/页面) 都把开着的行收起来 —— 绑在 document 捕获层,
+// scroll 不冒泡, 绑容器收不到祖先 (推入层) 的滚动。
+document.addEventListener("scroll", closeSwipeRow, true);
+
+function bindSwipeDelete(container, onDelete) {
+  container.addEventListener("pointerdown", (event) => {
+    swipeSuppressClick = false;                  // 新按下 = 上一手势翻篇
+    if (swipeDrag) {                             // 出界松手没收到 up: 兜底归位
+      swipeDrag.row.style.transform =
+        swipeDrag.base ? `translateX(${swipeDrag.base}px)` : "";
+      swipeDrag = null;
+    }
+    const wrap = event.target.closest(".swipe-wrap");
+    if (!wrap || !wrap.contains(event.target)) { closeSwipeRow(); return; }
+    if (event.target.closest(".swipe-del")) return;    // 删除钮: 点按即删
+    if (swipeOpenWrap && swipeOpenWrap !== wrap) closeSwipeRow();
+    swipeDrag = { wrap, row: wrap.firstElementChild,
+                  startX: event.clientX, startY: event.clientY,
+                  base: swipeOpenWrap === wrap ? -SWIPE_REVEAL : 0,
+                  horizontal: null, offset: 0, moved: false };
+  });
+  container.addEventListener("pointermove", (event) => {
+    if (!swipeDrag) return;
+    const dx = event.clientX - swipeDrag.startX;
+    const dy = event.clientY - swipeDrag.startY;
+    if (swipeDrag.horizontal === null) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      swipeDrag.horizontal = Math.abs(dx) > Math.abs(dy);
+      if (!swipeDrag.horizontal) { swipeDrag = null; return; }   // 竖滑 = 滚列表
+      try {
+        swipeDrag.row.setPointerCapture(event.pointerId);  // 鼠标拖出容器也能收到 up
+      } catch (_error) { /* 抓不到也能拖; 出界松手由下一次按下兜底 */ }
+    }
+    swipeDrag.moved = true;
+    // 左移露钮 (可多拖 24px 橡皮筋), 右移最多推回 0
+    swipeDrag.offset = Math.min(0, Math.max(-SWIPE_REVEAL - 24,
+                                            swipeDrag.base + dx));
+    swipeDrag.row.style.transform =
+      swipeDrag.offset ? `translateX(${swipeDrag.offset}px)` : "";
+  });
+  const settle = (cancelled) => {
+    const drag = swipeDrag;
+    swipeDrag = null;
+    if (!drag || !drag.horizontal) return;
+    if (cancelled) {                              // 浏览器接管手势 (滚动等)
+      drag.row.style.transform = drag.base ? `translateX(${drag.base}px)` : "";
+      if (drag.base) swipeOpenWrap = drag.wrap;
+      return;
+    }
+    swipeSuppressClick = drag.moved;              // 拖过的松手 click 不开播
+    if (drag.offset < -SWIPE_REVEAL / 2) {
+      drag.row.style.transform = `translateX(${-SWIPE_REVEAL}px)`;
+      swipeOpenWrap = drag.wrap;
+    } else {
+      drag.row.style.transform = "";
+      if (swipeOpenWrap === drag.wrap) swipeOpenWrap = null;
+    }
+  };
+  container.addEventListener("pointerup", () => settle(false));
+  container.addEventListener("pointercancel", () => settle(true));
+  // 捕获层吃两类点击: 删除钮 (不再冒泡给行点击/开播) 和滑完松手/开着的行
+  // 上的尾随 click; 冒泡层的 bindTrackLists/导航因此看不见这两下。
+  container.addEventListener("click", async (event) => {
+    if (swipeSuppressClick) {
+      swipeSuppressClick = false;
+      event.stopPropagation();
+      event.preventDefault();
+      return;
+    }
+    const del = event.target.closest(".swipe-del");
+    if (del) {
+      event.stopPropagation();
+      event.preventDefault();
+      const wrap = del.closest(".swipe-wrap");
+      swipeOpenWrap = null;
+      await onDelete(wrap);
+      return;
+    }
+    if (swipeOpenWrap && swipeOpenWrap.contains(event.target)) {
+      closeSwipeRow();                            // 开着的行点一下 = 收起
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }, true);
 }
 
 // ------------------------------------------------------------ 曲目长按菜单
@@ -561,29 +671,52 @@ function tracksOfRow(row) {
   return null;
 }
 
-/** 分享: 有系统分享就发文字 (歌名 - 歌手); 没有 (明文 HTTP) 退化为复制。 */
-async function shareTrack(track) {
-  const text = `${track.title} - ${track.artist}`;
+/** 分享 = 后端开一条 24 小时免登录的 uuid 链接, 有系统分享就发 URL
+    (歌名 - 歌手 + 链接), 没有 (明文 HTTP) 退化为复制链接。 */
+async function shareByLink(kind, id, title, text) {
+  let url = "";
+  try {
+    const made = await fetchJSON("/music/api/shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, id }),
+    });
+    url = `${location.origin}/music/share/${made.token}`;
+  } catch (error) {
+    toast(`分享链接没生成: ${error.message}`);
+    return;
+  }
   if (typeof navigator.share === "function") {
-    try { await navigator.share({ title: track.title, text }); }
+    try { await navigator.share({ title, text, url }); }
     catch (_error) { /* 用户取消/环境拒绝: 不算失败 */ }
     return;
   }
   let copied = false;
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(url);
       copied = true;
     } else {
       const input = document.createElement("textarea");
-      input.value = text;
+      input.value = url;
       document.body.appendChild(input);
       input.select();
       copied = document.execCommand("copy");
       input.remove();
     }
   } catch (_error) { /* 复制失败走下面的提示 */ }
-  toast(copied ? "已复制歌名和歌手" : "这个环境分享不了");
+  toast(copied ? "链接已复制, 24 小时内有效" : "这个环境分享不了");
+}
+
+async function shareTrack(track) {
+  await shareByLink("track", track.track_id, track.title,
+                    `${track.title} - ${track.artist}`);
+}
+
+/** 列表页的分享钮: 分享整个播放列表 (打开的人能看能听整张)。 */
+async function sharePlaylist(playlist) {
+  await shareByLink("playlist", playlist.playlist_id, playlist.name,
+                    `播放列表「${playlist.name}」`);
 }
 
 function openTrackMenu(row, point) {
@@ -926,6 +1059,17 @@ function renderHomeView() {
   $("#home-playlists").addEventListener("click", (event) => {
     const row = event.target.closest("[data-playlist-id]");
     if (row) navigate(`playlist/${row.dataset.playlistId}`);
+  });
+  // 列表行左滑露出删除: 删掉后就地抽行, 不整页重铺
+  bindSwipeDelete($("#home-playlists"), async (wrap) => {
+    const playlistId = Number(wrap.dataset.swipePlaylist);
+    try {
+      await fetchJSON(`/music/api/playlists/${playlistId}`, { method: "DELETE" });
+      wrap.remove();
+      toast("已删除");
+    } catch (error) {
+      toast(`没删掉: ${error.message}`);
+    }
   });
   bindTrackLists($("#home-recent"), () => pageState.homeRecent || []);
   loadHomePlaylists();
@@ -1337,17 +1481,27 @@ async function renderPlaylistView(playlistId, target) {
       </div>
     </div>
     <div class="action-row">
-      <button class="action primary" id="playlist-play" ${playable.length ? "" : "disabled"}>
-        ${ICON_ACTION_PLAY} 播放</button>
-      <button class="action" id="playlist-shuffle" ${playable.length ? "" : "disabled"}>
-        ${ICON_ACTION_SHUFFLE} 随机</button>
+      <button class="action icon primary" id="playlist-play" title="播放"
+              aria-label="播放" ${playable.length ? "" : "disabled"}>
+        ${ICON_ACTION_PLAY}</button>
+      <button class="action icon" id="playlist-shuffle" title="随机播放"
+              aria-label="随机播放" ${playable.length ? "" : "disabled"}>
+        ${ICON_ACTION_SHUFFLE}</button>
       ${downloadsEnabled ? `
-      <button class="action" id="playlist-download" ${playable.length ? "" : "disabled"}>
-        ${ICON_DOWNLOAD} 下载全部</button>` : ""}
-      <button class="action" id="playlist-delete">${ICON_ACTION_TRASH} 删除列表</button>
+      <button class="action icon" id="playlist-download" title="下载全部"
+              aria-label="下载全部" ${playable.length ? "" : "disabled"}>
+        ${ICON_DOWNLOAD}</button>` : ""}
+      <button class="action icon" id="playlist-share" title="分享"
+              aria-label="分享">${ICON_ACTION_SHARE}</button>
+      <button class="action icon" id="playlist-delete" title="删除列表"
+              aria-label="删除列表">${ICON_ACTION_TRASH}</button>
     </div>
     <div class="track-list" id="playlist-tracks">
-      ${page.tracks.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")}
+      ${page.tracks.map((track) => `
+        <div class="swipe-wrap" data-swipe-track="${track.track_id}">
+          ${trackRowHTML(track, trackArtHTML(track), "art")}
+          <button class="swipe-del" aria-label="从列表移除">删除</button>
+        </div>`).join("")}
     </div>`;
   target.querySelector("#playlist-play").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]));
@@ -1359,6 +1513,9 @@ async function renderPlaylistView(playlistId, target) {
   if (playlistDownload) {
     playlistDownload.addEventListener("click", () => downloadAllFromUI(page.tracks));
   }
+  target.querySelector("#playlist-share").addEventListener("click", () => {
+    sharePlaylist(playlist);
+  });
   bindCoverPress(playlistId, playlist.name, !!cover);
   target.querySelector("#playlist-delete").addEventListener("click", async () => {
     if (!window.confirm(`删除播放列表「${playlist.name}」?`)) return;
@@ -1372,6 +1529,26 @@ async function renderPlaylistView(playlistId, target) {
     }
   });
   bindTrackLists(target.querySelector("#playlist-tracks"), () => page.tracks);
+  // 曲目行左滑露出删除: 移出列表后就地抽掉那行 (不整页重铺, 滚动位置保住),
+  // 头上的 规模/时长 文案顺手重算。
+  bindSwipeDelete(target.querySelector("#playlist-tracks"), async (wrap) => {
+    const trackId = Number(wrap.dataset.swipeTrack);
+    try {
+      await fetchJSON(`/music/api/playlists/${playlistId}/tracks/${trackId}`,
+                      { method: "DELETE" });
+      wrap.remove();
+      page.tracks = page.tracks.filter((track) => track.track_id !== trackId);
+      const heroSmall = target.querySelector(".hero-txt small");
+      if (heroSmall) {
+        heroSmall.textContent = describeDuration(
+          page.tracks.reduce((sum, track) => sum + (track.duration_seconds || 0), 0),
+          page.tracks.length);
+      }
+      toast("已从列表移除");
+    } catch (error) {
+      toast(`没移除掉: ${error.message}`);
+    }
+  });
   coverUploadPlaylistId = playlistId;
   syncPlayerIndicators();
 }

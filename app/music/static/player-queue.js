@@ -132,6 +132,30 @@ function queueJump(queue, trackId) {
 }
 
 /**
+ * 队列视图里拖行换位 (from/to 都是 order 表里的绝对位置, 调用方把
+ * 视图下标 + queue.position 换算好)。当前曲被拖走时 position 跟着走;
+ * 别的行跨过当前位时 position 相应增减, 保证当前曲不换。
+ * @param {PlayQueue} queue
+ * @param {number} from
+ * @param {number} to
+ * @returns {boolean} 挪没挪 (越界/原地返回 false)
+ */
+function queueReorder(queue, from, to) {
+  if (from < 0 || to < 0 || from >= queue.order.length
+      || to >= queue.order.length || from === to) return false;
+  const [moved] = queue.order.splice(from, 1);
+  queue.order.splice(to, 0, moved);
+  if (queue.position === from) {
+    queue.position = to;                       // 拖的就是当前曲: 跟着走
+  } else if (from < queue.position && to >= queue.position) {
+    queue.position -= 1;                       // 前面的行插到了当前位之后
+  } else if (from > queue.position && to <= queue.position) {
+    queue.position += 1;                       // 后面的行插到了当前位之前
+  }
+  return true;
+}
+
+/**
  * 队列从当前位开始的剩余播放顺序 (队列面板展示用, 含当前曲)。
  * @param {PlayQueue} queue
  * @returns {Array<Object>}
@@ -145,6 +169,6 @@ function queueUpcoming(queue) {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     createPlayQueue, queueCurrent, queueSetShuffle, queueCycleRepeat,
-    queueAdvance, queueGoBack, queueJump, queueUpcoming,
+    queueAdvance, queueGoBack, queueJump, queueUpcoming, queueReorder,
   };
 }

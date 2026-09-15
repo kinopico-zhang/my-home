@@ -8,7 +8,7 @@
    ICON_PLAY, ICON_PAUSE, ICON_BARS, ICON_DOWNLOAD, ICON_LYRICS,
    ICON_PLAY_BIG, ICON_PAUSE_BIG,
    ICON_ACTION_PLAY, ICON_ACTION_SHUFFLE, ICON_ACTION_TRASH,
-   ICON_ACTION_IMAGE */   // 供 music-player.js / music.js 引用
+   ICON_ACTION_IMAGE, ICON_ACTION_SHARE, ICON_GRIP */   // 供 music-player.js / music.js 引用
 
 function $(selector) {
   return document.querySelector(selector);
@@ -115,3 +115,6 @@ const ICON_ACTION_PLAY = '<svg viewBox="0 0 24 24" width="15" height="15" aria-h
 const ICON_ACTION_SHUFFLE = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M16.5 3q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.527q0 0.316-0.217 0.533l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.22t-0.22-0.53q0-0.299 0.217-0.527l1.723-1.723l-1.19 0q-1.055 0-1.981 0.46t-1.552 1.257q-0.967 1.231-0.967 2.783q0 1.564-0.75 2.906q-0.398 0.721-0.967 1.295q-0.832 0.85-1.94 1.325t-2.344 0.475l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22l1.5 0q1.061 0 1.984-0.457t1.55-1.254q0.967-1.231 0.967-2.789q0-1.564 0.75-2.906q0.404-0.727 0.967-1.289q0.832-0.85 1.94-1.327t2.344-0.478l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM16.5 13.5q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.533q0 0.31-0.217 0.527l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.217t-0.22-0.527q0-0.305 0.217-0.533l1.723-1.723l-1.19 0q-1.236 0-2.344-0.475t-1.94-1.325q0.451-0.662 0.75-1.412q0.627 0.796 1.55 1.254t1.984 0.457l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM4.5 6l1.5 0q1.236 0 2.344 0.478t1.94 1.327q-0.457 0.673-0.75 1.412q-0.627-0.796-1.552-1.257t-1.981-0.46l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22z" fill="currentColor"/></svg>';
 const ICON_ACTION_TRASH = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.7 12.5h9.6l.7-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ICON_ACTION_IMAGE = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4.5 5.5h15v13h-15zM4.5 15l4.5-4 4 3.5 3-2.5 4 3.5M9 9.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_ACTION_SHARE = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3.5v11M8.5 7 12 3.5 15.5 7M6 12v6.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// 队列行的拖拽把手 (三条横线, 右缘示意"这里可以拖") — 装饰图形, 不进居中对齐测试
+const ICON_GRIP = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';

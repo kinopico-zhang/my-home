@@ -18,7 +18,7 @@ from .. import account_store, database
 from ..models import User
 from ..schemas import ChangelogVersion, OkResponse
 from . import (changelog, library_media, library_playlists,
-               library_queries, library_settings, service)
+               library_queries, library_settings, library_shares, service)
 from .library_database import (Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
@@ -28,6 +28,7 @@ from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
                       PlayRecordRequest, PlaylistBrief, PlaylistCreateRequest,
                       PlaylistPage, PlaylistPageList,
                       PlaylistTrackRequest, RecentPlaysResponse,
+                      ShareCreateRequest, ShareCreated, SharePageData,
                       TrackCredits,
                       RescanResponse, SearchResult, TrackPageList)
 
@@ -130,6 +131,74 @@ def logout() -> JSONResponse:
     response.delete_cookie("auth", path="/tesla")   # 单用户时代的旧 path cookie
     response.delete_cookie("auth", path="/")
     return response
+
+
+# ---------------------------------------------------------------- 分享链接
+# /music/share/{token} 全家免登录 (主应用中间件放行该前缀): uuid 即凭证,
+# 24 小时有效; 每个公开路由先验 token, 再验"要的东西确实在这份分享里"。
+
+@api.post("/shares", response_model=ShareCreated)
+def music_share_create(body: ShareCreateRequest, request: Request,
+                       users: Session = Depends(database.get_users_db),
+                       library: Session = Depends(get_db)) -> ShareCreated:
+    """开一条分享链接 (歌/列表), 24 小时内任何人凭链接可看可听。"""
+    user = _require_user(request, users)
+    try:
+        return library_shares.create_share(library, body.kind, body.id,
+                                           user.uuid)
+    except KeyError as exc:
+        raise HTTPException(404, "分享的对象不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@music_app.get("/share/{token}")
+def music_share_page(token: str) -> FileResponse:    # pylint: disable=unused-argument
+    """分享页 (免登录): 谁点开都能看能听, 页面自己拉数据
+    (路径里的 token 只是路由形状, 真校验在 api/stream/artwork 各路由)。"""
+    return _page("share.html")
+
+
+@music_app.get("/share/{token}/api", response_model=SharePageData)
+def music_share_data(token: str, response: Response,
+                     library: Session = Depends(get_db)) -> SharePageData:
+    """分享页的数据 (免登录): 歌/列表信息 + 曲目清单 + 失效时刻。"""
+    response.headers["Cache-Control"] = "no-store"   # 过期与否必须现查
+    data = library_shares.share_page_data(library, token)
+    if data is None:
+        raise HTTPException(410, "链接不存在或已过期")
+    return data
+
+
+@music_app.get("/share/{token}/stream/{track_id}")
+def music_share_stream(token: str, track_id: int, request: Request,
+                       library: Session = Depends(get_db)) -> Response:
+    """分享页的音频流 (免登录, 支持 Range —— iOS Safari 必须)。"""
+    scope = library_shares.share_scope(library, token)
+    if scope is None:
+        raise HTTPException(410, "链接不存在或已过期")
+    if track_id not in scope.track_ids:
+        raise HTTPException(404, "这首不在这份分享里")
+    return library_media.stream_track(
+        library, track_id, request.headers.get("range"))
+
+
+@music_app.get("/share/{token}/artwork/{kind}/{item_id}")
+def music_share_artwork(token: str, kind: str, item_id: int,
+                        library: Session = Depends(get_db)) -> Response:
+    """分享页的封面 (免登录): 曲目内嵌图 / 专辑封面 / 列表自定义封面,
+    只放行这份分享里确实有的。"""
+    scope = library_shares.share_scope(library, token)
+    if scope is None:
+        raise HTTPException(410, "链接不存在或已过期")
+    if kind == "track" and item_id in scope.track_ids:
+        return library_media.track_artwork_response(library, item_id)
+    if kind == "album" and item_id in scope.album_ids:
+        return library_media.album_artwork_response(library, item_id)
+    if (kind == "playlist" and scope.kind == "playlist"
+            and item_id == scope.playlist_id):
+        return library_media.playlist_cover_response(library, item_id)
+    raise HTTPException(404, "这张图不在这份分享里")
 
 
 @api.get("/status", response_model=MusicStatusResponse)
@@ -258,6 +327,21 @@ def music_playlist_add_track(request: Request,
         raise HTTPException(404, "播放列表或曲目不存在") from exc
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+@api.delete("/playlists/{playlist_id}/tracks/{track_id}", response_model=PlaylistBrief)
+def music_playlist_remove_track(request: Request,
+                                playlist_id: int,
+                                track_id: int,
+                                users: Session = Depends(database.get_users_db),
+                                library: Session = Depends(get_db)) -> PlaylistBrief:
+    """从列表里移出一首 (列表页左滑删除)。"""
+    _require_user(request, users)
+    try:
+        return library_playlists.remove_track_from_playlist(
+            library, playlist_id, track_id)
+    except KeyError as exc:
+        raise HTTPException(404, "播放列表里没有这首歌") from exc
 
 
 @api.delete("/playlists/{playlist_id}", response_model=OkResponse)
