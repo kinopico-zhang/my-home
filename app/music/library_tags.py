@@ -35,6 +35,8 @@ _TAG_SOURCES: dict[str, tuple[tuple[str, ...], tuple[str, ...], str | None]] = {
                        ("TDOR", "TDRC", "TYER"), "©day"),
     "script":         (("script",), ("TXXX:SCRIPT",), None),
     "lyrics":         (("lyrics", "unsyncedlyrics"), ("USLT",), "©lyr"),
+    "lyricist":       (("lyricist",), ("TEXT",), None),
+    "composer":       (("composer",), ("TCOM",), "©wrt"),
 }
 
 
@@ -110,6 +112,20 @@ def looks_like_synced_lyrics(text: str) -> bool:
         if _LRC_TIMECODE_PATTERN.match(line.strip()):
             return True
     return False
+
+
+def read_track_credits(audio_path: Path) -> tuple[str, str]:
+    """作词/作曲 标签 (全屏播放页底部来源行; 读不出给空串, 不抛)。
+
+    只有部分歌带这些标签, 前端拿不到就退专辑名, 所以这里不上索引。"""
+    try:
+        audio = load_audio_file(audio_path)
+    except MutagenError:
+        return "", ""
+    if audio is None:
+        return "", ""
+    tags = audio.tags
+    return _read_tag(tags, "lyricist"), _read_tag(tags, "composer")
 
 
 def _read_sidecar_lyrics(audio_path: Path) -> str:

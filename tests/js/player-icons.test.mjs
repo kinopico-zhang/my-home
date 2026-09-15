@@ -121,3 +121,17 @@ test("上一首/下一首 (全屏 + 迷你条): 居中且彼此镜像", () => {
   // 迷你条与全屏页的下一首是同一个字形
   assert.equal(pick("mini-next"), pick("fp-next"));
 });
+
+test("全屏页新底行 (参考图 1:1 批): ⋯ / 加列表 / 词 / 队列 / 无损标都居中", () => {
+  const pick = (id) => {
+    const match = page.match(new RegExp(`id="${id}".*?d="([^"]+)"`, "s"));
+    assert.ok(match, `music.html 里找不到 ${id} 的图标路径`);
+    return match[1];
+  };
+  // 取的是每个按钮的第一个 path (复合图标如 ♥盒 的第二路径不算)
+  centered("fp-menu-btn (⋯)", pick("fp-menu-btn"));
+  centered("fp-like-btn (加列表盒)", pick("fp-like-btn"));
+  centered("fp-lyrics-btn (词引号)", pick("fp-lyrics-btn"));
+  centered("fp-queue-btn (队列)", pick("fp-queue-btn"));
+  centered("fp-lossless (无损菱形)", pick("fp-lossless"));
+});

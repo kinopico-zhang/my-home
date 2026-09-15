@@ -9,6 +9,25 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.5.0", date="2026-09-15", items=[
+        ChangelogItem(kind="新增", text="点开歌曲后的整页播放界面照着参考图重做了:"
+                                       " 封面居中放大, 底下一排排排开 —— 歌名带 ⋯ 菜单、"
+                                       " 细进度条、白色播放/上一首/下一首、音量条、"
+                                       " 加列表/歌词/队列三个键, 背景是封面晕开的一层颜色;"
+                                       " 页面顶端一条小横杠, 点一下 (或往下拖封面) 就收起"),
+        ChangelogItem(kind="新增", text="播放页能调音量了 (进度条下面那条):"
+                                       " 拖过一次就记住, 下次打开还在;"
+                                       " 苹果手机上系统不让网页直接改音量,"
+                                       " 所以第一次拖动时会切换到另一条声音通道, 不影响听"),
+        ChangelogItem(kind="新增", text="无损格式的歌在队列键角上带一颗小钻石标"
+                                       " (FLAC/WAV 这些); 播放页最底下多了一行小字:"
+                                       " 这首歌的作词/作曲 (文件里带这信息的才显示, 没有就显示专辑名)"),
+        ChangelogItem(kind="新增", text="播放页的 ⋯ 菜单: 进艺人主页 / 分享 / 添加到播放列表"
+                                       " 都收进这里, 和长按歌曲弹的是同一张菜单;"
+                                       " 加列表的 ♥ 键也搬到了播放页底部, 随手就能把在听的歌收进列表"),
+        ChangelogItem(kind="改进", text="随机播放和循环这两个键从播放页挪进了「队列」面板"
+                                       " (点队列键弹出来), 播放页上只留三颗常用键, 和参考图一致"),
+    ]),
     ChangelogVersion(version="1.4.1", date="2026-09-15", items=[
         ChangelogItem(kind="修复", text="修好长按菜单第一次点不灵、要再点一下才生效的问题"
                                        " —— 有的手机长按抬手后不会补发那次点击,"

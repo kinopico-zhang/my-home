@@ -480,44 +480,40 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   display: flex; align-items: center; justify-content: center; }
 #mini-play { margin-right: 2px; }
 
-/* ---------- 全屏播放页 (Apple Music 布局: 顶部左标题右圆钮, 中封面) ---------- */
+/* ---------- 全屏播放页 (参考图 1:1: 氛围底 + 顶部抓手 + 大封面 + 底部控件栈) ---------- */
 #full-player {
   position: fixed; inset: 0; z-index: 90; background: #000;
-  display: flex; flex-direction: column;
   transform: translateY(100%); transition: transform .32s cubic-bezier(.32,.72,0,1);
 }
 #full-player.open { transform: none; }
 .fp-bg { position: absolute; inset: -60px; overflow: hidden; }
 .fp-bg img { width: 100%; height: 100%; object-fit: cover;
-             filter: blur(70px) brightness(.38) saturate(1.4); }
+             filter: blur(70px) brightness(.45) saturate(1.3); }
 #full-player.lyrics .fp-bg img { filter: blur(70px) brightness(.22) saturate(1.35); }
-.fp-top {
-  position: relative; display: flex; align-items: center; gap: 10px;
-  padding: calc(env(safe-area-inset-top) + 12px) 16px 0;
+.fp-sheet {
+  position: relative; height: 100%; max-width: 520px; margin: 0 auto;
+  display: flex; flex-direction: column;
 }
-.fp-top > button { color: var(--ink-1); padding: 6px; opacity: .9; flex-shrink: 0; }
-.fp-now { flex: 1; min-width: 0; }
-.fp-now b { display: block; font-size: 17px; font-weight: 700;
-            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.fp-now small { display: block; font-size: 13px; color: var(--ink-2); margin-top: 1px;
-                overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.fp-round {
-  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
-  border: 1px solid var(--hairline); color: var(--ink-2);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600;
+/* 顶部抓手条: 点一下 (或往下拖) 收起播放页 */
+#fp-grab {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: calc(env(safe-area-inset-top, 0px) + 3px) 0 0;
+  border: 0; background: none; touch-action: none;
 }
-.fp-round:active { color: var(--ink-1); border-color: var(--ink-2); }
-.fp-round.on { color: var(--accent); border-color: var(--accent); }
+#fp-grab div { width: 60px; height: 5px; border-radius: 2.5px;
+               background: rgba(255,255,255,.5); }
 .fp-body {
-  position: relative; flex: 1; min-height: 0;
+  position: relative; flex: 1; min-height: 120px;
   display: flex; align-items: center; justify-content: center;
-  padding: 18px 28px;
+  padding: 41px 24px 42px;
 }
-#fp-art-wrap { width: 100%; aspect-ratio: 1; max-height: 100%; max-width: min(78vw, 440px);
-               margin: auto; }
-#fp-art { width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
-          background: var(--surface-2); box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+#fp-art-wrap { width: 100%; aspect-ratio: 1; max-height: 100%;
+               max-width: min(100%, 440px); touch-action: none; }
+/* 封面不许原生拖拽/长按呼出 (不然下拉手势被 dragstart 劫持, 桌面端直接断流) */
+#fp-art-wrap, #fp-art { -webkit-user-drag: none; user-select: none;
+                        -webkit-touch-callout: none; }
+#fp-art { width: 100%; height: 100%; object-fit: cover; border-radius: 8px;
+          background: rgba(255,255,255,.08); box-shadow: 0 18px 50px rgba(0,0,0,.55); }
 #fp-lyrics {
   position: absolute; inset: 0; overflow-y: auto; z-index: 2;
   -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
@@ -544,43 +540,74 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 .lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0); }
 .lyrics-empty { position: absolute; inset: 0; display: flex; align-items: center;
                 justify-content: center; color: var(--ink-3); }
-.fp-scrub { position: relative; padding: 14px 28px 0; }
+/* 标题行: 左歌名歌手, 右 ⋯ */
+.fp-meta { display: flex; align-items: center; gap: 12px; padding: 0 32px; }
+.fp-now { flex: 1; min-width: 0; }
+.fp-now b { display: block; font-size: 19px; font-weight: 700; color: #fff;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fp-now small { display: block; font-size: 12px; color: rgba(255,255,255,.62);
+                margin-top: 2px; overflow: hidden; white-space: nowrap;
+                text-overflow: ellipsis; }
+#fp-menu-btn { color: #fff; opacity: .9; padding: 12px; flex-shrink: 0; }
+/* 细进度条: 无旋钮 (滑块和填充同色, 静止时看不出) */
+.fp-scrub { margin-top: 20px; padding: 0 32px; }
 #fp-scrub { width: 100%; appearance: none; -webkit-appearance: none;
-            height: 22px; background: none; }
+            height: 28px; background: none; }
 #fp-scrub::-webkit-slider-runnable-track {
-  height: 5px; border-radius: 3px;
-  background: linear-gradient(to right, var(--ink-1) var(--fill, 0%), rgba(255,255,255,.24) 0);
+  height: 7px; border-radius: 3.5px;
+  background: linear-gradient(to right, rgba(255,255,255,.7) var(--fill, 0%),
+                              rgba(255,255,255,.3) 0);
 }
 #fp-scrub::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
-  background: #fff; margin-top: -4.5px; box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  -webkit-appearance: none; width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255,255,255,.7); margin-top: 0;
 }
-.fp-times { display: flex; justify-content: space-between; font-size: 11px;
-            color: var(--ink-3); font-variant-numeric: tabular-nums;
-            padding: 2px 28px 0; }
-.fp-controls {
-  position: relative; display: flex; align-items: center; justify-content: center;
-  gap: 22px; padding: 20px 0 12px;
-}
+.fp-times { display: flex; justify-content: space-between; margin-top: 9px;
+            padding: 0 33px; font-size: 10px; color: rgba(255,255,255,.5);
+            font-variant-numeric: tabular-nums; }
+/* 传输行: 裸白字形 (上一首/播放/下一首), 随机循环挪去了队列面板 */
+.fp-controls { display: flex; align-items: center; justify-content: center;
+               gap: 43px; margin-top: 16px; }
 .fp-controls > button {
-  color: var(--ink-1); padding: 8px;
+  width: 64px; height: 64px; color: #fff; padding: 0;
   display: flex; align-items: center; justify-content: center;
   transition: transform .16s ease, opacity .16s ease;
 }
 .fp-controls > button:active { transform: scale(.86); opacity: .75; }
-/* 播放/暂停: 白色实心圆钮 (Apple Music 参考图, 圆润饱满) */
-#fp-play {
-  width: 68px; height: 68px; padding: 0; margin: 0 12px;
-  border-radius: 50%; background: #fff; color: #000;
+/* 音量条: 左小喇叭右大喇叭, 中间滑杆 */
+.fp-volume { display: flex; align-items: center; gap: 12px; margin-top: 27px;
+             padding: 0 33px; color: rgba(255,255,255,.55); }
+#fp-volume { flex: 1; appearance: none; -webkit-appearance: none;
+             height: 28px; background: none; }
+#fp-volume::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, rgba(255,255,255,.7) var(--fill, 100%),
+                              rgba(255,255,255,.3) 0);
 }
-#fp-play:active { transform: scale(.93); opacity: 1; background: #d6d6d8; }
-#fp-shuffle, #fp-repeat { color: var(--ink-3); }
-#fp-shuffle.on, #fp-repeat.on { color: var(--ink-1); }
-#fp-repeat.one::after {
-  content: "1"; position: absolute; font-size: 9px; font-weight: 700;
-  margin: -14px 0 0 10px; color: var(--ink-1);
+#fp-volume::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,.7); margin-top: 0;
 }
-.fp-pad { height: calc(20px + env(safe-area-inset-bottom)); }
+/* 底部三键: 加列表 / 歌词 / 队列 (无损标挂在队列键右上角) */
+.fp-actions { display: flex; align-items: center; justify-content: space-between;
+              margin-top: 14px; padding: 0 53px; color: rgba(255,255,255,.58); }
+.fp-actions > button { position: relative; width: 40px; height: 40px; padding: 0;
+  display: flex; align-items: center; justify-content: center; }
+.fp-actions > button:active { opacity: .6; }
+#fp-lyrics-btn.on { color: #fff; }
+#fp-lossless { position: absolute; top: -3px; right: -10px;
+               color: rgba(255,255,255,.75); }
+.fp-source { margin-top: 10px; padding: 0 32px; text-align: center; font-size: 13px;
+             color: rgba(255,255,255,.75); overflow: hidden; white-space: nowrap;
+             text-overflow: ellipsis; }
+.fp-pad { height: 22px; flex-shrink: 0; }
+/* 横屏 (矮屏): 藏音量/来源行, 收紧留白, 保控件行完整 */
+@media (max-height: 520px) {
+  .fp-body { padding: 12px 24px; }
+  .fp-volume, .fp-source { display: none; }
+  .fp-controls { margin-top: 8px; }
+  .fp-actions { margin-top: 10px; }
+}
 
 /* ---------- 队列面板 ---------- */
 #queue-mask { position: fixed; inset: 0; z-index: 95; background: rgba(0,0,0,.5); }
@@ -602,6 +629,17 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 }
 .sheet-head b { font-size: 16px; }
 #queue-close { color: var(--accent); font-size: 14px; font-weight: 600; }
+/* 随机/循环从全屏页挪来 (参考图传输行只有三键), 住进队列面板头 */
+.queue-modes { display: flex; gap: 10px; padding: 10px 18px 12px;
+               border-bottom: 1px solid var(--hairline); }
+.queue-modes button {
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px;
+  border-radius: 999px; border: 1px solid var(--hairline);
+  color: var(--ink-3); font-size: 13px; font-weight: 600;
+}
+.queue-modes button.on { color: var(--accent); border-color: var(--accent); }
+#fp-repeat.one::after { content: "1"; font-size: 10px; font-weight: 700;
+                        color: var(--accent); margin-left: 3px; }
 #queue-list { overflow-y: auto; padding: 6px 18px calc(16px + env(safe-area-inset-bottom)); }
 .queue-row {
   display: flex; align-items: center; gap: 10px; width: 100%;
@@ -745,42 +783,54 @@ span.t-art { display: flex; align-items: center; justify-content: center;
     <span class="mini-txt"><b id="mini-title"></b><small id="mini-artist"></small></span>
   </button>
   <button id="mini-play" aria-label="播放/暂停"></button>
-  <button id="mini-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M7.531 5.5q0.336 0 0.578 0.241l5.687 5.687q0.235 0.235 0.235 0.571q0 0.343-0.235 0.578l-5.687 5.687q-0.235 0.235-0.578 0.235q-0.336 0-0.574-0.235t-0.238-0.571q0-0.33 0.235-0.578l5.116-5.116l-5.116-5.11q-0.235-0.248-0.235-0.578q0-0.336 0.238-0.574t0.574-0.238zM16.469 5.5q0.336 0 0.574 0.238t0.238 0.574l0 11.375q0 0.336-0.238 0.574t-0.574 0.238t-0.574-0.238t-0.238-0.574l0-11.375q0-0.336 0.238-0.574t0.574-0.238z" fill="currentColor"/></svg></button>
+  <button id="mini-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M0.5 5.1L11 12 0.5 18.9zM13 5.1L23.5 12 13 18.9z" fill="currentColor"/></svg></button>
 </div>
 
 <div id="full-player" hidden>
   <div class="fp-bg"><img id="fp-bg-img" alt=""></div>
-  <div class="fp-top">
-    <button id="fp-close" aria-label="收起播放页"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 9.5 12 15.5 18 9.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    <div class="fp-now"><b id="fp-title"></b><small id="fp-artist"></small></div>
-    <button id="fp-queue-btn" class="fp-round" aria-label="播放队列"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 6h16M4 11h10M4 16h13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.5 13.5v6l4-3z" fill="currentColor"/></svg></button>
-    <button id="fp-lyrics-btn" class="fp-round" aria-label="歌词">词</button>
+  <div class="fp-sheet">
+    <button id="fp-grab" aria-label="收起播放页"><div></div></button>
+    <div class="fp-body">
+      <div id="fp-art-wrap"><img id="fp-art" alt=""></div>
+      <div id="fp-lyrics" hidden></div>
+      <button id="lyrics-resume" hidden>回到当前句</button>
+    </div>
+    <div class="fp-meta">
+      <div class="fp-now"><b id="fp-title"></b><small id="fp-artist"></small></div>
+      <button id="fp-menu-btn" aria-label="更多操作"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M2.5 10h4v4h-4zM10 10h4v4h-4zM17.5 10h4v4h-4z" fill="currentColor"/></svg></button>
+    </div>
+    <div class="fp-scrub"><input type="range" id="fp-scrub" min="0" max="1000" step="1" value="0" aria-label="进度"></div>
+    <div class="fp-times"><span id="fp-time-cur">-0:00</span><span id="fp-time-total">-0:00</span></div>
+    <div class="fp-controls">
+      <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path d="M23.5 5.1L13 12 23.5 18.9zM11 5.1L0.5 12 11 18.9z" fill="currentColor"/></svg></button>
+      <button id="fp-play" aria-label="播放/暂停"></button>
+      <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path d="M0.5 5.1L11 12 0.5 18.9zM13 5.1L23.5 12 13 18.9z" fill="currentColor"/></svg></button>
+    </div>
+    <div class="fp-volume">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M8 9.5h3v5h-3zM11 9.5l5-4v13l-5-4z" fill="currentColor"/></svg>
+      <input type="range" id="fp-volume" min="0" max="100" step="1" value="100" aria-label="音量">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 9.5h3v5h-3zM6 9.5l5-4v13l-5-4z" fill="currentColor"/><path d="M12.5 9.3q2.7 2.7 0 5.4M16 7.2q4.3 4.8 0 9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </div>
+    <div class="fp-actions">
+      <button id="fp-like-btn" aria-label="添加到播放列表"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M6.2 3.2h11.6q3 0 3 3v5.6q0 3-3 3H6.2q-3 0-3-3V6.2q0-3 3-3zM8.4 18.2l3.6 2.6 3.6-2.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/><path d="M12 11.6q-3.4-2.3-3.8-4.2-.3-1.6 1.4-2 1.4-.3 2.4 1.1 1-1.4 2.4-1.1 1.7.4 1.4 2-.4 1.9-3.8 4.2z" fill="currentColor"/></svg></button>
+      <button id="fp-lyrics-btn" aria-label="歌词"><svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M7 6.5q3.6 0 3.6 3.6t-3.6 3.6t-3.6-3.6t3.6-3.6zM8.6 12.3L4.4 17.5l5.2-1.6zM17 6.5q3.6 0 3.6 3.6t-3.6 3.6t-3.6-3.6t3.6-3.6zM18.6 12.3L14.4 17.5l5.2-1.6z" fill="currentColor"/></svg></button>
+      <button id="fp-queue-btn" aria-label="播放队列"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M3.25 5.25h16v2.2h-16zM3.25 10.25h10v2.2h-10zM3.25 15.25h13v2.2h-13zM16.75 12.75v6l4-3z" fill="currentColor"/></svg><span id="fp-lossless" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.6L20.4 12 12 20.4 3.6 12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 8.8l3.2 3.2-3.2 3.2-3.2-3.2z" fill="currentColor"/></svg></span></button>
+    </div>
+    <div class="fp-source" id="fp-source"></div>
+    <div class="fp-pad"></div>
   </div>
-  <div class="fp-body">
-    <div id="fp-art-wrap"><img id="fp-art" alt=""></div>
-    <div id="fp-lyrics" hidden></div>
-    <button id="lyrics-resume" hidden>回到当前句</button>
-  </div>
-  <div class="fp-scrub">
-    <input type="range" id="fp-scrub" min="0" max="1000" step="1" value="0" aria-label="进度">
-    <div class="fp-times"><span id="fp-time-cur">0:00</span><span id="fp-time-total">0:00</span></div>
-  </div>
-  <div class="fp-controls">
-    <button id="fp-shuffle" aria-label="随机播放"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M16.5 3q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.527q0 0.316-0.217 0.533l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.22t-0.22-0.53q0-0.299 0.217-0.527l1.723-1.723l-1.19 0q-1.055 0-1.981 0.46t-1.552 1.257q-0.967 1.231-0.967 2.783q0 1.564-0.75 2.906q-0.398 0.721-0.967 1.295q-0.832 0.85-1.94 1.325t-2.344 0.475l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22l1.5 0q1.061 0 1.984-0.457t1.55-1.254q0.967-1.231 0.967-2.789q0-1.564 0.75-2.906q0.404-0.727 0.967-1.289q0.832-0.85 1.94-1.327t2.344-0.478l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM16.5 13.5q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.533q0 0.31-0.217 0.527l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.217t-0.22-0.527q0-0.305 0.217-0.533l1.723-1.723l-1.19 0q-1.236 0-2.344-0.475t-1.94-1.325q0.451-0.662 0.75-1.412q0.627 0.796 1.55 1.254t1.984 0.457l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM4.5 6l1.5 0q1.236 0 2.344 0.478t1.94 1.327q-0.457 0.673-0.75 1.412q-0.627-0.796-1.552-1.257t-1.981-0.46l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22z" fill="currentColor"/></svg></button>
-    <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M16.469 5.5q-0.336 0-0.578 0.241l-5.687 5.687q-0.235 0.235-0.235 0.571q0 0.343 0.235 0.578l5.687 5.687q0.235 0.235 0.578 0.235q0.336 0 0.574-0.235t0.238-0.571q0-0.33-0.235-0.578l-5.116-5.116l5.116-5.11q0.235-0.248 0.235-0.578q0-0.336-0.238-0.574t-0.574-0.238zM7.531 5.5q-0.336 0-0.574 0.238t-0.238 0.574l0 11.375q0 0.336 0.238 0.574t0.574 0.238t0.574-0.238t0.238-0.574l0-11.375q0-0.336-0.238-0.574t-0.574-0.238z" fill="currentColor"/></svg></button>
-    <button id="fp-play" aria-label="播放/暂停"></button>
-    <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="46" height="46" aria-hidden="true"><path d="M7.531 5.5q0.336 0 0.578 0.241l5.687 5.687q0.235 0.235 0.235 0.571q0 0.343-0.235 0.578l-5.687 5.687q-0.235 0.235-0.578 0.235q-0.336 0-0.574-0.235t-0.238-0.571q0-0.33 0.235-0.578l5.116-5.116l-5.116-5.11q-0.235-0.248-0.235-0.578q0-0.336 0.238-0.574t0.574-0.238zM16.469 5.5q0.336 0 0.574 0.238t0.238 0.574l0 11.375q0 0.336-0.238 0.574t-0.574 0.238t-0.574-0.238t-0.238-0.574l0-11.375q0-0.336 0.238-0.574t0.574-0.238z" fill="currentColor"/></svg></button>
-    <button id="fp-repeat" aria-label="循环模式"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4.209 12.708l4.25 0q0.293 0 0.501 0.208t0.208 0.501t-0.208 0.501t-0.501 0.208l-2.39 0l1.926 1.881q0.819 0.824 1.876 1.245q1.013 0.415 2.13 0.415t2.13-0.415q0.553-0.227 1.038-0.556t0.824-0.675t0.62-0.742t0.448-0.727t0.285-0.664q0.1-0.277 0.365-0.401t0.537-0.03q0.277 0.1 0.401 0.363t0.03 0.534q-0.232 0.708-0.675 1.405t-0.996 1.251q-1.018 1.018-2.341 1.555q-1.283 0.52-2.667 0.52q-1.378 0-2.667-0.52q-1.322-0.537-2.341-1.555l-2.075-2.031l0 2.689q0 0.293-0.208 0.501t-0.501 0.208t-0.501-0.208t-0.208-0.501l0-4.25q0-0.293 0.208-0.501t0.501-0.208zM12 4.917q1.378 0 2.667 0.52q1.322 0.537 2.341 1.555l0.011 0.011l2.064 2.02l0-2.689q0-0.293 0.208-0.501t0.501-0.208t0.501 0.208t0.208 0.501l0 4.25q0 0.293-0.208 0.501t-0.501 0.208l-4.25 0q-0.293 0-0.501-0.208t-0.208-0.501t0.208-0.501t0.501-0.208l2.39 0l-1.926-1.881q-0.808-0.808-1.84-1.234t-2.167-0.426q-1.118 0-2.13 0.415q-1.057 0.421-1.876 1.245q-0.332 0.293-0.727 0.894t-0.611 1.225q-0.1 0.277-0.365 0.401t-0.537 0.03q-0.277-0.1-0.401-0.363t-0.03-0.534q0.232-0.708 0.675-1.405t0.996-1.251q1.018-1.018 2.341-1.555q1.289-0.52 2.667-0.52z" fill="currentColor"/></svg></button>
-  </div>
-  <div class="fp-pad"></div>
 </div>
 
 <div id="queue-mask" hidden></div>
 <div id="queue-sheet" hidden>
   <div class="sheet-grab"><div></div></div>
   <div class="sheet-head"><b>播放队列</b><button id="queue-close">完成</button></div>
+  <div class="queue-modes">
+        <button id="fp-shuffle" aria-label="随机播放"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M16.5 3q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.527q0 0.316-0.217 0.533l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.22t-0.22-0.53q0-0.299 0.217-0.527l1.723-1.723l-1.19 0q-1.055 0-1.981 0.46t-1.552 1.257q-0.967 1.231-0.967 2.783q0 1.564-0.75 2.906q-0.398 0.721-0.967 1.295q-0.832 0.85-1.94 1.325t-2.344 0.475l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22l1.5 0q1.061 0 1.984-0.457t1.55-1.254q0.967-1.231 0.967-2.789q0-1.564 0.75-2.906q0.404-0.727 0.967-1.289q0.832-0.85 1.94-1.327t2.344-0.478l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM16.5 13.5q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.533q0 0.31-0.217 0.527l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.217t-0.22-0.527q0-0.305 0.217-0.533l1.723-1.723l-1.19 0q-1.236 0-2.344-0.475t-1.94-1.325q0.451-0.662 0.75-1.412q0.627 0.796 1.55 1.254t1.984 0.457l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM4.5 6l1.5 0q1.236 0 2.344 0.478t1.94 1.327q-0.457 0.673-0.75 1.412q-0.627-0.796-1.552-1.257t-1.981-0.46l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22z" fill="currentColor"/></svg>随机</button>
+        <button id="fp-repeat" aria-label="循环模式"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4.209 12.708l4.25 0q0.293 0 0.501 0.208t0.208 0.501t-0.208 0.501t-0.501 0.208l-2.39 0l1.926 1.881q0.819 0.824 1.876 1.245q1.013 0.415 2.13 0.415t2.13-0.415q0.553-0.227 1.038-0.556t0.824-0.675t0.62-0.742t0.448-0.727t0.285-0.664q0.1-0.277 0.365-0.401t0.537-0.03q0.277 0.1 0.401 0.363t0.03 0.534q-0.232 0.708-0.675 1.405t-0.996 1.251q-1.018 1.018-2.341 1.555q-1.283 0.52-2.667 0.52q-1.378 0-2.667-0.52q-1.322-0.537-2.341-1.555l-2.075-2.031l0 2.689q0 0.293-0.208 0.501t-0.501 0.208t-0.501-0.208t-0.208-0.501l0-4.25q0-0.293 0.208-0.501t0.501-0.208zM12 4.917q1.378 0 2.667 0.52q1.322 0.537 2.341 1.555l0.011 0.011l2.064 2.02l0-2.689q0-0.293 0.208-0.501t0.501-0.208t0.501 0.208t0.208 0.501l0 4.25q0 0.293-0.208 0.501t-0.501 0.208l-4.25 0q-0.293 0-0.501-0.208t-0.208-0.501t0.208-0.501t0.501-0.208l2.39 0l-1.926-1.881q-0.808-0.808-1.84-1.234t-2.167-0.426q-1.118 0-2.13 0.415q-1.057 0.421-1.876 1.245q-0.332 0.293-0.727 0.894t-0.611 1.225q-0.1 0.277-0.365 0.401t-0.537 0.03q-0.277-0.1-0.401-0.363t-0.03-0.534q0.232-0.708 0.675-1.405t0.996-1.251q1.018-1.018 2.341-1.555q1.289-0.52 2.667-0.52z" fill="currentColor"/></svg>循环</button>
+  </div>
   <div id="queue-list"></div>
-</div>
+  </div>
 
 <div id="track-menu-mask" hidden></div>
 <div id="track-menu" hidden>
@@ -819,8 +869,8 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/player-queue.js?v=1"></script>
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/cellular-usage.js?v=1"></script>
-<script src="/music/static/music-common.js?v=6"></script>
-<script src="/music/static/music-player.js?v=5"></script>
-<script src="/music/static/music.js?v=13"></script>
+<script src="/music/static/music-common.js?v=7"></script>
+<script src="/music/static/music-player.js?v=8"></script>
+<script src="/music/static/music.js?v=14"></script>
 </body>
 </html>

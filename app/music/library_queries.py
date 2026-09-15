@@ -11,16 +11,17 @@ from sqlalchemy import ColumnElement, exists, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from .library_database import (BROWSER_PLAYABLE_FORMATS, Album, Artist,
-                               PlayStat, Playlist, PlaylistItem, Track)
+                               PlayStat, Playlist, PlaylistItem, Track,
+                               music_directory)
 from .library_lyrics_api import fetch_lyrics
 from .library_search_keys import query_patterns
 from .library_languages import language_for_script, scripts_for_language
-from .library_tags import looks_like_synced_lyrics
+from .library_tags import looks_like_synced_lyrics, read_track_credits
 from .schemas import (AlbumCard, AlbumPage, AlbumPageList, ArtistBrief,
                       ArtistPage, ArtistPageList, FormatCount, LibraryStats,
                       LyricHit, LyricsResponse, PlaylistBrief, PlaylistPage,
                       PlaylistPageList,
-                      SearchResult, TrackBrief, TrackPageList)
+                      SearchResult, TrackBrief, TrackCredits, TrackPageList)
 
 # 搜索结果的板块容量 (一次全给, 前端分块展示)
 SEARCH_TRACK_LIMIT = 30
@@ -265,6 +266,16 @@ def lyrics_for_track(session: Session, track_id: int,
             session.commit()
     return LyricsResponse(track_id=track.id, lyrics=track.lyrics,
                           lyrics_synced=track.lyrics_synced)
+
+
+def credits_for_track(session: Session, track_id: int) -> TrackCredits | None:
+    """单曲 作词/作曲 标签 (现读文件, 只有部分歌带; 没标签 = 空串)。"""
+    track = session.get(Track, track_id)
+    if track is None:
+        return None
+    lyricist, composer = read_track_credits(
+        music_directory() / track.file_path)
+    return TrackCredits(lyricist=lyricist, composer=composer)
 
 
 def record_play(session: Session, user_uuid: str, track_id: int) -> bool:

@@ -270,6 +270,13 @@ class LyricsResponse(BaseModel):
     lyrics_synced: bool
 
 
+class TrackCredits(BaseModel):
+    """单曲 作词/作曲 标签 (全屏播放页来源行, 按需现读, 缺标签 = 空串)。"""
+
+    lyricist: str = ""
+    composer: str = ""
+
+
 # ---------------------------------------------------------------- 设置 / 流量
 
 class MusicSettingsState(BaseModel):
