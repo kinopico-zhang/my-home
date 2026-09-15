@@ -819,7 +819,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=12" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=13" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1028,7 +1028,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行 (music.js 这次改到 v9); Plex 同步全撤了
-    assert "music.js?v=12" in html
+    assert "music.js?v=13" in html
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
@@ -1067,25 +1067,54 @@ def test_music_cellular_wiring():
 
 
 def test_music_playlist_cover_and_track_art_wiring():
-    """封面接线: 详情页设置/换/移除封面 + 隐藏文件选择器; 列表行/选择单/
-    主页播放列表带封面; 曲目行带元数据封面 (没封面给音符占位)。"""
+    """封面接线: 详情页点大封面换图, 长按/右键弹菜单 (换/移除) + 隐藏文件选择器;
+    列表行/选择单/主页播放列表带封面; 曲目行带元数据封面 (没封面给音符占位)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
     common = (static / "music-common.js").read_text(encoding="utf-8")
     assert 'id="cover-file"' in html \
         and 'accept="image/png,image/jpeg,image/webp"' in html
-    assert ".cover-chip" in html and ".t-art" in html \
-        and ".pl-icon.art" in html                             # 行样式
+    assert ".t-art" in html and ".pl-icon.art" in html           # 行样式
     assert "function uploadPlaylistCover" in js
-    assert 'id="cover-tap"' in js and 'id="cover-remove"' in js   # 点封面直接换
-    assert "cover-hint" in html and "pl-cover-btn" in html        # 角标提示可点
+    assert 'id="cover-tap"' in js and "function bindCoverPress" in js \
+        and "openCoverMenu" in js          # 点封面直接换; 长按/右键弹封面菜单
+    assert 'id="cover-menu"' in html and 'data-cover-action="change"' in html \
+        and 'data-cover-action="remove"' in html \
+        and 'id="cover-menu-remove"' in html                    # 菜单项 (移除可藏)
+    assert "cover-hint" in html and "pl-cover-btn" in html       # 角标提示可点
     assert '`/music/api/playlists/${playlistId}/cover`' in js  # PUT/DELETE 两个口
+    assert '`/music/api/playlists/${coverMenuPlaylistId}/cover`' in js  # 移除走菜单
     assert "trackArtHTML" in js and "has_artwork" in js        # 曲目封面 (含占位)
     assert 'onerror="this.replaceWith(' in js   # 封面取不到退回音符占位, 不裂图
     assert "function trackArtworkURL" in common and "artwork?v=" in common
     assert "function playlistCoverURL" in common \
         and "playlists/${playlist.playlist_id}/cover" in common
+
+
+def test_music_search_page_and_lockscreen_wiring():
+    """1.4.1 后半批接线: 搜索页语种筛选撤掉 (搜全语种, 资料库筛选保留) +
+    页面不许横向溢出 (标题/右列文字收口, 长艺人名撑不宽) +
+    锁屏进度随暂停/跳句/变速重报真实位置。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    player = (static / "music-player.js").read_text(encoding="utf-8")
+    # 搜索页: 语种 chips 撤了, 查询不再带 language; 资料库的筛选行保留
+    assert "search-chips" not in js and "search-chips" not in html
+    assert "lib-chips" in js and "chipsHTML" in js
+    assert "&language=" not in js
+    # 横向溢出: html 兜底禁横滑 + 行内标题包收缩层 + 右列可省略
+    assert "overflow-x: hidden" in html
+    assert ".t-title-text" in html and "t-title-text" in js
+    t_time_block = html.split(".t-time {", 1)[1].split("}", 1)[0]
+    assert "min-width: 0" in t_time_block and "ellipsis" in t_time_block
+    # 锁屏进度: 暂停 (速率报 0) / 跳句 / 变速 / timeupdate 都重报
+    assert "function syncPositionState" in player
+    assert '"play", "pause", "seeked", "ratechange"' in player
+    assert "audio.paused ? 0 : audio.playbackRate" in player
+    assert "setPositionState" in player
+    assert "syncPositionState();" in player       # timeupdate 里也在报
 
 
 def test_music_lyrics_animation_wiring():
