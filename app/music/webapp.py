@@ -430,10 +430,10 @@ def music_credits(track_id: int, request: Request,
                   library: Session = Depends(get_db)) -> TrackCredits:
     """单曲 作词/作曲 标签 (全屏播放页底部来源行, 按需现读文件)。"""
     _require_user(request, users)
-    credits = library_queries.credits_for_track(library, track_id)
-    if credits is None:
+    track_credits = library_queries.credits_for_track(library, track_id)
+    if track_credits is None:
         raise HTTPException(404, "曲目不存在")
-    return credits
+    return track_credits
 
 
 @media.get("/stream/{track_id}")

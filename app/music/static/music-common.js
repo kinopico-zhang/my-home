@@ -100,10 +100,10 @@ function describeDuration(totalSeconds, trackCount) {
 // 播放↔暂停切换不左右跳位 (2026-09-14 前的三角右偏 2 格, 一切换肉眼可见地歪)。
 const ICON_PLAY = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6.583 17.075L6.583 6.925Q6.583 5.5 7.805 6.233L16.176 11.256Q17.416 12 16.176 12.744L7.805 17.767Q6.583 18.5 6.583 17.075z" fill="currentColor"/></svg>';
 const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M14.857 5.571q0.887 0 1.515 0.628t0.628 1.515l0 8.571q0 0.887-0.628 1.515t-1.515 0.628t-1.515-0.628t-0.628-1.515l0-8.571q0-0.887 0.628-1.515t1.515-0.628zM9.143 5.571q0.887 0 1.515 0.628t0.628 1.515l0 8.571q0 0.887-0.628 1.515t-1.515 0.628t-1.515-0.628t-0.628-1.515l0-8.571q0-0.887 0.628-1.515t1.515-0.628z" fill="currentColor"/></svg>';
-// 全屏播放页的播放/暂停: 裸白字形站在传输行主键上 (1.5.1 三键并进进度条行,
-// 64px 大键缩成 44px, 字形跟着 48→36)
-const ICON_PLAY_BIG = '<svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M5.029 3.127L19 10.889Q21 12 19 13.111L5.029 20.873Q3 22 3 19.679L3 4.321Q3 2 5.029 3.127z" fill="currentColor"/></svg>';
-const ICON_PAUSE_BIG = '<svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M4 4.5q0-2.5 2.5-2.5t2.5 2.5v15q0 2.5-2.5 2.5t-2.5-2.5v-15zM15 4.5q0-2.5 2.5-2.5t2.5 2.5v15q0 2.5-2.5 2.5t-2.5-2.5v-15z" fill="currentColor"/></svg>';
+// 全屏播放页的播放/暂停: 裸白字形站在传输键上 (三键一般大, 播放键
+// 不再大一号 —— 用户嫌中间的播放键过于巨大; 字形 36→32 只略大于上下曲)
+const ICON_PLAY_BIG = '<svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M5.029 3.127L19 10.889Q21 12 19 13.111L5.029 20.873Q3 22 3 19.679L3 4.321Q3 2 5.029 3.127z" fill="currentColor"/></svg>';
+const ICON_PAUSE_BIG = '<svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M4 4.5q0-2.5 2.5-2.5t2.5 2.5v15q0 2.5-2.5 2.5t-2.5-2.5v-15zM15 4.5q0-2.5 2.5-2.5t2.5 2.5v15q0 2.5-2.5 2.5t-2.5-2.5v-15z" fill="currentColor"/></svg>';
 const ICON_BARS = '<span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>';
 
 // ❝ 引号 glyph (与全屏页歌词键同款): 曲目行「有词」的标记。
