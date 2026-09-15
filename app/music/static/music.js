@@ -43,6 +43,7 @@ function currentRoute() {
   if (name === "search") return { view: "search" };
   if (name === "stats") return { view: "stats" };
   if (name === "settings") return { view: "settings" };
+  if (name === "changelog") return { view: "changelog" };
   if (name === "library") return { view: "library" };
   if (name === "album" && argument) return { view: "album", albumId: Number(argument) };
   if (name === "artist" && argument) return { view: "artist", artistId: Number(argument) };
@@ -116,6 +117,7 @@ function renderRootView(view) {
   if (view === "search") renderSearchView();
   else if (view === "stats") renderStatsView();
   else if (view === "settings") renderSettingsView();
+  else if (view === "changelog") renderChangelogView();
   else if (view === "library") renderLibraryView();
   else renderHomeView();
 }
@@ -338,6 +340,36 @@ async function downloadTrackFromUI(track) {
     }
   } catch (error) {
     toast(`下载失败: ${error.message}`);
+  }
+}
+
+let downloadAllCancelled = false;   // 下载管理「全部删除」置位, 整批叫停
+
+/** 「下载全部」: 一首下完再下下一首 (几十个 40MB 并发请求在手机上必炸),
+    已在库/正在下的跳过; 单首失败不断批, 收尾一并报数。 */
+async function downloadAllFromUI(tracks) {
+  if (!downloads) return;
+  const pending = tracks.filter((track) => track.playable
+    && !downloads.isDownloaded(track.track_id)
+    && !downloads.stateOf(track.track_id));
+  if (!pending.length) {
+    toast("都已经在下载里了");
+    return;
+  }
+  downloadAllCancelled = false;
+  let done = 0;
+  let failed = 0;
+  for (const track of pending) {
+    if (downloadAllCancelled) return;   // 下载管理里点了全部删除
+    try {
+      if (await downloads.downloadTrack(track)) done += 1;
+    } catch (error) {
+      failed += 1;
+    }
+  }
+  toast(failed ? `下载完成 ${done} 首, 失败 ${failed} 首` : `已下载 ${done} 首`);
+  if (done && navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});   // 别让系统清缓存
   }
 }
 
@@ -974,6 +1006,7 @@ function bindLibraryBody() {
     if (clearButton) {
       const count = downloads.entries().filter((entry) => !entry.state).length;
       if (window.confirm(`删除全部 ${count} 首已下载歌曲?`)) {
+        downloadAllCancelled = true;   // 若有「下载全部」在跑, 整批叫停
         downloads.removeAll()
           .then(() => toast("已清空下载"))
           .catch((error) => toast(`清空失败: ${error.message}`));
@@ -1200,6 +1233,9 @@ async function renderAlbumView(albumId, target) {
         ${ICON_ACTION_PLAY} 播放</button>
       <button class="action" id="album-shuffle" ${playable.length ? "" : "disabled"}>
         ${ICON_ACTION_SHUFFLE} 随机</button>
+      ${downloadsEnabled ? `
+      <button class="action" id="album-download" ${playable.length ? "" : "disabled"}>
+        ${ICON_DOWNLOAD} 下载全部</button>` : ""}
     </div>
     <div class="track-list" id="album-tracks">
       ${page.tracks.map((track, index) => trackRowHTML(track,
@@ -1214,6 +1250,10 @@ async function renderAlbumView(albumId, target) {
   target.querySelector("#album-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
+  const albumDownload = target.querySelector("#album-download");
+  if (albumDownload) {
+    albumDownload.addEventListener("click", () => downloadAllFromUI(page.tracks));
+  }
   bindTrackLists(target.querySelector("#album-tracks"), () => page.tracks);
   syncPlayerIndicators();
 }
@@ -1301,6 +1341,9 @@ async function renderPlaylistView(playlistId, target) {
         ${ICON_ACTION_PLAY} 播放</button>
       <button class="action" id="playlist-shuffle" ${playable.length ? "" : "disabled"}>
         ${ICON_ACTION_SHUFFLE} 随机</button>
+      ${downloadsEnabled ? `
+      <button class="action" id="playlist-download" ${playable.length ? "" : "disabled"}>
+        ${ICON_DOWNLOAD} 下载全部</button>` : ""}
       <button class="action" id="playlist-delete">${ICON_ACTION_TRASH} 删除列表</button>
     </div>
     <div class="track-list" id="playlist-tracks">
@@ -1312,6 +1355,10 @@ async function renderPlaylistView(playlistId, target) {
   target.querySelector("#playlist-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
+  const playlistDownload = target.querySelector("#playlist-download");
+  if (playlistDownload) {
+    playlistDownload.addEventListener("click", () => downloadAllFromUI(page.tracks));
+  }
   bindCoverPress(playlistId, playlist.name, !!cover);
   target.querySelector("#playlist-delete").addEventListener("click", async () => {
     if (!window.confirm(`删除播放列表「${playlist.name}」?`)) return;
@@ -1607,6 +1654,40 @@ function monthRowHTML(month) {
     </div>`;
 }
 
+// ------------------------------------------------------------ 更新日志
+// 应用内视图 (原来是整页跳转 /music/changelog, 会卸载音频断歌):
+// 拉同一个条目接口铺在 #main, 播放气泡常驻, 听歌不断。
+const CHANGELOG_KIND_CLS = { "新增": "add", "改进": "imp", "修复": "fix" };
+
+async function renderChangelogView() {
+  $("#main").innerHTML = '<div class="list-empty">正在读取版本历史…</div>';
+  let versions = null;
+  try {
+    versions = await fetchJSON("/music/changelog/api/entries");
+  } catch (error) {
+    $("#main").innerHTML = `<div class="list-empty">加载失败: ${escapeHTML(error.message)}</div>`;
+    return;
+  }
+  if (!versions.length) {
+    $("#main").innerHTML = '<div class="list-empty">还没有版本记录</div>';
+    return;
+  }
+  $("#main").innerHTML = `
+    <div id="changelog-entries">
+      ${versions.map((version) => `
+        <div class="ver">
+          <div class="v-head">
+            <span class="v-badge">${escapeHTML(version.version)}</span>
+            <span class="v-date">${escapeHTML(version.date)}</span>
+          </div>
+          <ul class="v-items">${version.items.map((item) => `
+            <li><span class="k k-${CHANGELOG_KIND_CLS[item.kind] || "imp"}">${escapeHTML(item.kind)}</span>
+                <span class="t">${escapeHTML(item.text)}</span></li>`).join("")}
+          </ul>
+        </div>`).join("")}
+    </div>`;
+}
+
 // ------------------------------------------------------------ 扫描状态
 // 服务器每几分钟自动增量重扫一轮 (新专辑自动冒出来), 这里 30 秒问一次:
 // 在扫 → 进度条; 收尾 → 动过库 (changed) 才静默刷新, 手动触发的才出提示。
@@ -1694,6 +1775,10 @@ function bindGlobalEvents() {
   $("#settings-link").addEventListener("click", () => {
     closeBrandMenu();
     navigate("settings");
+  });
+  $("#changelog-link").addEventListener("click", () => {
+    closeBrandMenu();
+    navigate("changelog");
   });
   $("#cover-file").addEventListener("change", () => {
     if (coverUploadPlaylistId) uploadPlaylistCover(coverUploadPlaylistId);

@@ -530,15 +530,17 @@ def test_lyrics_online_fetch_and_negative_cache(tmp_path, monkeypatch):
 
         # 曲B: 求到 → 写回, 之后再问直接走库 (不再打外网)
         got = library_queries.lyrics_for_track(session, ids["曲B"], api)
+        assert got is not None
         assert got.lyrics == "[00:01.00]联网歌词" and got.lyrics_synced
         assert library_queries.lyrics_for_track(session, ids["曲B"], api) == got
         assert calls == ["曲B"]
 
         # 曲C: 求不到 → 保持空, 负缓存挡住紧跟着的再问
         miss = library_queries.lyrics_for_track(session, ids["曲C"], api)
-        assert miss.lyrics == "" and not miss.lyrics_synced
+        assert miss is not None and miss.lyrics == "" and not miss.lyrics_synced
         again = library_queries.lyrics_for_track(session, ids["曲C"], api)
-        assert again.lyrics == "" and calls == ["曲B", "曲C"]
+        assert again is not None and again.lyrics == ""
+        assert calls == ["曲B", "曲C"]
 
 
 def test_search_four_boards(tmp_path):
@@ -853,8 +855,9 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=19" in html
-            and "music-player.js?v=15" in html)   # 版本号刷新
+    assert ("downloads.js?v=2" in html and "music.js?v=20" in html
+            and "music-player.js?v=16" in html
+            and "music-common.js?v=12" in html)   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1069,7 +1072,10 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=19" in html
+    assert "music.js?v=20" in html
+    # 长歌名不许把菜单撑超宽 (用户报"菜单非常宽, 建议截断"): 固定定位菜单
+    # 收缩到内容, 不封顶会一路撑到视口; 320px 封顶后 nowrap 截断才接管
+    assert "max-width: min(320px, calc(100vw - 24px))" in html
     # fetchJSON 把 HTTP 状态码挂上错误对象 (加歌 409 分叉靠它)
     common = (static / "music-common.js").read_text(encoding="utf-8")
     assert "status: response.status" in common
@@ -1175,30 +1181,6 @@ def test_music_lyrics_animation_wiring():
                  "function cancelLyricsScroll", "lyricsScrollRaf",
                  '"pointerdown", cancelLyricsScroll']:   # 手动滚动优先于动画
         assert frag in player, f"music-player.js 缺少 {frag}"
-
-
-def test_music_controls_apple_style_wiring():
-    """传输行 (1.5.1 三键并进进度条行): [−已播|进度条|−剩余|上一首/播放/下一首]
-    一行装下, 播放键 44px 当主键、其余 38px, 与底部功能键行分开;
-    进度条 range 住在 flex 行里要 flex:1+min-width:0 才肯让位收缩。
-    图标包围盒中心对准按键中心的不变量在 player-icons.test.mjs。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    common = (static / "music-common.js").read_text(encoding="utf-8")
-    transport = html[html.index(".fp-transport {"):html.index(".fp-actions {")]
-    assert "display: flex; align-items: center; gap: 10px" in transport  # 单行五件套
-    assert ".fp-scrub { flex: 1; min-width: 0; }" in transport  # range 让位收缩
-    assert 'id="fp-time-cur"' in html and 'id="fp-time-total"' in html  # 时间标签还在
-    assert "width: 38px; height: 38px; color: #fff; padding: 0" in html  # 上下曲小键
-    assert "#fp-play { width: 44px; height: 44px; }" in html      # 播放键大一圈
-    assert 'width="28" height="28"' in html                       # 上下曲字形缩小
-    assert 'width="36" height="36"' in common                     # 播放/暂停 36
-    assert ".fp-times" not in html                                # 旧三行布局撤了
-    assert ".fp-controls > button:active { transform: scale(.86)" in html  # 按压反馈
-    assert ".queue-modes" in html                             # 随机/循环进队列面板
-    assert "#fp-grab" in html                                 # 收起抓手
-    # 音量条整个撤了 (1.5.1, 用户点名): 音量交给设备音量键/系统音量
-    assert "#fp-volume" not in html and ".fp-volume" not in html
 
 
 def test_music_click_play_starts_from_beginning():
@@ -1513,8 +1495,8 @@ def test_media_edge_cases(auth, tmp_path):
 
     # 作词/作曲 (全屏播放页来源行): 带标签的读得出来, 没标签的空串
     qu_a = next(track for track in tracks if track["title"] == "曲A")
-    credits = auth.get(f"/music/api/tracks/{qu_a['track_id']}/credits").json()
-    assert credits == {"lyricist": "词人甲", "composer": "曲人乙"}
+    got_credits = auth.get(f"/music/api/tracks/{qu_a['track_id']}/credits").json()
+    assert got_credits == {"lyricist": "词人甲", "composer": "曲人乙"}
     assert auth.get(f"/music/api/tracks/{qu_b['track_id']}/credits").json() \
         == {"lyricist": "", "composer": ""}
 

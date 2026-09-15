@@ -15,6 +15,7 @@ let currentTrack = null;
 let lyricsCache = new Map();       // track_id → {synced, lines} | null (没歌词)
 let lyricsActiveIndex = -1;
 let lyricsViewOpen = false;
+let queueViewOpen = false;           // 封面区翻开成队列视图 (与歌词视图二选一)
 let scrubbing = false;
 let playRecorded = false;          // 本曲已报过最近播放 (暂停续播不重复报)
 // 歌词自由滑动: 手动滚过就暂停跟唱, 出"回到当前句"; 静置几秒自动恢复
@@ -120,7 +121,7 @@ function loadTrack(track, autoplay) {
   // 显式归零: HAVE_NOTHING 时是覆盖待生效进度, 已载入时是直接倒回开头。
   audio.currentTime = 0;
   renderPlayerChrome();
-  renderQueueSheet();
+  renderQueueView();
   if (lyricsViewOpen) loadLyrics();
   updateMediaSession();
   for (const listener of trackChangeListeners) listener(track);
@@ -221,7 +222,7 @@ function playerRestore() {
   audio.src = `/music/media/stream/${track.track_id}`;
   currentTrack = track;
   renderPlayerChrome();
-  renderQueueSheet();
+  renderQueueView();
   updateMediaSession();
   for (const listener of trackChangeListeners) listener(track);
   $("#fp-lyrics-btn").disabled = false;    // 探明前先恢复可点 (与 loadTrack 同款)
@@ -303,6 +304,9 @@ function updateSourceLine(track) {
 // 全落到下层列表上 (表现为按键没反应、点了别的歌)。
 let fpHideTimer = 0;
 
+let playerOpen = false;   // 全屏页开着吗 (popstate 收起与防重入都靠它)
+let poppingPlayerEntry = false;   // 是我们自己弹占位条目 (那记 popstate 别当返回手势)
+
 function openFullPlayer() {
   const fullPlayer = $("#full-player");
   clearTimeout(fpHideTimer);
@@ -310,19 +314,48 @@ function openFullPlayer() {
   fullPlayer.style.pointerEvents = "";
   void fullPlayer.offsetWidth;   // 强制起点样式先落地再放滑入 (rAF 在安静页会饿死)
   fullPlayer.classList.add("open");
+  if (!playerOpen) {
+    playerOpen = true;
+    // 挂一条同址历史: iOS 边缘右滑返回 = 收掉播放页露出底下的页面,
+    // 而不是把底下页面退一级。按钮收起时再把这条弹掉 (见 closeFullPlayer)。
+    if (!history.state || !history.state.fp) {
+      history.pushState({ fp: 1 }, "", location.href);
+    }
+  }
 }
 
-function closeFullPlayer() {
+// direction "right" = 返回手势收起 (向右滑出); 默认向下收。
+function closeFullPlayer(direction) {
+  if (!playerOpen) return;   // 按钮收起弹历史会再触发一次 popstate, 别重入
+  playerOpen = false;
   const fullPlayer = $("#full-player");
   fullPlayer.classList.remove("open");
+  if (direction === "right") fullPlayer.classList.add("dismiss-right");
   fullPlayer.style.pointerEvents = "none";   // 滑出途中别挡下层
   clearTimeout(fpHideTimer);
   fpHideTimer = setTimeout(() => {
     fullPlayer.hidden = true;
     fullPlayer.style.pointerEvents = "";
+    fullPlayer.classList.remove("dismiss-right");
   }, 300);
   if (lyricsViewOpen) toggleLyricsView();
+  if (queueViewOpen) closeQueueView();
+  // 按钮收起: 自己弹掉占位条目 (返回手势那条路浏览器已经弹了, state 里没 fp)
+  if (history.state && history.state.fp) {
+    poppingPlayerEntry = true;
+    history.back();
+  }
 }
+
+// iOS 边缘右滑 (或浏览器返回) 弹掉了播放页的占位条目 → 向右滑出收起。
+// 自己弹条目的那次 popstate 不算 (back 是异步的, 收起后 300ms 内重开也追得上)。
+window.addEventListener("popstate", () => {
+  if (poppingPlayerEntry) {
+    poppingPlayerEntry = false;
+    return;
+  }
+  if (playerOpen) closeFullPlayer("right");
+});
 
 // ------------------------------------------------------------ 下拉收起 / 横划切歌
 // 抓手条/封面往下拖: 播放页跟手下滑, 松手拖得够远或够快就收起, 否则弹回。
@@ -464,6 +497,7 @@ function prefetchLyrics(track) {
 }
 
 function toggleLyricsView() {
+  if (!lyricsViewOpen && queueViewOpen) closeQueueView();   // 同住封面区, 二选一
   lyricsViewOpen = !lyricsViewOpen;
   $("#fp-art-wrap").hidden = lyricsViewOpen;
   $("#fp-lyrics").hidden = !lyricsViewOpen;
@@ -615,35 +649,31 @@ function resumeLyricsFollow(scrollToActive = true) {
   }
 }
 
-// ------------------------------------------------------------ 队列面板
+// ------------------------------------------------------------ 队列视图 (占封面区)
 
-// 同播放页: 收起 300ms 内重开要撤掉隐藏定时器; 滑出途中放行点击。
-let queueHideTimer = 0;
-
-function openQueueSheet() {
-  clearTimeout(queueHideTimer);
-  renderQueueSheet();
-  $("#queue-mask").hidden = false;
-  const sheet = $("#queue-sheet");
-  sheet.hidden = false;
-  sheet.style.pointerEvents = "";
-  void sheet.offsetWidth;        // 同 openFullPlayer: 不等 rAF
-  sheet.classList.add("open");
+/** 点队列键: 封面原地翻开成播放队列 (顶排 随机/循环 + upcoming 列表)。
+    封面区就一块地方 —— 歌词开着先让歌词收掉。(开合状态 queueViewOpen
+    声明在文件顶部: 前面的收起函数也要引用它。) */
+function closeQueueView() {
+  queueViewOpen = false;
+  $("#fp-queue").hidden = true;
+  $("#fp-art-wrap").hidden = false;
+  $("#fp-queue-btn").classList.remove("on");
+  $("#full-player").classList.remove("queue");
 }
 
-function closeQueueSheet() {
-  const sheet = $("#queue-sheet");
-  sheet.classList.remove("open");
-  sheet.style.pointerEvents = "none";
-  $("#queue-mask").hidden = true;      // 遮罩不等动画 (点穿比残影烦人)
-  clearTimeout(queueHideTimer);
-  queueHideTimer = setTimeout(() => {
-    sheet.hidden = true;
-    sheet.style.pointerEvents = "";
-  }, 300);
+function toggleQueueView() {
+  if (queueViewOpen) { closeQueueView(); return; }
+  if (lyricsViewOpen) toggleLyricsView();   // 同住封面区, 二选一
+  queueViewOpen = true;
+  renderQueueView();
+  $("#fp-art-wrap").hidden = true;
+  $("#fp-queue").hidden = false;
+  $("#fp-queue-btn").classList.add("on");
+  $("#full-player").classList.add("queue");
 }
 
-function renderQueueSheet() {
+function renderQueueView() {
   if (!playQueue) return;
   const upcoming = queueUpcoming(playQueue);
   const currentId = playerCurrentTrackId();
@@ -714,9 +744,10 @@ function mediaSessionAction(action) {
 function bindPlayerEvents() {
   const audio = audioElement();
 
-  // 按钮点击不冒泡到 #mini-open (点了暂停/下一首不该弹全屏页)
+  // 按钮点击不冒泡到 #mini-open (点了上一首/暂停/下一首不该弹全屏页)
   $("#mini-play").addEventListener("click", (event) => { event.stopPropagation(); playerToggle(); });
   $("#mini-next").addEventListener("click", (event) => { event.stopPropagation(); playerNext(); });
+  $("#mini-prev").addEventListener("click", (event) => { event.stopPropagation(); playerPrevious(); });
   $("#mini-open").addEventListener("click", openFullPlayer);
   $("#fp-grab").addEventListener("click", () => {
     if (fpDismissDragged) {            // 刚拖过: 抬手补发的 click 不算
@@ -734,7 +765,7 @@ function bindPlayerEvents() {
     if (!playQueue) return;
     queueSetShuffle(playQueue, !playQueue.shuffle);
     updateShuffleRepeatButtons();
-    renderQueueSheet();
+    renderQueueView();
     savePlayerState();
     toast(playQueue.shuffle ? "随机播放: 开" : "随机播放: 关");
   });
@@ -746,9 +777,7 @@ function bindPlayerEvents() {
     toast(mode === "all" ? "列表循环" : mode === "one" ? "单曲循环" : "循环: 关");
   });
   $("#fp-lyrics-btn").addEventListener("click", toggleLyricsView);
-  $("#fp-queue-btn").addEventListener("click", openQueueSheet);
-  $("#queue-close").addEventListener("click", closeQueueSheet);
-  $("#queue-mask").addEventListener("click", closeQueueSheet);
+  $("#fp-queue-btn").addEventListener("click", toggleQueueView);
   $("#lyrics-resume").addEventListener("click", resumeLyricsFollow);
 
   // 手动滑歌词 (程序定位引发的 scroll 不算) → 暂停跟唱 + 出"回到当前句";

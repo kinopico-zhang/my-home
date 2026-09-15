@@ -9,6 +9,24 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.6.0", date="2026-09-15", items=[
+        ChangelogItem(kind="新增", text="播放队列不再从底部弹面板: 点队列键, 封面原地翻开成接下来的歌单,"
+                                       " 最上面两枚「随机播放 / 循环播放」键 (循环播放再点一下变单曲循环);"
+                                       " 点歌词键就翻回封面"),
+        ChangelogItem(kind="新增", text="播放页能用苹果的返回手势收起了: 屏幕左缘往右滑,"
+                                       " 播放页跟着滑走, 露出刚才被它挡住的页面"
+                                       " (不会把底下的列表退掉一级); 往下拉收起照旧"),
+        ChangelogItem(kind="新增", text="专辑页和播放列表页多了一枚「下载全部」:"
+                                       " 一键把整张歌单排进下载, 一首下完自动接下一首, 已经下载过的跳过;"
+                                       " 想停就在「已下载」栏里全部删除"),
+        ChangelogItem(kind="改进", text="更新日志挪进了应用里: 看日志不再打断正在听的歌, 底部播放条一直显示"
+                                       " (原来的日志网址也还能直接打开)"),
+        ChangelogItem(kind="改进", text="底部播放气泡补齐了「上一首」, 上一首/播放/下一首三键都在"),
+        ChangelogItem(kind="改进", text="上一首/播放/下一首三个键站到进度条的正上方居中, 三键一般大"
+                                       " (播放键不再大一号), 进度条那行整行留给时间和进度"),
+        ChangelogItem(kind="修复", text="歌名特别长的歌, 点 ⋯ 或长按弹出的菜单不再被撑得跟屏幕一样宽:"
+                                       " 放不下的名字截断, 末尾补省略号"),
+    ]),
     ChangelogVersion(version="1.5.1", date="2026-09-15", items=[
         ChangelogItem(kind="修复", text="播放页和队列面板刚收起就再点开, 偶尔没反应要点第二下 ——"
                                        " 收放太快赶在同一瞬间发生的竞态修掉了"),
