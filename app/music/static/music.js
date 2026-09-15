@@ -997,11 +997,16 @@ async function renderPlaylistView(playlistId) {
   const playlist = page.playlist;
   const playable = page.tracks.filter((track) => track.playable);
   const cover = playlistCoverURL(playlist);
+  const coverLabel = cover ? "换封面" : "设置封面";
   $("#main").innerHTML = `
     <div class="album-hero">
-      ${cover
-        ? `<img class="pl-icon big art" alt="" src="${cover}">`
-        : '<div class="pl-icon big">♫</div>'}
+      <button class="pl-cover-btn" id="cover-tap" aria-label="${coverLabel}"
+              title="${coverLabel}">
+        ${cover
+          ? `<img class="pl-icon big art" alt="" src="${cover}">`
+          : '<div class="pl-icon big">♫</div>'}
+        <span class="cover-hint" aria-hidden="true">${ICON_ACTION_IMAGE}</span>
+      </button>
       <div class="hero-txt">
         <h2>${escapeHTML(playlist.name)}</h2>
         <small>${escapeHTML(describeDuration(
@@ -1015,10 +1020,9 @@ async function renderPlaylistView(playlistId) {
         ${ICON_ACTION_SHUFFLE} 随机</button>
       <button class="action" id="playlist-delete">${ICON_ACTION_TRASH} 删除列表</button>
     </div>
-    <div class="cover-row">
-      <button class="cover-chip" id="cover-change">${ICON_ACTION_IMAGE} ${cover ? "换封面" : "设置封面"}</button>
-      ${cover ? `<button class="cover-chip" id="cover-remove">${ICON_ACTION_TRASH} 移除封面</button>` : ""}
-    </div>
+    ${cover ? `<div class="cover-row">
+      <button class="cover-chip" id="cover-remove">${ICON_ACTION_TRASH} 移除封面</button>
+    </div>` : ""}
     <div class="track-list" id="playlist-tracks">
       ${page.tracks.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")}
     </div>`;
@@ -1028,8 +1032,8 @@ async function renderPlaylistView(playlistId) {
   $("#playlist-shuffle").addEventListener("click", () => {
     playerStart(page.tracks, page.tracks.indexOf(playable[0]), true);
   });
-  $("#cover-change").addEventListener("click", () => {
-    $("#cover-file").click();        // 隐藏的文件选择器 (选完自动上传)
+  $("#cover-tap").addEventListener("click", () => {
+    $("#cover-file").click();        // 点大封面直接换 (隐藏的文件选择器)
   });
   if (cover) {
     $("#cover-remove").addEventListener("click", async () => {

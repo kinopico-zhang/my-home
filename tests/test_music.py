@@ -819,7 +819,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert "downloads.js?v=2" in html and "music.js?v=11" in html   # 版本号刷新
+    assert "downloads.js?v=2" in html and "music.js?v=12" in html   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
@@ -1028,7 +1028,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行 (music.js 这次改到 v9); Plex 同步全撤了
-    assert "music.js?v=11" in html
+    assert "music.js?v=12" in html
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
     assert "sync-playlists" not in html and "/playlists/sync" not in js
@@ -1078,7 +1078,8 @@ def test_music_playlist_cover_and_track_art_wiring():
     assert ".cover-chip" in html and ".t-art" in html \
         and ".pl-icon.art" in html                             # 行样式
     assert "function uploadPlaylistCover" in js
-    assert 'id="cover-change"' in js and 'id="cover-remove"' in js
+    assert 'id="cover-tap"' in js and 'id="cover-remove"' in js   # 点封面直接换
+    assert "cover-hint" in html and "pl-cover-btn" in html        # 角标提示可点
     assert '`/music/api/playlists/${playlistId}/cover`' in js  # PUT/DELETE 两个口
     assert "trackArtHTML" in js and "has_artwork" in js        # 曲目封面 (含占位)
     assert 'onerror="this.replaceWith(' in js   # 封面取不到退回音符占位, 不裂图

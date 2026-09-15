@@ -340,6 +340,22 @@ main {
 .pl-icon.art { object-fit: cover; }
 img.pl-icon { display: block; }
 
+/* 播放列表的大封面: 点一下直接换 (角标提示可点) */
+.pl-cover-btn {
+  position: relative; display: block; padding: 0; margin: 0;
+  border: none; background: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pl-cover-btn .pl-icon.big { transition: transform .15s ease; }
+.pl-cover-btn:active .pl-icon.big { transform: scale(.97); }
+.cover-hint {
+  position: absolute; right: 10px; bottom: 10px;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .55); color: #fff;
+}
+.cover-hint svg { width: 15px; height: 15px; }
+
 /* 播放列表详情的封面管理行 (换封面 / 移除) */
 .cover-row { display: flex; gap: 10px; justify-content: center; margin: 10px 0 4px; }
 .cover-chip {
@@ -779,6 +795,6 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=4"></script>
 <script src="/music/static/music-player.js?v=4"></script>
-<script src="/music/static/music.js?v=11"></script>
+<script src="/music/static/music.js?v=12"></script>
 </body>
 </html>
