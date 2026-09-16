@@ -271,6 +271,33 @@ def test_music_pane_fixed_chrome_wiring():
     assert 'pane.innerHTML = \'<div class="pane-scroll"></div>\'' in open_pane
 
 
+def test_music_standalone_header_frost_wiring():
+    """独立 app (主屏图标) 模式顶栏撤磨砂 (用户实测截图: 竖屏独立模式整条
+    顶栏连页签被栅成低清, 横屏清晰/浏览器清晰/气泡清晰 —— 触发点只在
+    竖屏带刘海的磨砂顶栏, translateZ 护甲在浏览器里够用、独立模式救不动):
+    ① 状态栏样式 black-translucent → black, 页面退到状态栏下面, 顶栏不再
+    叠在刘海区; ② JS 开局打 body.standalone 标 (display-mode 查询 +
+    navigator.standalone 双保险, iPhone 只认后者), CSS 撤 backdrop-filter
+    换近实底 —— 连吊在顶栏下沿的扫描条一起 (同样磨砂贴屏顶)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    # ① 页面不再伸进刘海区 (黑底应用看不出区别)
+    assert 'name="apple-mobile-web-app-status-bar-style" content="black"' in html
+    assert 'content="black-translucent"' not in html
+    # ② 独立模式撤磨砂: 前缀属性两条一起撤, 顶栏/扫描条各自保底色
+    standalone_css = html[html.index("body.standalone header"):
+                          html.index("/* ---------- 页签")]
+    assert "-webkit-backdrop-filter: none;" in standalone_css
+    assert "backdrop-filter: none;" in standalone_css
+    assert "body.standalone #scan-strip" in standalone_css
+    assert "rgba(10,10,12,.97)" in standalone_css
+    # 打标双保险住文件顶 (body 末尾脚本, 首帧前就位不闪磨砂)
+    assert 'matchMedia("(display-mode: standalone)")' in js
+    assert "navigator.standalone" in js
+    assert 'document.body.classList.add("standalone")' in js
+
+
 def test_music_player_dismiss_wiring():
     """播放页的收起路径 (1.7.0 单地址批): 下拉/Esc 向下收, 抓手条横拖右甩
     向右收 —— 全是纯视图开关, 不再挂历史条目 (一个地址批后浏览器里没有
