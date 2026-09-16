@@ -42,11 +42,11 @@ def test_music_controls_apple_style_wiring():
     # 紧凑实心形, 跟宽箭头同尺寸显得小 —— 28 对 24 才齐平; 撤掉旧补偿边距
     assert 'width="28" height="28"' in common
     assert "margin: 0 2px" not in html
-    # 歌词容器不画滚动条 (用户点名, 电脑浏览器才有): iOS 本来就没有,
-    # 桌面 Chrome/Safari 走伪元素, Firefox 走 scrollbar-width
-    lyrics_css = html[html.index("#fp-lyrics {"):html.index("#lyrics-resume")]
-    assert "scrollbar-width: none;" in lyrics_css
-    assert "#fp-lyrics::-webkit-scrollbar { display: none; }" in html
+    # 整个应用不画滚动条 (用户点名 "整个页面都不要"): 星规则管 Firefox,
+    # 伪元素管 Chrome/Safari; iOS 本来就不画 —— 能滚, 只是不显示
+    star_css = html[html.index("* {"):html.index("[hidden]")]
+    assert "scrollbar-width: none;" in star_css
+    assert "::-webkit-scrollbar { display: none; }" in html
 
 
 def test_music_queue_cover_view_wiring():
@@ -128,9 +128,9 @@ def test_music_share_link_wiring():
                  "fmtDateTime", "playQueue", "togglePlay"]:
         assert frag in share, f"share.html 缺 {frag}"
     assert "music.js?v=" not in share      # 自包含, 不引应用脚本
-    # 歌词容器不画滚动条 (电脑浏览器, 与应用内同款)
+    # 整页不画滚动条 (与应用同款: 星规则 + 伪元素)
     assert "scrollbar-width: none;" in share
-    assert "#fp-lyrics::-webkit-scrollbar { display: none; }" in share
+    assert "::-webkit-scrollbar { display: none; }" in share
     # 全屏播放页 (用户点名"和 app 自己的播放界面大致一样"): 点迷你条掀开,
     # 封面点一下 ↔ 歌词 (近邻模糊同款), 传输三键 + 进度 + 毛玻璃底 +
     # 下拉收起; 歌词解析借公开的 lyrics-parser.js (纯模块, 不带会话)
@@ -177,9 +177,16 @@ def test_music_swipe_delete_wiring():
     # 手势地盘分家 (1.7.0 后遗症修): 左滑只认左移 (右移归推入层返回手势,
     # 抢了会被 pointercancel 掐弹回); 左缘 24px 让给 iOS 系统边缘返回
     assert "swipeDrag.horizontal = dx < 0 && Math.abs(dx) > Math.abs(dy);" in js
-    # 左缘只让给系统手势; 主屏图标打开 (standalone) 没有系统手势, 自己接管
+    # 左缘两种返回手势都归应用自己 (用户点名 "都是气泡固定"): 浏览器里
+    # iOS 系统边缘返回是整页截图滑走, 钉死的气泡跟着截图跑 —— 非被动
+    # touchstart 在层内左缘 preventDefault 掐掉系统手势起手; 掐掉的兼容
+    # click 由 pointerup 合成补发; standalone 没系统手势不掐 (左缘滚动保留)
     assert "const standaloneLaunch" in js
-    assert 'if (!standaloneLaunch && event.pointerType !== "mouse"' in js
+    assert 'if (!standaloneLaunch && event.pointerType !== "mouse"' not in js
+    assert "event.touches[0].clientX < 24" in js
+    assert 'event.target.closest(".push-pane")' in js
+    assert '{ passive: false });' in js
+    assert 'hit.closest("button, a")' in js
     # 拖动跟手: 行上挂 .swiping 撤掉 transform 过渡, 松手回位才交给过渡
     # (不撤的话每帧都在重定 250ms 补间, 手指拖着行像皮筋 —— 队列拖拽同款)
     assert 'swipeDrag.row.classList.add("swiping")' in js
@@ -267,8 +274,12 @@ def test_music_player_back_gesture_wiring():
         in close_player
     assert "history.back()" in close_player      # 按钮收起弹占位条目
     assert "poppingPlayerEntry" in player        # 自己的 back 不当返回手势
-    assert 'window.addEventListener("popstate", () => {' in player
+    assert 'window.addEventListener("popstate", (event) => {' in player
     assert 'closeFullPlayer("right")' in player
+    # 前进键也要对齐 (app 思路: 历史条目 = 应用状态): 前进回到播放页占位
+    # 条目 → 重开播放页 (原来只会收, 按了没反应)
+    assert "if (event.state && event.state.fp) {" in player
+    assert "if (!playerOpen) openFullPlayer();" in player
 
 
 def test_music_download_all_wiring():
