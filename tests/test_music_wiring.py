@@ -147,10 +147,10 @@ def test_music_share_link_wiring():
         assert frag in share_all, f"share.html 缺 {frag}"
     # 微信卡片: <head> 留 og 占位注释, 服务端换掉 (占位符漏替换卡片就漏空)
     assert "<!--og-->" in share
-    webapp = (Path(__file__).parent.parent / "app" / "music"
-              / "webapp.py").read_text(encoding="utf-8")
-    assert '_OG_MARK = "<!--og-->"' in webapp
-    assert '"/share/{token}/lyrics/{track_id}"' in webapp
+    share_routes = (Path(__file__).parent.parent / "app" / "music"
+                    / "webapp" / "share_routes.py").read_text(encoding="utf-8")
+    assert '_OG_MARK = "<!--og-->"' in share_routes
+    assert '"/share/{token}/lyrics/{track_id}"' in share_routes
     # 分享页对整站是公开前缀 (中间件只认这个面, 过期由路由自己验)
     main_py = (Path(__file__).parent.parent / "app" / "main.py").read_text(
         encoding="utf-8")
@@ -360,10 +360,14 @@ def test_music_bottom_tabbar_wiring():
     # 排查期的探针 (前端上报 + 后端接口 + 模型) 全撤净
     assert "header-probe" not in js
     assert "测试条" not in js
-    webapp = (Path(__file__).parent.parent / "app" / "music"
-              / "webapp.py").read_text(encoding="utf-8")
-    schemas = (Path(__file__).parent.parent / "app" / "music"
-               / "schemas.py").read_text(encoding="utf-8")
+    webapp_dir = Path(__file__).parent.parent / "app" / "music" / "webapp"
+    webapp = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(webapp_dir.glob("*.py")))
+    schemas_dir = Path(__file__).parent.parent / "app" / "music" / "schemas"
+    schemas = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(schemas_dir.glob("*.py")))
     assert "header-probe" not in webapp and "probe.jsonl" not in webapp
     assert "HeaderProbeReport" not in schemas and "HeaderProbeReport" not in webapp
 
