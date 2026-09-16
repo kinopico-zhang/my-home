@@ -81,14 +81,6 @@ function route(force) {
 
 const pushStack = [];   // [{view, id, pane}]
 
-// 主屏图标打开的独立窗口 (standalone) 没有 Safari 左缘返回手势 —— 左缘
-// 必须自己接管, 不然那儿成了死区 (用户点名 "返回手势不好用")。浏览器里
-// 左缘也不能让给系统手势: 系统返回是拿整页截图滑走, 钉死的气泡跟着截图
-// 一起跑 (用户点名两边都要气泡固定) —— 掐法见 bindPaneSwipe 后的监听。
-const standaloneLaunch = (window.matchMedia
-  && window.matchMedia("(display-mode: standalone)").matches)
-  || window.navigator.standalone === true;
-
 function headerBottom() {
   return document.querySelector("header").getBoundingClientRect().bottom;
 }
@@ -189,10 +181,10 @@ function closePushStack(keep = 0) {
 /** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
     或带甩劲松手就收层, 否则弹回。收层自己滑完再 history.back 对齐地址栏
     (路由一看那层已就位, 只做收尾不动画第二遍)。
-    左缘也自己接管: 浏览器里 iOS 系统边缘返回是整页截图滑走, 钉死的
-    气泡跟着截图跑 (用户点名 "都是气泡固定") —— 配套的非被动 touchstart
-    把左缘起手掐掉 (见下方拦截块), 拖拽照常跟手;
-    standalone 没有系统手势, 不掐 (左缘起手的竖向滚动得以保留)。 */
+    左缘的归属按环境各安其位: 主屏图标打开 (standalone) 没有系统手势,
+    整条左缘 (含屏幕最边) 都是这里的; 浏览器里苹果把最边上一小条握在
+    系统手里 (整页截图滑走, 网页收不到触摸, preventDefault/Navigation
+    API 都掐不动 —— 试过两轮, 别再试), 那一条之外的左缘归这里。 */
 function bindPaneSwipe(pane) {
   pane.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -221,7 +213,7 @@ function bindPaneSwipe(pane) {
     };
     const end = (ev) => {
       cleanup();
-      if (!horizontal) return;      // 点按/竖向: 点按的兼容 click 由拦截块统一补发
+      if (!horizontal) return;      // 点按/竖向: 不归这里管
       const dx = Math.max(0, ev.clientX - startX);
       const width = pane.offsetWidth || 1;
       const flick = ev.timeStamp - lastT < 100 && lastX - startX > 40;
@@ -246,45 +238,6 @@ function bindPaneSwipe(pane) {
     pane.addEventListener("pointerup", end, { signal: signals.signal });
     pane.addEventListener("pointercancel", cancel, { signal: signals.signal });
   });
-}
-
-/** 浏览器里掐掉 iOS 系统边缘返回的起手 (一次性挂在 document, 层开着时
-    对左缘 44px 生效, 不论起手落点): 系统返回是拿整页截图滑走, 气泡这种
-    钉死的固定件也跟着截图跑 —— 只有不让系统手势起手, "气泡唯一且固定"
-    才在两种返回手势下都成立 (用户点名)。非被动 touchstart +
-    preventDefault 是唯一掐得动系统手势的口子; pointer 事件不受影响,
-    拖拽照常跟手。第一版 24px + 只认层内落点, Safari 实测没掐住 ——
-    系统识别带比 24 宽 (社区配方都取 ~10% 视口宽), 磨砂顶栏和气泡也
-    压在层外; 这版放宽到 44 且不限落点。代价: 左缘起手的竖向滚动没了
-    (44px 的缝), 点按的兼容 click 也被掐, 由 touchend 按落点合成补发
-    (页面上可点的都是 button/a, 兜不到就当点空处)。
-    standalone 没有系统手势, 不挂 (左缘滚动保留)。 */
-if (!standaloneLaunch) {
-  const EDGE_STRIP_PX = 44;
-  let edgeTouchId = null;              // 被掐的那根手指 (按 identifier 追)
-  let edgeStartX = 0;
-  let edgeStartY = 0;
-  document.addEventListener("touchstart", (event) => {
-    if (!pushStack.length || !event.touches.length) return;
-    const touch = event.touches[0];
-    if (touch.clientX >= EDGE_STRIP_PX) return;
-    edgeTouchId = touch.identifier;
-    edgeStartX = touch.clientX;
-    edgeStartY = touch.clientY;
-    event.preventDefault();
-  }, { passive: false });
-  document.addEventListener("touchend", (event) => {
-    if (edgeTouchId === null) return;
-    const touch = Array.from(event.changedTouches)
-      .find((item) => item.identifier === edgeTouchId);
-    edgeTouchId = null;
-    if (!touch || Math.hypot(touch.clientX - edgeStartX,
-                             touch.clientY - edgeStartY) > 12) return;
-    const hit = document.elementFromPoint(touch.clientX, touch.clientY);
-    const clickable = hit && hit.closest("button, a");
-    if (clickable) clickable.click();  // 原生 click 被一并掐了, 补一记
-  });
-  document.addEventListener("touchcancel", () => { edgeTouchId = null; });
 }
 
 // ------------------------------------------------------------ 下载 (离线)
