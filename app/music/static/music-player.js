@@ -364,11 +364,20 @@ function closeFullPlayer(direction) {
   }
 }
 
-// iOS 边缘右滑 (或浏览器返回) 弹掉了播放页的占位条目 → 向右滑出收起。
-// 自己弹条目的那次 popstate 不算 (back 是异步的, 收起后 300ms 内重开也追得上)。
-window.addEventListener("popstate", () => {
+// 播放页占位条目的进出全在这里对齐 (app 思路: 历史条目 = 应用状态,
+// 后退/前进都得还原) ——
+//   后退弹掉它 (边缘右滑/浏览器返回): 向右滑出收起;
+//   前进回到它: 重新掀开播放页 (历史已经站在那条上, openFullPlayer
+//     不会再多挂一条);
+//   自己弹条目的那次 popstate 不算 (back 是异步的, 收起后 300ms 内
+//     重开也追得上)。
+window.addEventListener("popstate", (event) => {
   if (poppingPlayerEntry) {
     poppingPlayerEntry = false;
+    return;
+  }
+  if (event.state && event.state.fp) {
+    if (!playerOpen) openFullPlayer();
     return;
   }
   if (playerOpen) closeFullPlayer("right");
