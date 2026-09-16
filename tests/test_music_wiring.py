@@ -308,7 +308,7 @@ def test_music_bottom_tabbar_wiring():
     assert "backdrop-filter: blur(20px) saturate(180%);" in tabbar_css
     assert "env(safe-area-inset-bottom)" in tabbar_css   # 让开小白条
     assert "env(safe-area-inset-left)" in tabbar_css     # 横屏让开圆角
-    assert "--tabbar-h: 44px;" in tabbar_css
+    assert "--tabbar-h: 38px;" in tabbar_css
     assert "color: var(--accent);" in tabbar_css         # 点亮页签吃苹果红
     # 双指缩放全禁: 列表行 pan-y 本来就捏不动, 页签栏/气泡原来能捏大 — body 收口
     body_css = html[html.index("body {"):html.index("button {")]
@@ -372,10 +372,11 @@ def test_music_sys_top_fallback():
     """iOS 26.1+/27 顶带 bug 的兜底 (2026-09-16): 苹果系统在主屏应用顶部盖
     一条 DOM 够不着的磨砂带, 且 env(safe-area-inset-top) 被误报成 0
     (WebKit 301994, 26.5.2/27 复发; 用户手机已升 iOS 27)。env 失效后所有
-    CSS 顶部让位全废 —— JS 在独立模式+竖屏+iPhone+系统没代推 (innerHeight
-    没被吃) 的场合, 按机型屏幕尺寸表把近似刘海高度写进 --sys-top-inset,
+    CSS 顶部让位全废 —— JS 在独立模式+竖屏+iPhone 的场合按变体兜高度写进
+    --sys-top-inset (盖磨砂型: 机型表+磨砂深度; 推下型: 推下量+渗边),
     CSS 三处让位 (main/二级页顶衬/播放页抓手) 全部 max(env, 兜底)。
-    顺带一条排查期读数条 (#sys-debug), 拿到用户真值就撤。"""
+    让位区再铺一块不透明黑罩 (#top-shield): 磨砂盖纯黑 = 隐形, 滚进顶部
+    的内容只会被罩子干净遮住; 推下型里系统抓拍条里也只剩黑罩, 残影隐形。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
@@ -389,18 +390,25 @@ def test_music_sys_top_fallback():
     grab_css = html[html.index("#fp-grab {"):html.index("#fp-grab div")]
     assert "calc(max(env(safe-area-inset-top, 0px), var(--sys-top-inset, 0px)) + 3px)" \
         in grab_css
-    # 兜底只在「独立模式 + 竖屏 + iPhone + env 报 0 + 系统没代推」时启动:
-    # 浏览器/健康 iOS 里 --sys-top-inset 恒 0, env 原样生效
+    # 兜底分变体 (只在「独立模式 + 竖屏 + iPhone」里启动, 浏览器/健康
+    # iOS 里 --sys-top-inset 恒 0, env 原样生效):
+    #   盖磨砂型 (env=0): 机型表 + SYS_FROST_EXTRA;
+    #   推下型 (push>40): 推下量 + SYS_PUSH_BLEED, 让黑罩盖过整条系统带
+    #     (带子里是系统从网页顶部抓拍的画面, 罩子够高 = 抓拍条只剩纯黑)。
+    # 会话锁只锁在中招变体里: env 抖回真值不撤兜底; 横屏/浏览器立即清零
+    # (锁着进横屏会把竖屏兜底高度带过去, 顶部凭空让出一大截)。
     block = js[js.index("const SYS_TOP_INSETS"):js.index("bindGlobalEvents();")]
-    # 系统磨砂带比安全区深一截 (用户 iOS 27.2 实测: 兜 59 时第一排内容
-    # 仍被栅糊, CSS 116 起才锐利 → 带子 ≈115px ≈ 刘海高 + 56):
-    # 兜底值 = 机型表刘海高 + SYS_FROST_EXTRA, 别只让到刘海线
     assert "SYS_FROST_EXTRA = 56" in block
+    assert "SYS_PUSH_BLEED = 12" in block
     assert "return inset + SYS_FROST_EXTRA;" in block
     assert "375x812" in block and "440x956" in block      # 机型表覆盖两代刘海
     assert 'matchMedia("(display-mode: standalone)").matches' in block
     assert 'matchMedia("(orientation: portrait)").matches' in block
-    assert "screen.height - innerHeight > 40" in block     # 系统代推的场合不兜
+    assert "const push = screen.height - innerHeight;" in block
+    assert "if (push > 40) {" in block
+    assert "target = push + SYS_PUSH_BLEED;" in block
+    assert "if (target) sysTopLocked = target;" in block
+    assert "else if (!eligible) sysTopLocked = 0;" in block
     assert "document.documentElement.style.setProperty" in block
     assert '"--sys-top-inset"' in block
     # env 用 DOM 探针量 (fixed 元素高 = env 值), 量完即撤
@@ -411,18 +419,44 @@ def test_music_sys_top_fallback():
     assert block.count("setTimeout(syncSysTopInset") == 2
     assert "addEventListener(\"orientationchange\", syncSysTopInset);" in block
     assert "visibilitychange" in block
-    # 会话锁 (2026-09-16 二次排查): env 抖回真值的那一下不许撤兜底
-    # (撤了内容整页跳回磨砂带); 系统代推时解锁, 冷启动首读真值则锁不上
+    # 会话锁声明还在 (锁语义的断言在变体块里)
     assert "let sysTopLocked = 0;" in block
-    assert "if (need) sysTopLocked = sysTopInsetFor" in block
-    assert "else if (state.pushed) sysTopLocked = 0;" in block
-    # 排查期读数条: 挂在 body 上, 独立/浏览器、env/兜底、屏幕尺寸都报;
-    # 开头自报脚本版本 (J34 = ?v=34), 读数先对版本再解读
-    assert 'chip.id = "sys-debug"' in block
-    assert "调试J34" in block
-    assert "envT=" in block and "屏${screen.width}x${screen.height}" in block
-    debug_css = html[html.index("#sys-debug {"):html.index("}\n", html.index("#sys-debug {"))]
-    assert "pointer-events: none;" in debug_css   # 只读不挡
+    # 排查期读数条 (#sys-debug) 已撤 (用户点名): 拿到真值收工, 别再挂绿字
+    assert "sys-debug" not in js and "#sys-debug" not in html
+    # 不透明黑罩: 高度与三处让位同源 (max(env, 兜底)), 盖在一切内容之上、
+    # 菜单之下; 健康设备里只到状态栏下缘, 桌面上恒 0 不渲染
+    shield_css = html[html.index("#top-shield {"):html.index("}\n", html.index("#top-shield {"))]
+    assert "position: fixed; top: 0; left: 0; right: 0;" in shield_css
+    assert "height: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));" in shield_css
+    assert "background: #000;" in shield_css
+    assert "z-index: 96;" in shield_css
+    assert '<div id="top-shield" aria-hidden="true"></div>' in html
+
+
+def test_music_171_polish_batch():
+    """1.7.1 打磨批接线 (2026-09-16, 全是用户点名): 待播放列表四边留白
+    对齐大封面; 专辑名过长单行截断 (原来换行把网格顶得参差); 资料库
+    歌曲行/专辑页曲目行的编号换成封面缩略图 (序号没用还常从 101 起 ——
+    多碟专辑的音轨标签); 封面图加 SW Cache API 一层缓存 (iOS 的 HTTP
+    缓存容易被系统清掉, 大库一刷列表几百张图全回源)。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    sw = (static / "sw.js").read_text(encoding="utf-8")
+    # 队列视图: inset:0 罩到 .fp-body 边, 自己衬回和大封面同款的 24px
+    queue_css = html[html.index("#fp-queue {"):html.index(".fq-head {")]
+    assert "padding: 6px 24px 30px;" in queue_css
+    # 专辑名单行截断 (line-clamp 1), 排版不再被长名换行顶乱
+    album_css = html[html.index(".album-card b {"):html.index(".album-card small")]
+    assert "-webkit-line-clamp: 1;" in album_css
+    # 曲目行的编号位全下岗: 资料库歌曲段和专辑页都换成封面缩略图
+    assert "t-index" not in js and "track_number" not in js
+    assert 'trackRowHTML(track, trackArtHTML(track), "art"))' in js
+    # SW 封面缓存: 封面族缓存优先, 没缓存才回源; 条数封顶防膨胀
+    assert 'const ARTWORK_CACHE = "music-artwork-v1";' in sw
+    assert "serveArtwork(request)" in sw
+    assert "trimArtworkCache(cache);" in sw
+    assert "/artwork$|^\\/music\\/media\\/playlists" in sw   # 封面族正则 (含列表封面)
 
 
 def test_music_player_dismiss_wiring():

@@ -9,6 +9,27 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.7.1", date="2026-09-16", items=[
+        ChangelogItem(kind="修复", text="页顶那条系统带的最后一块: 让位区里铺一块不透明的黑顶带,"
+                                       " 系统磨砂盖在纯黑上就看不出来了 —— 滚进顶部的内容"
+                                       " 只会被黑带干净地遮住 (像普通应用的状态栏),"
+                                       " 不再被栅糊; 系统往下压网页的那副面孔里,"
+                                       " 顶带显示的是它从网页顶部抓拍的画面,"
+                                       " 黑带盖过整条, 抓拍条里就只剩纯黑, 残影跟着隐形"),
+        ChangelogItem(kind="改进", text="底部页签栏再压矮一档 (图标小了一号, 标签还在)"),
+        ChangelogItem(kind="改进", text="播放页的「待播放」列表四边留白和大封面同宽"
+                                       " (原来列表贴着屏幕边, 显得挤)"),
+        ChangelogItem(kind="改进", text="资料库专辑名过长不再换行把网格顶得参差 ——"
+                                       " 单行截断, 末尾补省略号"),
+        ChangelogItem(kind="改进", text="资料库歌曲行和专辑页曲目行的编号撤了"
+                                       " (编号没什么用, 多碟专辑还常从 101 起),"
+                                       " 换成每首歌自己的封面缩略图"),
+        ChangelogItem(kind="改进", text="封面图多用一层缓存: 以前苹果手机会整体清掉网页缓存,"
+                                       " 刷一次列表几百张封面全要重新回服务器拿"
+                                       " (费流量, 加载也慢); 现在封面存在更牢的一层缓存里,"
+                                       " 看过的封面下次直接秒出"),
+        ChangelogItem(kind="改进", text="资料库的语种筛选撤掉 (搜索页的语种筛选早就撤了)"),
+    ]),
     ChangelogVersion(version="1.7.0", date="2026-09-16", items=[
         ChangelogItem(kind="修复", text="顶栏发糊治好了 —— 把导航整个搬到了屏幕底部:"
                                        " 主页/资料库/搜索/设置四个图标页签排在播放气泡下面,"
