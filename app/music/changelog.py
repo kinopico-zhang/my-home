@@ -10,6 +10,10 @@ from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
     ChangelogVersion(version="1.7.0", date="2026-09-16", items=[
+        ChangelogItem(kind="修复", text="顶栏有时像蒙着一层很模糊的涂层, 页签和按钮都看不清 ——"
+                                       " 顶栏没钉在自己的图层上, 清晰度跟着底下滚过、滑过的页面"
+                                       "一起掉了; 现在像底部播放气泡一样钉在自己的图层上,"
+                                       " 一直清晰"),
         ChangelogItem(kind="修复", text="应用图标换回 Apple Music 那款红底白音符 ——"
                                        " 前几天一次改版误换成了唱片图案 (一圈圈同心圆),"
                                        " 主屏上一直是旧图标所以没察觉, 重新添加主屏图标时才露馅;"
