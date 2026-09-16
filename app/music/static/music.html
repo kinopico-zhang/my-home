@@ -28,15 +28,18 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
-     /* overflow-x 兜底: 谁也不许把页面撑宽 (撑宽了 iPhone 能整页左右滑,
-        固定的迷你播放条也跟着晃); 真正的溢出源在 .t-title-text/.t-time 收口 */
+html { -webkit-text-size-adjust: 100%; height: 100%; overflow: hidden; }
+     /* 固定壳: 文档本身永不滚 —— 一级页滚动全在 main 内部滚 (用户点名
+        滚动时顶栏/气泡也得钉死: iPhone 工具栏只跟文档滚动收放, 文档不滚
+        视口就恒定, 钉在视口上的东西无从移动)。overflow 顺带兜底页面撑宽
+        (真正的溢出源在 .t-title-text/.t-time 收口) */
 body {
   background: var(--bg); color: var(--ink-1);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
                "Helvetica Neue", system-ui, sans-serif;
   font-size: 14px; line-height: 1.45;
-  min-height: 100vh; min-height: 100dvh;
+  height: 100vh; height: 100dvh;   /* 壳的高度 (dvh 优先); 文档不滚 */
+  overflow: hidden;
   display: flex; flex-direction: column;
 }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -113,7 +116,13 @@ header {
 
 /* ---------- 主区 ---------- */
 main {
-  flex: 1; width: 100%; max-width: 860px; margin: 0 auto;
+  flex: 1; width: 100%; min-height: 0;   /* min-height:0: flex 子不缩就滚不动 */
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
+}
+/* 一级页内容列: 限宽居中让 main 自己全宽 (sticky 顶栏住在 main 里,
+   磨砂条得铺满屏幕); 触摸落在顶栏上也是滚这层 (和原来滚文档同手感) */
+#root-view {
+  max-width: 860px; margin: 0 auto;
   padding: 14px 16px calc(90px + env(safe-area-inset-bottom));
 }
 
@@ -834,7 +843,7 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 @media (min-width: 700px) {
-  main { padding-left: 28px; padding-right: 28px; }
+  #root-view { padding-left: 28px; padding-right: 28px; }
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 }
 </style>
@@ -843,6 +852,10 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 
 <audio id="audio" preload="none"></audio>
 
+<!-- 固定壳: 文档不滚, main 是唯一一级滚动器; 顶栏 (sticky top:0) 住在
+     main 里 —— 钉在滚动器口上, 视口怎么变都不挪窝, z 50 仍压着推入层 44,
+     二级页从它底下扫过; 磨砂条全宽 (main 全宽, 860 限宽在 #root-view) -->
+<main id="main">
 <header>
   <div class="nav-row">
     <div id="view-tabs">
@@ -866,8 +879,8 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   <!-- 扫描条常驻 header 内 (absolute 吊在下面): 出现/消失不挤布局, 顶栏纹丝不动 -->
   <div id="scan-strip" hidden><span class="dot"></span><span id="scan-text">曲库扫描中</span></div>
 </header>
-
-<main id="main"><div class="list-empty">加载中…</div></main>
+<div id="root-view"><div class="list-empty">加载中…</div></div>
+</main>
 
 <!-- 二级页推入层: 专辑/艺人/播放列表从右滑入盖住一级, 右划 (左缘起手) 滑回 -->
 <div id="push-stack"></div>
@@ -965,6 +978,6 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=13"></script>
 <script src="/music/static/music-player.js?v=18"></script>
-<script src="/music/static/music.js?v=22"></script>
+<script src="/music/static/music.js?v=23"></script>
 </body>
 </html>
