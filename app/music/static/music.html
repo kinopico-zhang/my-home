@@ -146,9 +146,12 @@ main {
     顶栏底下扫过 (那种不重影), 内容用 --pane-top 让开顶栏 */
   display: flex; justify-content: center;      /* 内容列宽对齐 main 的 860px */
   background: var(--bg);
-  box-shadow: -10px 0 28px rgba(0,0,0,.4);
+  box-shadow: -10px 0 26px -8px rgba(0,0,0,.5);  /* 收紧竖向渗出: 磨砂气泡
+    取样区比本体外扩 blur(20), 投影渗进取样区也是重影的引子 */
   transform: translateX(100%);
   transition: transform .34s cubic-bezier(.32,.72,.35,1);
+  will-change: transform;   /* 层终身常驻: 滑出结束不降级合并 (合并瞬间
+    WebKit 会把旁边的固定元素复印进来 = 收层时气泡跟着页面跑的元凶) */
   pointer-events: auto;
   touch-action: pan-y;                         /* 横拖留给右划返回手势 */
   user-select: none; -webkit-user-select: none;
@@ -556,6 +559,8 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hairline); border-radius: 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  transform: translateZ(0);   /* 自家合成层: WebKit 复印不进旁边任何变换层
+    (收层动画里气泡跟着页面跑的另一半保险) */
 }
 #mini-progress {
   position: absolute; top: 0; left: 0; height: 2px;
