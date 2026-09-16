@@ -857,7 +857,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=34" in html
+    assert ("downloads.js?v=2" in html and "music.js?v=35" in html
             and "music-player.js?v=19" in html
             and "music-common.js?v=13" in html
             and "player-queue.js?v=3" in html)   # 版本号刷新
@@ -1103,7 +1103,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=34" in html
+    assert "music.js?v=35" in html
     # 长歌名不许把菜单撑超宽 (用户报"菜单非常宽, 建议截断"): 固定定位菜单
     # 收缩到内容, 不封顶会一路撑到视口; 320px 封顶后 nowrap 截断才接管
     assert "max-width: min(320px, calc(100vw - 24px))" in html
@@ -1176,17 +1176,18 @@ def test_music_playlist_cover_and_track_art_wiring():
 
 
 def test_music_search_page_and_lockscreen_wiring():
-    """1.4.1 后半批接线: 搜索页语种筛选撤掉 (搜全语种, 资料库筛选保留) +
+    """1.4.1 后半批接线: 搜索页语种筛选撤掉 (2026-09-16 资料库也撤了) +
     页面不许横向溢出 (标题/右列文字收口, 长艺人名撑不宽) +
     锁屏进度随暂停/跳句/变速重报真实位置。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
     player = (static / "music-player.js").read_text(encoding="utf-8")
-    # 搜索页: 语种 chips 撤了, 查询不再带 language; 资料库的筛选行保留
+    # 语种筛选两处都撤净 (1.4.1 撤搜索页, 2026-09-16 再撤资料库):
+    # chips 行/常量/接口参数全不该再出现
     assert "search-chips" not in js and "search-chips" not in html
-    assert "lib-chips" in js and "chipsHTML" in js
-    assert "&language=" not in js
+    assert "lib-chips" not in js and "chipsHTML" not in js
+    assert "&language=" not in js and "language:" not in js
     # 横向溢出: html 兜底禁横滑 + 行内标题包收缩层 + 右列可省略
     assert "overflow: hidden" in html   # 固定壳 (2026-09-16): 连 x 带 y 一起锁
     assert ".t-title-text" in html and "t-title-text" in js
