@@ -392,6 +392,11 @@ def test_music_sys_top_fallback():
     # 兜底只在「独立模式 + 竖屏 + iPhone + env 报 0 + 系统没代推」时启动:
     # 浏览器/健康 iOS 里 --sys-top-inset 恒 0, env 原样生效
     block = js[js.index("const SYS_TOP_INSETS"):js.index("bindGlobalEvents();")]
+    # 系统磨砂带比安全区深一截 (用户 iOS 27.2 实测: 兜 59 时第一排内容
+    # 仍被栅糊, CSS 116 起才锐利 → 带子 ≈115px ≈ 刘海高 + 56):
+    # 兜底值 = 机型表刘海高 + SYS_FROST_EXTRA, 别只让到刘海线
+    assert "SYS_FROST_EXTRA = 56" in block
+    assert "return inset + SYS_FROST_EXTRA;" in block
     assert "375x812" in block and "440x956" in block      # 机型表覆盖两代刘海
     assert 'matchMedia("(display-mode: standalone)").matches' in block
     assert 'matchMedia("(orientation: portrait)").matches' in block
