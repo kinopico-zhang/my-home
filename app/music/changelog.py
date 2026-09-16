@@ -10,6 +10,11 @@ from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
     ChangelogVersion(version="1.7.0", date="2026-09-16", items=[
+        ChangelogItem(kind="修复", text="应用图标换回 Apple Music 那款红底白音符 ——"
+                                       " 前几天一次改版误换成了唱片图案 (一圈圈同心圆),"
+                                       " 主屏上一直是旧图标所以没察觉, 重新添加主屏图标时才露馅;"
+                                       " 现在浏览器标签和主屏都回来了,"
+                                       " 主屏图标删掉重新添加才能看到"),
         ChangelogItem(kind="新增", text="歌曲和歌单能分享给任何人了: 点 ⋯ 或长按歌/列表详情页的分享键,"
                                        " 生成一条 24 小时有效的链接 —— 对方不用登录, 点开就能看封面、"
                                        " 看歌单、直接在线听, 一天之后链接自动作废"),
