@@ -146,11 +146,17 @@ function pushPaneTarget() {
   return (top && top.pane.querySelector(".pane-scroll")) || $("#main");
 }
 
+/** 推入层内容该让开的顶栏高度: 量一次挂成 CSS 变量 (层本身全高, 从顶栏
+    底下滑过); 顶栏换行/横竖屏由 resize 重算。 */
+function syncPaneTop() {
+  document.documentElement.style.setProperty(
+    "--pane-top", `${Math.round(headerBottom())}px`);
+}
+
 function openPushPane(view, id) {
   lockRootScroll();
   const pane = document.createElement("div");
   pane.className = "push-pane";
-  pane.style.top = `${headerBottom()}px`;
   pane.innerHTML = '<div class="pane-scroll"></div>';
   $("#push-stack").appendChild(pane);
   pushStack.push({ view, id, pane });
@@ -172,10 +178,15 @@ function closePushStack(keep = 0) {
 
 /** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
     或带甩劲松手就收层, 否则弹回。收层自己滑完再 history.back 对齐地址栏
-    (路由一看那层已就位, 只做收尾不动画第二遍)。 */
+    (路由一看那层已就位, 只做收尾不动画第二遍)。
+    左缘 24px 让给 iOS 系统边缘返回 (bezel back): 从那儿起手不接管,
+    免得跟系统动画抢 —— 系统做完触发 hashchange, 路由照常收层;
+    抢了的话层跟到一半被 pointercancel 掐弹回 (用户点名
+    "返回了一半就取消了")。 */
 function bindPaneSwipe(pane) {
   pane.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.pointerType !== "mouse" && event.clientX < 24) return;
     const startX = event.clientX;
     const startY = event.clientY;
     let horizontal = false;
@@ -517,6 +528,9 @@ function bindTrackLists(container, tracksOf) {
 // 滚动 (行 touch-action: pan-y); 松手过半开/不过半弹回。一次只开一行,
 // 点别处/滚动/滑另一行都收起, 开着的行点一下也是收起 (不进页不开播)。
 // 与长按菜单共存: 长按计时器移动超 10px 自动作废, 这里 8px 内不接管。
+// 只认左移: 右移是推入层返回手势 (bindPaneSwipe) 和 iOS 系统边缘返回的
+// 地盘, 这里一抢 (setPointerCapture) 层就跟到一半被掐弹回 —— 1.7.0
+// 后遗症, 用户点名"返回一半就取消"。
 // 尾随 click 的吞法吸取长按菜单的教训 (3f5cd5f): 标记在新按下时清,
 // 松手后设备不补发 click 也不至于粘住吞掉下一次真点击。
 const SWIPE_REVEAL = 72;             // 删除钮宽度 (px)
@@ -540,6 +554,7 @@ function bindSwipeDelete(container, onDelete) {
   container.addEventListener("pointerdown", (event) => {
     swipeSuppressClick = false;                  // 新按下 = 上一手势翻篇
     if (swipeDrag) {                             // 出界松手没收到 up: 兜底归位
+      swipeDrag.row.classList.remove("swiping");
       swipeDrag.row.style.transform =
         swipeDrag.base ? `translateX(${swipeDrag.base}px)` : "";
       swipeDrag = null;
@@ -559,8 +574,10 @@ function bindSwipeDelete(container, onDelete) {
     const dy = event.clientY - swipeDrag.startY;
     if (swipeDrag.horizontal === null) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      swipeDrag.horizontal = Math.abs(dx) > Math.abs(dy);
-      if (!swipeDrag.horizontal) { swipeDrag = null; return; }   // 竖滑 = 滚列表
+      // 只认左移; 右移/竖移都撒手 (右移归推入层返回手势, 竖移归滚动)
+      swipeDrag.horizontal = dx < 0 && Math.abs(dx) > Math.abs(dy);
+      if (!swipeDrag.horizontal) { swipeDrag = null; return; }
+      swipeDrag.row.classList.add("swiping");   // 拖动跟手, 松手才交给过渡
       try {
         swipeDrag.row.setPointerCapture(event.pointerId);  // 鼠标拖出容器也能收到 up
       } catch (_error) { /* 抓不到也能拖; 出界松手由下一次按下兜底 */ }
@@ -576,6 +593,7 @@ function bindSwipeDelete(container, onDelete) {
     const drag = swipeDrag;
     swipeDrag = null;
     if (!drag || !drag.horizontal) return;
+    drag.row.classList.remove("swiping");       // 回位/定住交给 CSS 过渡
     if (cancelled) {                              // 浏览器接管手势 (滚动等)
       drag.row.style.transform = drag.base ? `translateX(${drag.base}px)` : "";
       if (drag.base) swipeOpenWrap = drag.wrap;
@@ -1980,9 +1998,8 @@ function bindGlobalEvents() {
     if (!document.hidden) checkScanStatus();
   }, SCAN_POLL_INTERVAL_MS);
   window.addEventListener("hashchange", route);
-  window.addEventListener("resize", () => {
-    for (const item of pushStack) item.pane.style.top = `${headerBottom()}px`;
-  });
+  syncPaneTop();                     // 推入层内容让开顶栏的高度, 先量好
+  window.addEventListener("resize", syncPaneTop);
 }
 
 // ------------------------------------------------------------ 蜂窝流量
