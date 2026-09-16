@@ -2128,6 +2128,11 @@ function updateSysDebug(state) {
     + `${state.standalone ? "独立" : "浏览器"}${state.portrait ? "竖" : "横"}`
     + (state.pushed ? " 系统推下" : "");
 }
+// 会话锁: env 谎报 0 认定一次后, 本会话内 env 就算偶发抖回真值也不撤兜底
+// (抖回去那一下带走让位, 内容会整页跳回磨砂带里); 系统自己开始代推
+// (innerHeight 被吃掉) 时才解锁 —— 那种场合我们再让就双重让位了。
+// 苹果哪天真修好: 冷启动第一次同步 env 就是真值, 锁不会上, 一切照旧。
+let sysTopLocked = 0;
 function syncSysTopInset() {
   const state = {
     os: (navigator.userAgent.match(/OS \d+_\d+/) || ["OS?"])[0],
@@ -2142,13 +2147,18 @@ function syncSysTopInset() {
   const tall = Math.max(screen.width, screen.height) >= 800;  // SE 这类无刘海机除外
   const need = state.standalone && state.portrait && phone && tall
     && !state.pushed && state.envTop === 0;
-  state.sysTop = need ? sysTopInsetFor(screen.width, screen.height) : 0;
+  if (need) sysTopLocked = sysTopInsetFor(screen.width, screen.height);
+  else if (state.pushed) sysTopLocked = 0;
+  state.sysTop = sysTopLocked;
   document.documentElement.style.setProperty(
     "--sys-top-inset", `${state.sysTop}px`);
   updateSysDebug(state);   // 排查期读数条, 拿到用户真值就撤
 }
 addEventListener("resize", syncSysTopInset);
 addEventListener("orientationchange", syncSysTopInset);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) syncSysTopInset();   // 挂后台几小时回来也重新核一遍
+});
 syncSysTopInset();
 setTimeout(syncSysTopInset, 800);    // 冷启动 env 可能晚到 (短暂报 0),
 setTimeout(syncSysTopInset, 2500);   // 稳定后自会翻回真值, max() 无缝接手
