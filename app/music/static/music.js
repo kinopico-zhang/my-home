@@ -14,6 +14,33 @@ if (window.matchMedia("(display-mode: standalone)").matches
   document.body.classList.add("standalone");
 }
 
+// 一次性探针 (顶栏发糊排查, 查完连后端接口一起撤): 手机上没有控制台,
+// 让页面把真实现场报回来 —— 独立模式检测命中没有 / body 标在不在 /
+// 顶栏实际高度 (还带不带刘海区 padding) / 磨砂计算值撤掉没有。探针
+// 绝不许把应用搞挂, 整段包 try。
+try {
+  const headerEl = document.querySelector("header");
+  const headerStyle = getComputedStyle(headerEl);
+  fetch("/music/api/header-probe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+    body: JSON.stringify({
+      build: "header-blur-probe-1",
+      standalone: String(window.navigator.standalone),
+      displayMode: window.matchMedia("(display-mode: standalone)").matches,
+      bodyClass: document.body.className,
+      headerHeight: Math.round(headerEl.getBoundingClientRect().height),
+      headerBackdrop: headerStyle.backdropFilter
+        || headerStyle.webkitBackdropFilter || "",
+      headerBg: headerStyle.backgroundColor,
+      innerHeight: window.innerHeight,
+      pixelRatio: window.devicePixelRatio,
+      ua: navigator.userAgent,
+    }),
+  }).catch(() => {});
+} catch (_probeError) { /* 探针静默失败不算事 */ }
+
 const LIBRARY_SEGMENTS = [
   ["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"],
 ];

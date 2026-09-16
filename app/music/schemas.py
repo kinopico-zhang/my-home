@@ -336,3 +336,20 @@ class CellularUsageReport(BaseModel):
     """POST /api/cellular-usage 的请求体 (一次上报的字节量)。"""
 
     bytes: int = Field(ge=0, le=1_073_741_824)   # 单次上限 1 GB, 灌水也灌不爆
+
+
+class HeaderProbeReport(BaseModel):
+    """POST /api/header-probe 的请求体 (顶栏发糊排查探针, 临时 —— 查完连
+    接口带前端上报一起撤)。手机上没有控制台, 让页面把独立模式检测/顶栏
+    几何/磨砂计算值原样报回来。"""
+
+    build: str                       # 前端埋的构建标 (确认页面是新的)
+    standalone: str                  # navigator.standalone 原始值字符串
+    displayMode: bool                # matchMedia display-mode 是否命中
+    bodyClass: str                   # body 的 class 现状 (standalone 标在不在)
+    headerHeight: float              # 顶栏实际高度 (是否还带刘海区 padding)
+    headerBackdrop: str              # 顶栏磨砂计算值 (none = 撤磨砂生效)
+    headerBg: str                    # 顶栏底色计算值
+    innerHeight: int                 # 视口高 (standalone 布局 viewport)
+    pixelRatio: float                # 设备像素比 (缩放糊的话会异常)
+    ua: str = Field(max_length=400)  # 用户代理 (iOS 版本)

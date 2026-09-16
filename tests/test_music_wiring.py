@@ -296,6 +296,14 @@ def test_music_standalone_header_frost_wiring():
     assert 'matchMedia("(display-mode: standalone)")' in js
     assert "navigator.standalone" in js
     assert 'document.body.classList.add("standalone")' in js
+    # 一次性探针 (顶栏发糊排查, 查完连后端接口带断言一起撤): 前端启动上报
+    # 真实现场 (检测/几何/磨砂计算值), /api/header-probe 落 data/probe.jsonl
+    assert "header-blur-probe-1" in js
+    assert "/music/api/header-probe" in js
+    webapp = (Path(__file__).parent.parent / "app" / "music"
+              / "webapp.py").read_text(encoding="utf-8")
+    assert '@api.post("/header-probe"' in webapp
+    assert "probe.jsonl" in webapp
 
 
 def test_music_player_dismiss_wiring():
