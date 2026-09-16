@@ -56,7 +56,8 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .field label { font-size: 13px; color: var(--ink-2); flex: none; width: 3.5em; }
 .field input {
   flex: 1; min-width: 0; border: 0; outline: 0; background: none;
-  color: var(--ink-1); font: inherit; caret-color: #3987e5;
+  color: var(--ink-1); font: inherit; font-size: 16px;   /* iOS 聚焦 <16px 会自动放大整页 */
+  caret-color: #3987e5;
 }
 .field input::placeholder { color: var(--ink-3); }
 .eye-btn {

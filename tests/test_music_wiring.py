@@ -279,7 +279,9 @@ def test_music_bottom_tabbar_wiring():
     雷区整个让出去。主页/资料库/搜索/设置四键全带图标, 钉死视口底,
     磨砂配方与气泡同款; 气泡叠在页签栏上面。原品牌菜单的职能全进设置页
     (账号/退出/重扫/统计/更新日志)。顶栏相关的临时手段 (body.standalone
-    撤磨砂 + header-probe 探针 + 测试条) 连前端带后端一起撤净。"""
+    撤磨砂 + header-probe 探针 + 测试条) 连前端带后端一起撤净。
+    页签栏压扁一档 (51→44px); 双指缩放全禁 (body pan-y) + 文本输入框
+    16px 防 iOS 聚焦自动放大 (搜索/设置/新列表名/登录页)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
@@ -295,8 +297,16 @@ def test_music_bottom_tabbar_wiring():
     assert "backdrop-filter: blur(20px) saturate(180%);" in tabbar_css
     assert "env(safe-area-inset-bottom)" in tabbar_css   # 让开小白条
     assert "env(safe-area-inset-left)" in tabbar_css     # 横屏让开圆角
-    assert "--tabbar-h: 52px;" in tabbar_css
+    assert "--tabbar-h: 44px;" in tabbar_css
     assert "color: var(--accent);" in tabbar_css         # 点亮页签吃苹果红
+    # 双指缩放全禁: 列表行 pan-y 本来就捏不动, 页签栏/气泡原来能捏大 — body 收口
+    body_css = html[html.index("body {"):html.index("button {")]
+    assert "touch-action: pan-y;" in body_css
+    # iOS 聚焦小于 16px 的输入框会自动放大整页: 三处文本输入框全钉 16px
+    for start, end in [(".search-box input {", ".search-box input::placeholder"),
+                       (".settings-field > input {", ".settings-field > input:focus"),
+                       (".picker-new input {", ".picker-new input::placeholder")]:
+        assert "font-size: 16px;" in html[html.index(start):html.index(end)]
     # 四键全带图标 (iconfont 素材, currentColor 吃点亮色) + 顺序
     tabbar_html = html[html.index('<nav id="tabbar">'):html.index("</nav>")]
     for name, label in [("home", "主页"), ("library", "资料库"),
