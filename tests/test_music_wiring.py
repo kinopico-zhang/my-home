@@ -202,9 +202,10 @@ def test_music_pane_fixed_chrome_wiring():
     钉视口的顶栏/气泡物理上无从移动), main 变内部滚动器, 顶栏 (sticky
     z50) 住进 main 钉在滚动器口; ② 全高推入层 (z44) 从毛玻璃顶栏
     (z50)/气泡 (z45) 底下扫过, 内容用 --pane-top (JS 量 headerBottom)
-    让位 —— 但气泡例外: 推入层停在气泡泳道 (74px+safe) 上沿, 不从它
-    底下过 (fixed+磨砂气泡遇上底下扫过的变换层会重影)。根视图渲染目标
-    #root-view (main 是滚动器, 直写会抹掉顶栏)。"""
+    让位。层铺满全高 (设计一致, 用户点名: 气泡底下要有内容, 和主页
+    一样) —— 重影对策挪到运动期: body.pane-anim 暂撤气泡磨砂换实底
+    (fixed+backdrop-filter 底下有扫动的变换层是 WebKit 的重影配方)。
+    根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉顶栏)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
@@ -225,11 +226,11 @@ def test_music_pane_fixed_chrome_wiring():
     assert "window.scrollY" not in js
     assert '$("#root-view").innerHTML' in js
     assert "window.scrollTo" not in js
-    # 推入层: 顶上从 sticky 顶栏底下过; 底下停在气泡泳道上沿
-    # (fixed+磨砂气泡底下有变换动画扫过 → WebKit 吐重影, 用户截图两个气泡)
+    # 推入层铺满全高: 顶上从 sticky 顶栏底下过, 底下从磨砂气泡底下过
+    # (设计一致, 用户点名"气泡下面要有内容"); 底衬让位 90px+safe 同主页
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
     assert "top: 0;" in pane_css
-    assert "bottom: calc(74px + env(safe-area-inset-bottom));" in pane_css
+    assert "bottom: 0;" in pane_css
     # 收层方向的加固 (用户回访: 进层不重影了, 返回时气泡跟着二级页跑):
     # ① 层终身常驻不降级 —— 动画结束的合并瞬间 WebKit 会把旁边固定元素
     #    复印进合并层; ② 投影收紧竖向渗出 —— 磨砂取样区比气泡本体外扩
@@ -239,46 +240,90 @@ def test_music_pane_fixed_chrome_wiring():
     # ③ 气泡自家合成层: 任何邻居的变换/合并都复印不到它
     mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
     assert "transform: translateZ(0);" in mini_css
-    # 泳道: 层开着时铺底色+吃点按 (盖住底下一级页, 别露内容别隔带摸按钮);
-    # 不做淡入淡出 —— 气泡底下连渐变动画都不许有
-    assert "#push-stack::after" in html
-    assert "#push-stack:not(:empty)::after { display: block;" \
-        " pointer-events: auto; }" in html
+    # 泳道撤了 (层铺满全高, 没有夹缝可露); 重影对策 = 运动期暂撤磨砂:
+    # CSS 挂 body.pane-anim 实底, JS 的 paneMotion() 在每段层运动前打标
+    # (拖动中每下续期), 停稳 500ms 恢复
+    assert "#push-stack::after" not in html
+    assert "body.pane-anim #mini-player" in html
+    assert "backdrop-filter: none;" in html
+    assert "function paneMotion" in js
+    open_pane = js[js.index("function openPushPane"):js.index("function closePushStack")]
+    assert "paneMotion();" in open_pane
+    assert "lockRootScroll()" in open_pane
+    close_stack = js[js.index("function closePushStack"):
+                     js.index("function bindPaneSwipe")]
+    assert "paneMotion();" in close_stack
+    swipe = js[js.index("function bindPaneSwipe"):
+               js.index("// ------------------------------------------------------------ 下载 (离线)")]
+    assert swipe.count("paneMotion();") >= 4   # 拖动续期/滑出/弹回/取消
     scroll_css = html[html.index(".push-pane .pane-scroll"):
                       html.index(".seg {")]
-    assert "calc(var(--pane-top, 64px) + 14px) 16px 16px;" in scroll_css
+    assert "calc(var(--pane-top, 64px) + 14px) 16px" in scroll_css
+    assert "calc(90px + env(safe-area-inset-bottom));" in scroll_css
     assert "function syncPaneTop" in js
     assert '"--pane-top"' in js                       # 量出的高度写进 CSS 变量
     assert 'window.addEventListener("resize", syncPaneTop)' in js
-    open_pane = js[js.index("function openPushPane"):js.index("function closePushStack")]
-    assert "lockRootScroll()" in open_pane
     assert 'pane.innerHTML = \'<div class="pane-scroll"></div>\'' in open_pane
 
 
-def test_music_player_back_gesture_wiring():
-    """iOS 返回手势收播放页 (用户点名: 下拉向下收, 返回手势向右收,
-    收起后露出被挡的页面而不是退一级): 开全屏页挂一条同址历史
-    (pushState {fp:1}), popstate 弹到非 fp 条目 → 向右滑出收起;
-    按钮收起自己 back() 弹掉占位条目 (那记 popstate 别当返回手势)。"""
+def test_music_player_dismiss_wiring():
+    """播放页的收起路径 (1.7.0 单地址批): 下拉/Esc 向下收, 抓手条横拖右甩
+    向右收 —— 全是纯视图开关, 不再挂历史条目 (一个地址批后浏览器里没有
+    可退的条目, 播放页也跟着撤了 pushState/popstate 那套)。
+    电脑上的"返回"是 Esc: 先收播放页, 没开就收顶层二级页。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     player = (static / "music-player.js").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
     assert "#full-player.dismiss-right { transform: translateX(100%); }" in html
-    open_player = player[player.index("function openFullPlayer"):
-                         player.index("下拉收起 / 横划切歌")]
-    assert 'history.pushState({ fp: 1 }, "", location.href)' in open_player
-    close_player = player[player.index("function closeFullPlayer"):
-                          player.index("window.addEventListener(\"popstate\"")]
+    # 历史耦合撤净: 播放页开关不再碰 pushState/back/popstate
+    assert "pushState" not in player and "history.back" not in player
+    assert "popstate" not in player and "poppingPlayerEntry" not in player
+    assert 'closeFullPlayer("right")' in player    # 抓手横拖的甩出收起
     assert 'if (direction === "right") fullPlayer.classList.add("dismiss-right")' \
-        in close_player
-    assert "history.back()" in close_player      # 按钮收起弹占位条目
-    assert "poppingPlayerEntry" in player        # 自己的 back 不当返回手势
-    assert 'window.addEventListener("popstate", (event) => {' in player
-    assert 'closeFullPlayer("right")' in player
-    # 前进键也要对齐 (app 思路: 历史条目 = 应用状态): 前进回到播放页占位
-    # 条目 → 重开播放页 (原来只会收, 按了没反应)
-    assert "if (event.state && event.state.fp) {" in player
-    assert "if (!playerOpen) openFullPlayer();" in player
+        in player
+    # 抓手条横拖收起: bindDismissDrag 第三个参数开启, 拖整页不是拖封面
+    assert "horizontalClose = false" in player
+    assert 'player.style.transform = dx > 0 ? `translateX(${dx * 0.92}px)` : "";' \
+        in player
+    assert 'bindDismissDrag($("#fp-grab"), false, true);' in player
+    assert 'bindDismissDrag($("#fp-art-wrap"), true);' in player   # 封面照旧划切歌
+    # Esc = 电脑上的返回: 先收播放页, 没开收顶层二级页
+    esc_handler = js[js.index('event.key !== "Escape"'):
+                     js.index("syncPaneTop();")]
+    assert "if (playerOpen) closeFullPlayer();" in esc_handler
+    assert "closePushStack(pushStack.length - 1)" in esc_handler
+
+
+def test_music_single_url_navigation_wiring():
+    """单地址导航 (用户点名: 列表和主页就是一个页面, 进播放列表只是内容
+    变化, 不存在网页切换): 导航目标只活在内存里 (根视图 + 层栈), 全程
+    不碰 location.hash / pushState / history.back —— 浏览器返回/前进和
+    iOS 系统侧滑在应用里没有条目可退, 整页截图滑走 (气泡跟着跑) 绝迹。
+    旧深链开局消化一次, URL 随即洗成光杆 /music。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    js = (static / "music.js").read_text(encoding="utf-8")
+    player = (static / "music-player.js").read_text(encoding="utf-8")
+    # 不写 hash、不挂 hashchange、不加/弹历史条目 (认调用形式 —— 文件头
+    # 注释里提到这些词是说明, 不算数)
+    assert "location.hash =" not in js
+    assert "hashchange" not in js
+    assert "pushState(" not in js and "history.back(" not in js
+    assert "pushState(" not in player and "history.back(" not in player
+    # 目标从状态派生: 有层看顶层, 没层看根视图
+    assert "function parseRoute" in js and "function currentRoute" in js
+    assert "function syncViewTabs" in js
+    # 开局: 旧深链消化一次 → replaceState 洗 URL (不加条目) → 状态开局
+    assert 'const legacyHash = location.hash.replace(/^#\\/?/, "");' in js
+    assert 'history.replaceState(null, "", location.pathname + location.search);' \
+        in js
+    assert "navigate(legacyTarget);" in js
+    # 页签点亮同步: 进层全灭; 层收尽 (按钮收/右划收都要) 回到根视图
+    assert "syncViewTabs(pageState.rootView);" in js
+    downloads_header = "// ------------------------------------------------------------ 下载 (离线)"
+    close_stack = js[js.index("function closePushStack"):js.index(downloads_header)]
+    assert "syncViewTabs(pageState.rootView);" in close_stack
+    assert "syncViewTabs(view);" in js[js.index("function routeTo"):]
 
 
 def test_music_download_all_wiring():
@@ -312,7 +357,8 @@ def test_music_changelog_in_app_wiring():
     js = (static / "music.js").read_text(encoding="utf-8")
     assert '<button id="changelog-link">更新日志</button>' in html
     assert 'href="/music/changelog"' not in html    # 菜单不再整页跳走
-    assert 'if (name === "changelog") return { view: "changelog" };' in js
+    assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
+            '.includes(name)) {') in js
     assert "function renderChangelogView()" in js
     assert 'fetchJSON("/music/changelog/api/entries")' in js
     assert "#changelog-entries" in html and ".v-badge" in html  # 版本卡片样式

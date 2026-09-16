@@ -321,8 +321,7 @@ function updateSourceLine(track) {
 // 全落到下层列表上 (表现为按键没反应、点了别的歌)。
 let fpHideTimer = 0;
 
-let playerOpen = false;   // 全屏页开着吗 (popstate 收起与防重入都靠它)
-let poppingPlayerEntry = false;   // 是我们自己弹占位条目 (那记 popstate 别当返回手势)
+let playerOpen = false;   // 全屏页开着吗 (防重入; 开关是纯视图状态, 不碰历史)
 
 function openFullPlayer() {
   const fullPlayer = $("#full-player");
@@ -331,19 +330,12 @@ function openFullPlayer() {
   fullPlayer.style.pointerEvents = "";
   void fullPlayer.offsetWidth;   // 强制起点样式先落地再放滑入 (rAF 在安静页会饿死)
   fullPlayer.classList.add("open");
-  if (!playerOpen) {
-    playerOpen = true;
-    // 挂一条同址历史: iOS 边缘右滑返回 = 收掉播放页露出底下的页面,
-    // 而不是把底下页面退一级。按钮收起时再把这条弹掉 (见 closeFullPlayer)。
-    if (!history.state || !history.state.fp) {
-      history.pushState({ fp: 1 }, "", location.href);
-    }
-  }
+  playerOpen = true;
 }
 
-// direction "right" = 返回手势收起 (向右滑出); 默认向下收。
+// direction "right" = 向右甩出收起 (抓手条横拖); 默认向下收 (下拉/Esc)。
 function closeFullPlayer(direction) {
-  if (!playerOpen) return;   // 按钮收起弹历史会再触发一次 popstate, 别重入
+  if (!playerOpen) return;
   playerOpen = false;
   const fullPlayer = $("#full-player");
   fullPlayer.classList.remove("open");
@@ -357,40 +349,18 @@ function closeFullPlayer(direction) {
   }, 300);
   if (lyricsViewOpen) toggleLyricsView();
   if (queueViewOpen) closeQueueView();
-  // 按钮收起: 自己弹掉占位条目 (返回手势那条路浏览器已经弹了, state 里没 fp)
-  if (history.state && history.state.fp) {
-    poppingPlayerEntry = true;
-    history.back();
-  }
 }
-
-// 播放页占位条目的进出全在这里对齐 (app 思路: 历史条目 = 应用状态,
-// 后退/前进都得还原) ——
-//   后退弹掉它 (边缘右滑/浏览器返回): 向右滑出收起;
-//   前进回到它: 重新掀开播放页 (历史已经站在那条上, openFullPlayer
-//     不会再多挂一条);
-//   自己弹条目的那次 popstate 不算 (back 是异步的, 收起后 300ms 内
-//     重开也追得上)。
-window.addEventListener("popstate", (event) => {
-  if (poppingPlayerEntry) {
-    poppingPlayerEntry = false;
-    return;
-  }
-  if (event.state && event.state.fp) {
-    if (!playerOpen) openFullPlayer();
-    return;
-  }
-  if (playerOpen) closeFullPlayer("right");
-});
 
 // ------------------------------------------------------------ 下拉收起 / 横划切歌
 // 抓手条/封面往下拖: 播放页跟手下滑, 松手拖得够远或够快就收起, 否则弹回。
 // 封面另有左右划: 跟手平移, 松手拖过三分之一 (或带甩劲) 就切上一首/下一首,
-// 封面朝划的方向滑出, 新封面从另一侧滑入。抓手条拖动后的尾随 click 不算
-// (不然小拖一下也收起)。
+// 封面朝划的方向滑出, 新封面从另一侧滑入。抓手条还有横拖收起: 往右拖整页
+// 跟手走, 松手拖过三分之一 (或带甩劲) 就向右甩出收起。拖动后的尾随 click
+// 不算 (不然小拖一下也收起)。
 let fpDismissDragged = false;
 
-function bindDismissDrag(target, swipeTracks = false) {
+// horizontalClose: 抓手条上的横划改成拖整页收起 (true), 而不是放掉。
+function bindDismissDrag(target, swipeTracks = false, horizontalClose = false) {
   const player = $("#full-player");
   const art = $("#fp-art-wrap");
   let dragging = false;
@@ -403,6 +373,7 @@ function bindDismissDrag(target, swipeTracks = false) {
   let velocity = 0;                  // px/ms, 松手那刻的甩速 (竖向)
   let hVelocity = 0;                 // 横向甩速
   let mode = "";                     // "" 未定 / "down" 收起 / "side" 切歌
+                                     //   / "across" 抓手横拖收起
   target.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     dragging = true;
@@ -431,7 +402,8 @@ function bindDismissDrag(target, swipeTracks = false) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       if (Math.abs(dy) >= Math.abs(dx)) mode = "down";
       else if (swipeTracks) mode = "side";
-      else { dragging = false; return; }   // 抓手条上的横划没意义, 放掉
+      else if (horizontalClose) mode = "across";
+      else { dragging = false; return; }   // 横划没意义的目标, 放掉
       player.style.transition = "none";
       if (mode === "side") art.style.transition = "none";
       target.setPointerCapture(event.pointerId);
@@ -439,6 +411,9 @@ function bindDismissDrag(target, swipeTracks = false) {
     if (mode === "down") {
       if (dy > 10) fpDismissDragged = true;
       player.style.transform = dy > 0 ? `translateY(${dy * 0.92}px)` : "";
+    } else if (mode === "across") {
+      if (dx > 10) fpDismissDragged = true;
+      player.style.transform = dx > 0 ? `translateX(${dx * 0.92}px)` : "";
     } else {
       const drag = dx * 0.9;         // 横向轻阻尼
       art.style.transform =
@@ -455,6 +430,14 @@ function bindDismissDrag(target, swipeTracks = false) {
     if (mode === "down") {
       if (lastY - startY > 90 || velocity > 0.55) closeFullPlayer();
       return;
+    }
+    if (mode === "across") {
+      const width = player.offsetWidth || 1;
+      const flick = hVelocity > 0.5 && lastX - startX > 30;
+      if (lastX - startX >= width / 3 || flick) {
+        closeFullPlayer("right");    // 样式交给 .dismiss-right 接管 (从当前位置甩出)
+      }
+      return;                        // 没拖够: 行内样式已清, 弹回原位
     }
     if (mode !== "side") return;
     const width = art.offsetWidth || 1;
@@ -846,7 +829,7 @@ function bindPlayerEvents() {
     }
     closeFullPlayer();
   });
-  bindDismissDrag($("#fp-grab"));
+  bindDismissDrag($("#fp-grab"), false, true);   // 抓手条: 下拉收起 + 横拖右甩收起
   bindDismissDrag($("#fp-art-wrap"), true);   // 封面: 下拉收起 + 左右划切歌
   $("#fp-play").addEventListener("click", playerToggle);
   $("#fp-next").addEventListener("click", playerNext);

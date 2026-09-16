@@ -131,22 +131,18 @@ main {
 
 /* ---------- 二级页推入层 (专辑/艺人/播放列表, iOS 设置式滑入) ---------- */
 #push-stack { position: fixed; inset: 0; z-index: 44; pointer-events: none; }
-/* 气泡泳道: 推入层开着时底部铺底色 + 吃掉点按 —— 底下一级页的内容不能从
-   层与气泡的夹缝里露出来, 也不能隔着带子摸到被盖住的按钮。不做淡入淡出:
-   气泡底下的任何动画层 (哪怕只是渐变) 都是重影的温床, 泳道要静如死水。
-   层收干净 (#push-stack 空) 泳道整个撤走, 一级页内容照旧从磨砂气泡底下扫过 */
-#push-stack::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
-  height: calc(74px + env(safe-area-inset-bottom));
-  background: var(--bg); display: none;
+/* 设计一致 (用户点名): 推入层铺满全高, 内容照主页那样从磨砂气泡底下扫过
+   (原来气泡下面是一条空带)。代价: 层动起来时变换层会从 fixed+磨砂的
+   气泡底下扫过 —— 这是 WebKit 吐重影的配方 (用户截图过第二个气泡),
+   对策 = 运动期暂撤磨砂换实底 (body.pane-anim, JS 的 paneMotion() 管),
+   歇下来再恢复磨砂。 */
+body.pane-anim #mini-player {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(44,44,46,.92);
 }
-#push-stack:not(:empty)::after { display: block; pointer-events: auto; }
 .push-pane {
-  position: absolute; left: 0; right: 0; top: 0;
-  bottom: calc(74px + env(safe-area-inset-bottom));   /* 停在气泡泳道上沿:
-    页面不从气泡底下过 —— fixed+磨砂的气泡底下有变换动画扫过时 WebKit
-    会吐重影 (用户截图: 切页途中冒出第二个气泡); 顶上照旧从 sticky
-    顶栏底下扫过 (那种不重影), 内容用 --pane-top 让开顶栏 */
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
   display: flex; justify-content: center;      /* 内容列宽对齐 main 的 860px */
   background: var(--bg);
   box-shadow: -10px 0 26px -8px rgba(0,0,0,.5);  /* 收紧竖向渗出: 磨砂气泡
@@ -164,7 +160,7 @@ main {
 .push-pane .pane-scroll {
   width: 100%; max-width: 860px; height: 100%;
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
-  padding: calc(var(--pane-top, 64px) + 14px) 16px 16px;
+  padding: calc(var(--pane-top, 64px) + 14px) 16px calc(90px + env(safe-area-inset-bottom));
 }
 .seg {
   display: flex; background: var(--surface-2); border-radius: 9px;
@@ -589,7 +585,7 @@ span.t-art { display: flex; align-items: center; justify-content: center;
   transform: translateY(100%); transition: transform .32s cubic-bezier(.32,.72,0,1);
 }
 #full-player.open { transform: none; }
-/* iOS 返回手势收起: 占位历史被浏览器弹掉, 整页向右滑出 (默认收起仍向下) */
+/* 抓手条横拖收起: 整页向右甩出 (默认收起仍向下) */
 #full-player.dismiss-right { transform: translateX(100%); }
 .fp-bg { position: absolute; inset: -60px; overflow: hidden; }
 .fp-bg img { width: 100%; height: 100%; object-fit: cover;
@@ -996,7 +992,7 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=13"></script>
-<script src="/music/static/music-player.js?v=18"></script>
-<script src="/music/static/music.js?v=25"></script>
+<script src="/music/static/music-player.js?v=19"></script>
+<script src="/music/static/music.js?v=26"></script>
 </body>
 </html>

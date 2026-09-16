@@ -260,6 +260,7 @@ export default [
         ICON_ACTION_SHARE: "readonly",
         playerStart: "readonly", updatePlayButtons: "readonly",
         openFullPlayer: "readonly", openLyricsView: "readonly",
+        closeFullPlayer: "readonly", playerOpen: "readonly",
         onTrackChange: "readonly", playerCurrentTrackId: "readonly",
         playerCurrentTrack: "readonly",
         downloadsSupported: "readonly", createDownloads: "readonly",

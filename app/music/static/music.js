@@ -35,51 +35,85 @@ let userRescanPending = false;
 // 文件选择器是全局单例, 记住现在改封面的是哪个列表
 let coverUploadPlaylistId = 0;
 
-// ------------------------------------------------------------ 路由 (hash)
+// 二级推入层栈 (声明在顶部: 导航一节的 currentRoute 要读它,
+// no-use-before-define 不放行函数住后段的状态)
+const pushStack = [];   // [{view, id, pane}]
 
-function currentRoute() {
-  const hash = location.hash.replace(/^#\/?/, "");
-  const [name, argument] = hash.split("/");
-  if (name === "search") return { view: "search" };
-  if (name === "stats") return { view: "stats" };
-  if (name === "settings") return { view: "settings" };
-  if (name === "changelog") return { view: "changelog" };
-  if (name === "library") return { view: "library" };
+// ------------------------------------------------------------ 导航 (应用内状态)
+
+// 一个地址走全程 (用户点名: 列表和主页就是一个页面, 进播放列表只是内容
+// 变化, 不存在网页切换): 导航目标只活在内存里 —— 根视图 pageState.rootView,
+// 二级层 pushStack —— 全程不碰 location.hash / pushState / history.back,
+// 浏览器返回/前进和系统侧滑在应用里没有条目可退, 整页截图滑走 (气泡跟着
+// 跑) 的毛病连根拔掉。旧深链 (#playlist/5) 只在开局消化一次, URL 随即
+// 洗成光杆 /music。
+
+function parseRoute(target) {
+  const [name, argument] = String(target).split("/");
   if (name === "album" && argument) return { view: "album", albumId: Number(argument) };
   if (name === "artist" && argument) return { view: "artist", artistId: Number(argument) };
   if (name === "playlist" && argument) return { view: "playlist", playlistId: Number(argument) };
-  return { view: "home" };
+  if (["home", "library", "search", "stats", "settings", "changelog"].includes(name)) {
+    return { view: name };
+  }
+  return null;                     // 认不得的目标当没点
 }
 
-function navigate(hash) {
-  if (location.hash === `#${hash}`) route(true);   // 同页再点 = 刷新
-  else location.hash = hash;       // 挂进历史, iOS 返回手势能关页面
+/** 当前导航目标 (从状态派生): 有层看顶层, 没层看根视图。 */
+function currentRoute() {
+  const top = pushStack[pushStack.length - 1];
+  if (top) {
+    return top.view === "album" ? { view: "album", albumId: top.id }
+      : top.view === "artist" ? { view: "artist", artistId: top.id }
+      : { view: "playlist", playlistId: top.id };
+  }
+  return { view: pageState.rootView };
 }
 
-function route(force) {
-  const { view, albumId, artistId, playlistId } = currentRoute();
-  const pushed = view === "album" || view === "artist" || view === "playlist";
-  const pushId = view === "album" ? albumId
-    : view === "artist" ? artistId : playlistId;
-  // 主页/资料库页签常驻 (顶栏每个页面都一致, 搜索/统计/详情也能一键切回;
-  // 二级页不换顶栏, 返回一律右划或浏览器回退)
+/** 顶栏页签点亮同步 (进二级层时全灭 —— 层不算任何页签)。 */
+function syncViewTabs(view) {
   for (const button of document.querySelectorAll("[data-view-tab]")) {
     button.classList.toggle("on", button.dataset.viewTab === view);
   }
+}
+
+function navigate(target) {
+  const parsed = parseRoute(target);
+  if (!parsed) return;
+  const current = currentRoute();
+  const currentKey = current.view === "album" ? `album/${current.albumId}`
+    : current.view === "artist" ? `artist/${current.artistId}`
+    : current.view === "playlist" ? `playlist/${current.playlistId}`
+    : current.view;
+  if (String(target) === currentKey) { route(true); return; }   // 同页再点 = 刷新
+  routeTo(parsed);
+}
+
+/** 按目标渲染: 二级目标进层栈, 根目标铺根视图 (route 的带参版)。 */
+function routeTo(parsed, force) {
+  const view = parsed.view;
+  const pushed = view === "album" || view === "artist" || view === "playlist";
+  const pushId = parsed.albumId ?? parsed.artistId ?? parsed.playlistId;
+  // 主页/资料库页签常驻 (顶栏每个页面都一致, 搜索/统计/详情也能一键切回;
+  // 二级页不换顶栏, 返回一律右划)
+  syncViewTabs(view);
   stopScanPolling();
-  if (pushed) routePushed(view, pushId, { albumId, artistId, playlistId }, force);
+  if (pushed) routePushed(view, pushId, parsed, force);
   else routeRoot(view, force);
   if (!pushed) checkScanStatus();
   syncPlayerIndicators();
   syncDownloadIcons();
 }
 
+/** 重铺当前状态 (扫描收尾/同页刷新用): 目标从状态里派生。 */
+function route(force) {
+  routeTo(currentRoute(), force);
+}
+
 // ------------------------------------------------------------ 二级页推入层
 // 专辑/艺人/播放列表走 iOS 设置式二级页: 从右滑入盖住一级, 右划 (左缘起手)
 // 或返回键/历史回退滑出。层叠各层保住自己的滚动; 一级页留在底下不动,
-// 滚动位置推入时存档、滑出后还原。
-
-const pushStack = [];   // [{view, id, pane}]
+// 滚动位置推入时存档、滑出后还原。(层栈 pushStack 声明在文件顶部。)
 
 function headerBottom() {
   return document.querySelector("header").getBoundingClientRect().bottom;
@@ -155,6 +189,18 @@ function syncPaneTop() {
     "--pane-top", `${Math.round(headerBottom())}px`);
 }
 
+/** 层运动期标记 (body.pane-anim): 层铺满全高后会从磨砂气泡底下扫过,
+    fixed+backdrop-filter 遇上扫动的变换层是 WebKit 的重影配方 ——
+    运动期 CSS 把气泡换成实底 (暂撤磨砂取样), 停稳 500ms 后恢复磨砂。
+    拖动中每下都续期, 手不松标记不撤。 */
+let paneAnimTimer = 0;
+function paneMotion() {
+  document.body.classList.add("pane-anim");
+  clearTimeout(paneAnimTimer);
+  paneAnimTimer = setTimeout(
+    () => document.body.classList.remove("pane-anim"), 500);
+}
+
 function openPushPane(view, id) {
   lockRootScroll();
   const pane = document.createElement("div");
@@ -163,6 +209,7 @@ function openPushPane(view, id) {
   $("#push-stack").appendChild(pane);
   pushStack.push({ view, id, pane });
   bindPaneSwipe(pane);
+  paneMotion();                     // 滑入途中气泡暂撤磨砂 (重影对策)
   void pane.offsetWidth;   // 起点样式落地再放滑入 (rAF 在安静页会饿死, 不用它)
   pane.classList.add("open");
   return pane.querySelector(".pane-scroll");
@@ -170,17 +217,21 @@ function openPushPane(view, id) {
 
 /** 滑出若干层 (栈里保留 keep 层以下); 动画完移除 DOM。 */
 function closePushStack(keep = 0) {
+  paneMotion();                     // 滑出途中气泡暂撤磨砂 (重影对策)
   while (pushStack.length > keep) {
     const item = pushStack.pop();
     item.pane.classList.remove("open");
     setTimeout(() => item.pane.remove(), 420);
   }
-  if (!pushStack.length) unlockRootScroll();
+  if (!pushStack.length) {
+    unlockRootScroll();
+    syncViewTabs(pageState.rootView);   // 层收尽: 页签回到根视图 (开层时全灭过)
+  }
 }
 
 /** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
-    或带甩劲松手就收层, 否则弹回。收层自己滑完再 history.back 对齐地址栏
-    (路由一看那层已就位, 只做收尾不动画第二遍)。
+    或带甩劲松手就收层, 否则弹回。收层是纯视图收层, 不碰浏览器历史
+    (一个地址走全程, 见文件头导航一节)。
     左缘的归属按环境各安其位: 主屏图标打开 (standalone) 没有系统手势,
     整条左缘 (含屏幕最边) 都是这里的; 浏览器里苹果把最边上一小条握在
     系统手里 (整页截图滑走, 网页收不到触摸, preventDefault/Navigation
@@ -207,6 +258,7 @@ function bindPaneSwipe(pane) {
         pane.setPointerCapture(ev.pointerId);
         pane.style.transition = "none";
       }
+      paneMotion();                 // 拖动中: 气泡磨砂持续暂撤 (每下续期)
       pane.style.transform = `translateX(${Math.max(0, dx)}px)`;
       lastX = ev.clientX;
       lastT = ev.timeStamp;
@@ -219,17 +271,23 @@ function bindPaneSwipe(pane) {
       const flick = ev.timeStamp - lastT < 100 && lastX - startX > 40;
       pane.style.transition = "";
       pane.style.transform = "";
-      if (dx <= width / 3 && !flick) return;      // 没拖够: 弹回 (.open 的 0)
+      if (dx <= width / 3 && !flick) {
+        paneMotion();               // 弹回也是一段运动, 磨砂照旧暂撤
+        return;                     // 没拖够: 弹回 (.open 的 0)
+      }
+      paneMotion();                 // 滑出途中气泡暂撤磨砂 (重影对策)
       pane.classList.remove("open");              // 从当前位置滑出
       pushStack.pop();
       setTimeout(() => pane.remove(), 420);
-      if (!pushStack.length) unlockRootScroll();
-      if (history.length > 1) history.back();     // 地址栏跟上 (与返回键同款兜底)
-      else navigate("home");
+      if (!pushStack.length) {
+        unlockRootScroll();
+        syncViewTabs(pageState.rootView);         // 页签回到根视图
+      }
     };
     const cancel = () => {
       cleanup();
       if (horizontal) {
+        paneMotion();               // 弹回也是一段运动, 磨砂照旧暂撤
         pane.style.transition = "";
         pane.style.transform = "";
       }
@@ -1956,13 +2014,10 @@ function bindGlobalEvents() {
     if (!button) return;
     navigate(button.dataset.viewTab);
     if (button.dataset.viewTab !== "search") return;
-    // 进搜索页签顺手聚焦输入框 (老放大镜按钮的手感)
+    // 进搜索页签顺手聚焦输入框 (老放大镜按钮的手感); 导航是同步渲染,
+    // 走到这儿输入框已经在页面上了
     const input = $("#search-input");
-    if (input) input.focus();     // 同页 route() 已同步跑完, 直接聚焦
-    else setTimeout(() => {       // 跨页要等 hashchange 渲染好
-      const pending = $("#search-input");
-      if (pending) pending.focus();
-    }, 50);
+    if (input) input.focus();
   });
   $("#stats-link").addEventListener("click", () => {
     closeBrandMenu();
@@ -1998,7 +2053,13 @@ function bindGlobalEvents() {
   setInterval(() => {
     if (!document.hidden) checkScanStatus();
   }, SCAN_POLL_INTERVAL_MS);
-  window.addEventListener("hashchange", route);
+  // 电脑上的"返回": Esc 收播放页, 没开播放页就收顶层二级页 (手机上有右划,
+  // 电脑总不能指望鼠标拖页面; 浏览器返回键在应用里已没有可退的条目)
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.repeat) return;
+    if (playerOpen) closeFullPlayer();
+    else if (pushStack.length) closePushStack(pushStack.length - 1);
+  });
   syncPaneTop();                     // 推入层内容让开顶栏的高度, 先量好
   window.addEventListener("resize", syncPaneTop);
 }
@@ -2035,5 +2096,10 @@ if (window.performance && performance.getEntriesByType
 }
 
 bindGlobalEvents();
-if (!location.hash) history.replaceState(null, "", "#home");
-route();
+// 旧深链只消化一次 (#playlist/5 之类 → 按它开局), 随即把 URL 洗成光杆
+// /music —— 之后全程一个地址, 应用内导航不再碰浏览器历史 (系统侧滑/
+// 返回键没有可退的条目, 整页截图滑走绝迹; 用户点名)。
+const legacyHash = location.hash.replace(/^#\/?/, "");
+const legacyTarget = legacyHash && parseRoute(legacyHash) ? legacyHash : "home";
+history.replaceState(null, "", location.pathname + location.search);
+navigate(legacyTarget);

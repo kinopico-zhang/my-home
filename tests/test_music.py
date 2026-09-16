@@ -807,7 +807,8 @@ def test_music_stats_page_wiring():
     assert 'id="stats-link"' in html
     assert "stat-grid" in html and "format-bar" in html   # 统计卡片 + 比例条
     js = (static / "music.js").read_text(encoding="utf-8")
-    assert 'if (name === "stats") return { view: "stats" };' in js
+    assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
+            '.includes(name)) {') in js
     assert "function renderStatsView()" in js
     assert '"/music/api/stats"' in js
     assert 'navigate("stats")' in js                      # 菜单按钮直通统计页
@@ -831,8 +832,9 @@ def test_music_home_page_wiring():
     assert 'if (name === "playlist" && argument)' in js
     assert "function renderPlaylistView(" in js
     assert "playlistRowHTML" in js
-    # 默认进主页; 旧段名 (recent/playlists) 收窄后回落专辑
-    assert 'history.replaceState(null, "", "#home")' in js
+    # 默认进主页 (单地址批: 旧深链开局消化一次, URL 洗成光杆 /music)
+    assert 'history.replaceState(null, "", location.pathname + location.search);' in js
+    assert 'navigate(legacyTarget);' in js
     assert '["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"]' in js
 
 
@@ -855,8 +857,8 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=25" in html
-            and "music-player.js?v=18" in html
+    assert ("downloads.js?v=2" in html and "music.js?v=26" in html
+            and "music-player.js?v=19" in html
             and "music-common.js?v=13" in html
             and "player-queue.js?v=3" in html)   # 版本号刷新
     sw = (static / "sw.js").read_text(encoding="utf-8")
@@ -1101,7 +1103,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=25" in html
+    assert "music.js?v=26" in html
     # 长歌名不许把菜单撑超宽 (用户报"菜单非常宽, 建议截断"): 固定定位菜单
     # 收缩到内容, 不封顶会一路撑到视口; 320px 封顶后 nowrap 截断才接管
     assert "max-width: min(320px, calc(100vw - 24px))" in html
@@ -1121,7 +1123,8 @@ def test_music_settings_view_wiring():
     js = (static / "music.js").read_text(encoding="utf-8")
     assert '<button id="settings-link">设置</button>' in html
     assert ".settings-block" in html and ".switch" in html and ".month-row" in html
-    assert 'if (name === "settings") return { view: "settings" };' in js
+    assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
+            '.includes(name)) {') in js
     assert "function renderSettingsView()" in js
     assert 'fetchJSON("/music/api/settings")' in js
     assert 'fetchJSON("/api/me")' in js and "editable" in js   # 按管理员分叉
