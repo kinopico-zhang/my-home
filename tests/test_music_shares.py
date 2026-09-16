@@ -8,7 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as m
-from app.music.library_database import ShareLink, music_directory, session_factory
+from app.music.library_database import (ShareLink, Track, music_directory,
+                                        session_factory)
 from tests.test_music import PICTURE_BYTES, _seed_library, _write_audio
 
 
@@ -126,6 +127,58 @@ def test_share_expiry_and_unknown_token(auth):
     with session_factory()() as session:          # 惰性清除: 行已删
         assert session.get(ShareLink, made["token"]) is None
     assert anon.get(f"/music/share/{'f' * 32}/api").status_code == 410
+
+
+def test_share_page_og_card(auth):
+    """微信分享卡片 (og: 三件套, 微信不跑页面 JS 全看这里): 单曲卡 = 曲名 +
+    自己的内嵌图; 列表卡 = 列表名 + 自定义封面, 没传过退第一首的专辑图;
+    图片都是绝对地址; 死链也给通用文案 (占位符不漏空)。"""
+    _seed_with_files()
+    made = _make_share(auth, "track", 1)
+    anon = TestClient(m.app)
+    page = anon.get(f"/music/share/{made['token']}")
+    assert page.status_code == 200
+    assert '<meta property="og:title" content="曲A">' in page.text
+    assert '<meta property="og:description" content="AI机组 · My Music">' \
+        in page.text
+    assert (f'<meta property="og:image" content="http://testserver'
+            f'/music/share/{made["token"]}/artwork/track/1">') in page.text
+    assert "<!--og-->" not in page.text          # 占位符换干净了
+
+    created = auth.post("/music/api/playlists",
+                        json={"name": "卡片单"}).json()
+    auth.post(f"/music/api/playlists/{created['playlist_id']}/tracks",
+              json={"track_id": 1})
+    made = _make_share(auth, "playlist", created["playlist_id"])
+    page = anon.get(f"/music/share/{made['token']}")
+    assert '<meta property="og:title" content="卡片单">' in page.text
+    # 没传过自定义封面 → 退第一首的专辑图
+    assert f'/music/share/{made["token"]}/artwork/album/1">' in page.text
+
+    page = anon.get(f"/music/share/{'0' * 32}")
+    assert '<meta property="og:title" content="My Music 分享">' in page.text
+    assert "music/static/icon-512.png" in page.text
+
+
+def test_share_lyrics_scoped(auth):
+    """分享页歌词路由: 走应用同一条取词通道 (带联网补词配置), 但只放行
+    这份分享里确实有的; 死链 410。"""
+    _seed_with_files()
+    with session_factory()() as session:         # 给曲A 塞一首带时间轴的词
+        track = session.get(Track, 1)
+        assert track is not None
+        track.lyrics = "[00:01.00]第一句\n[00:05.00]第二句"
+        track.lyrics_synced = True
+        session.commit()
+    made = _make_share(auth, "track", 1)
+    anon = TestClient(m.app)
+    lyrics = anon.get(f"/music/share/{made['token']}/lyrics/1")
+    assert lyrics.status_code == 200
+    assert lyrics.json() == {"track_id": 1,
+                             "lyrics": "[00:01.00]第一句\n[00:05.00]第二句",
+                             "lyrics_synced": True}
+    assert anon.get(f"/music/share/{made['token']}/lyrics/2").status_code == 404
+    assert anon.get(f"/music/share/{'0' * 32}/lyrics/1").status_code == 410
 
 
 def test_share_of_emptied_playlist_reads_as_expired(auth):

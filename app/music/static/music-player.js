@@ -39,7 +39,7 @@ function audioElement() {
 /** 浏览页入口: 给一批曲目 (及起始下标) 开播; shuffleOn = 随机播这批。 */
 function playerStart(tracks, startIndex, shuffleOn) {
   playQueue = createPlayQueue(tracks, startIndex);
-  if (shuffleOn) queueSetShuffle(playQueue, true);
+  if (shuffleOn) queueShuffleAll(playQueue);   // 整队洗牌, 不是"当前曲钉队首"
   const track = queueCurrent(playQueue);
   if (!track) return;
   if (!track.playable) {

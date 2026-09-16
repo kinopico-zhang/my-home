@@ -47,23 +47,29 @@ function queueCurrent(queue) {
   return trackIndex === undefined ? null : (queue.tracks[trackIndex] || null);
 }
 
+/** 0..count-1 洗匀 (Fisher-Yates)。 */
+function shuffledIndices(count) {
+  const indices = Array.from({ length: count }, (_, index) => index);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const swap = indices[i];
+    indices[i] = indices[j];
+    indices[j] = swap;
+  }
+  return indices;
+}
+
 /**
  * 随机开关。打开: 当前曲提到首位、其余洗牌; 关闭: 回到专辑原顺序。
- * 正在播的曲不换, 只换后面的走向。
+ * 正在播的曲不换, 只换后面的走向 —— 这是"播到一半开随机"的语义。
  * @param {PlayQueue} queue
  * @param {boolean} shuffle
  */
 function queueSetShuffle(queue, shuffle) {
   const currentTrackIndex = queue.order[queue.position];
   queue.shuffle = shuffle;
-  const indices = queue.tracks.map((_, index) => index);
   if (shuffle) {
-    for (let i = indices.length - 1; i > 0; i--) {   // Fisher-Yates
-      const j = Math.floor(Math.random() * (i + 1));
-      const swap = indices[i];
-      indices[i] = indices[j];
-      indices[j] = swap;
-    }
+    const indices = shuffledIndices(queue.tracks.length);
     if (currentTrackIndex !== undefined) {
       indices.splice(indices.indexOf(currentTrackIndex), 1);
       queue.order = [currentTrackIndex, ...indices];
@@ -72,9 +78,21 @@ function queueSetShuffle(queue, shuffle) {
       queue.order = indices;
     }
   } else {
-    queue.order = indices;
+    queue.order = queue.tracks.map((_, index) => index);
     queue.position = currentTrackIndex === undefined ? -1 : currentTrackIndex;
   }
+}
+
+/**
+ * 开播即随机 (列表/专辑页的「随机播放」键): 整队洗牌, 从洗出来的队首播。
+ * 与 queueSetShuffle 是两个语义 —— 那个把当前曲钉在队首, 用在起播上
+ * 就是"随机播放永远第一首" (1.7.0 后遗症, 用户点名)。
+ * @param {PlayQueue} queue
+ */
+function queueShuffleAll(queue) {
+  queue.shuffle = true;
+  queue.order = shuffledIndices(queue.tracks.length);
+  queue.position = queue.order.length ? 0 : -1;
 }
 
 /**
@@ -168,7 +186,8 @@ function queueUpcoming(queue) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    createPlayQueue, queueCurrent, queueSetShuffle, queueCycleRepeat,
-    queueAdvance, queueGoBack, queueJump, queueUpcoming, queueReorder,
+    createPlayQueue, queueCurrent, queueSetShuffle, queueShuffleAll,
+    queueCycleRepeat, queueAdvance, queueGoBack, queueJump, queueUpcoming,
+    queueReorder,
   };
 }
