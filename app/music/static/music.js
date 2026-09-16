@@ -1,11 +1,11 @@
 // music.js — My Music 浏览页: 主页 (播放列表/最近播放) + 资料库
-// (专辑/艺人/歌曲/已下载) + 搜索 (歌名/专辑/艺人/歌词) +
+// (专辑/艺人/已下载; 找歌用搜索) + 搜索 (歌名/专辑/艺人/歌词) +
 // 专辑/艺人详情 + 设置。播放交给 music-player.js, 下载管理在 downloads.js,
 // 蜂窝流量记账在 cellular-usage.js。
 "use strict";
 
 const LIBRARY_SEGMENTS = [
-  ["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"],
+  ["albums", "专辑"], ["artists", "艺人"], ["downloads", "已下载"],
 ];
 
 /** 老版本存过的段名 (recent/playlists) 已收窄掉, 认不出的回落专辑。 */
@@ -1149,9 +1149,11 @@ function resetLibraryLists() {
 
 function renderLibraryView() {
   $("#root-view").innerHTML = `
-    <div class="seg" id="lib-seg">
-      ${LIBRARY_SEGMENTS.map(([key, label]) => `
-        <button data-segment="${key}"${key === pageState.segment ? ' class="on"' : ""}>${label}</button>`).join("")}
+    <div class="sticky-head">
+      <div class="seg" id="lib-seg">
+        ${LIBRARY_SEGMENTS.map(([key, label]) => `
+          <button data-segment="${key}"${key === pageState.segment ? ' class="on"' : ""}>${label}</button>`).join("")}
+      </div>
     </div>
     <div id="lib-body"></div>`;
   $("#lib-seg").addEventListener("click", (event) => {
@@ -1198,10 +1200,6 @@ function bindLibraryBody() {
     const downloadRow = event.target.closest("[data-dl-row]");
     if (downloadRow) { playDownloadedRow(Number(downloadRow.dataset.dlRow)); }
   });
-  bindTrackLists(body, () => {
-    const list = pageState.lists[pageState.segment];
-    return list ? list.items : [];
-  });
 }
 
 /** 已下载栏点行开播 (队列 = 已下载列表, 下载中的除外)。 */
@@ -1217,9 +1215,14 @@ function renderLibraryBody() {
   const body = $("#lib-body");
   const segment = pageState.segment;
   body.innerHTML = "";
+  body.dataset.segment = segment;   // 段守卫的锚: 在途旧分页回来对不上就丢弃
   if (segment === "downloads") { renderDownloadsBody(body); return; }
   const list = pageState.lists[segment];
-  if (list && list.items.length) { appendListPage(body, segment, list); return; }
+  if (list && list.items.length) {
+    list.renderedCount = 0;         // 缓存重铺从头渲染 (旧值是上次铺到的位置)
+    appendListPage(body, segment, list);
+    return;
+  }
   body.innerHTML = listPlaceholderHTML("加载中…");
   loadListPage(segment);
 }
@@ -1295,7 +1298,14 @@ async function loadListPage(segment) {
   pageState.lists[segment] = list;
   await fetchListPage(segment, list);
   const body = $("#lib-body");
-  if (!body || !body.isConnected) return;      // 已被换掉
+  // 段守卫: 等待期间用户已换页签, 这页内容不能铺进新页签 (换台串味)
+  if (!body || body.dataset.segment !== segment) return;
+  if (!list.items.length) {
+    // 首页没拉到 (弱网/服务器打盹): 空单不缓存, 切回来还会重试
+    delete pageState.lists[segment];
+    body.innerHTML = listPlaceholderHTML("列表没拉到, 切个页签再试");
+    return;
+  }
   body.innerHTML = "";
   appendListPage(body, segment, list);
   syncPlayerIndicators();
@@ -1305,13 +1315,11 @@ async function fetchListPage(segment, list) {
   try {
     const parameters = new URLSearchParams({ limit: "60" });
     if (segment === "albums") parameters.set("sort", "title");
-    if (segment === "songs") parameters.set("limit", "100");
     parameters.set("offset", String(list.offset));
     const endpoint = segment === "artists" ? "/music/api/artists"
-      : segment === "songs" ? "/music/api/tracks" : "/music/api/albums";
+      : "/music/api/albums";
     const data = await fetchJSON(`${endpoint}?${parameters}`);
-    list.items.push(...(segment === "artists" ? data.artists
-      : segment === "songs" ? data.tracks : data.albums));
+    list.items.push(...(segment === "artists" ? data.artists : data.albums));
     list.total = data.total_count;
     list.offset = list.items.length;
     list.done = list.offset >= list.total;
@@ -1323,8 +1331,10 @@ async function fetchListPage(segment, list) {
 }
 
 /** 把新到的一页铺进容器 + 哨兵; 哨兵还在屏内就续载 (IO 只在进出时回调)。
-    追加而不重铺: 图片已经加载的格子不闪。 */
+    追加而不重铺: 图片已经加载的格子不闪。段守卫: 页签已换走的话这页
+    是在途旧账, 直接丢弃 —— 否则会把别的内容灌进当前页签 (串台)。 */
 function appendListPage(body, segment, list) {
+  if (body.dataset.segment !== segment) return;
   const firstRender = !body.querySelector(".list-sentinel")
     && !body.querySelector(".album-grid") && !body.querySelector(".track-row")
     && !body.querySelector(".artist-row");
@@ -1337,9 +1347,6 @@ function appendListPage(body, segment, list) {
   const added = list.items.slice(list.renderedCount || 0);
   if (segment === "artists") {
     body.insertAdjacentHTML("beforeend", added.map(artistRowHTML).join(""));
-  } else if (segment === "songs") {
-    body.insertAdjacentHTML("beforeend",
-      added.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join(""));
   } else {
     let grid = body.querySelector(".album-grid");
     if (!grid) {
@@ -1608,12 +1615,14 @@ async function uploadPlaylistCover(playlistId) {
 
 function renderSearchView() {
   $("#root-view").innerHTML = `
-    <div class="search-box">
-      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      <input id="search-input" type="search" enterkeyhint="search" autocomplete="off"
-             placeholder="歌曲、专辑、艺人、歌词 (拼音简繁都行)" maxlength="100"
-             value="${escapeHTML(pageState.searchQuery)}">
-      <button id="search-clear" hidden aria-label="清空">✕</button>
+    <div class="sticky-head">
+      <div class="search-box">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <input id="search-input" type="search" enterkeyhint="search" autocomplete="off"
+               placeholder="歌曲、专辑、艺人、歌词 (拼音简繁都行)" maxlength="100"
+               value="${escapeHTML(pageState.searchQuery)}">
+        <button id="search-clear" hidden aria-label="清空">✕</button>
+      </div>
     </div>
     <div id="search-body"></div>`;
   const input = $("#search-input");
@@ -2065,13 +2074,13 @@ const SYS_TOP_INSETS = {  // 机型屏幕 (短边x长边, CSS px) → 刘海/灵
 };
 // 系统磨砂带比安全区还深一截: 用户 iOS 27.2 实测 (2026-09-16, 393x852),
 // 兜底 59 时第一排内容 (CSS 60-88) 仍被栅糊 (边缘强度只有下面几排的
-// 1/4), 到 CSS 116 才完全锐利 —— 带子实际 ≈115px ≈ 刘海高 + 56。
-// 兜底值在刘海高度上再垫这 56, 内容从带子底下干净开始 (只在 env 谎报
-// 0 的中招系统上生效, 多让的这截不影响健康设备)。
-const SYS_FROST_EXTRA = 56;
+// 1/4), 到 CSS 116 才完全锐利; 第二轮实测 (次日) 兜底 115 后用户仍见
+// 带子底缘渗进一小条 —— 带子深度会浮动, 干脆垫足 88 (≈刘海+88=147),
+// 宁可多让一截黑也别再露出糊边 (只在 env 谎报 0 的中招系统上生效)。
+const SYS_FROST_EXTRA = 88;
 // 推下变体里系统带的抓拍条比推下线还渗出一小截 (用户 iOS 27.2 实测:
-// 推下 81, 阴影渗到 ~92), 黑罩在推下量上再垫这 12, 把渗边也盖进纯黑里
-const SYS_PUSH_BLEED = 12;
+// 推下 81, 阴影渗到 ~92), 黑罩在推下量上再垫这 16, 把渗边也盖进纯黑里
+const SYS_PUSH_BLEED = 16;
 function sysTopInsetFor(w, h) {
   const exact = SYS_TOP_INSETS[`${Math.min(w, h)}x${Math.max(w, h)}`];
   const inset = exact || (h >= 940 ? 62 : h >= 850 ? 59 : 47);  // 表外新机型按高度估
