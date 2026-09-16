@@ -1,6 +1,7 @@
 """鉴权 / 路由 / 中间件测试。"""
 import hashlib
 import hmac
+import re
 import struct
 import time
 import zlib
@@ -76,6 +77,15 @@ def test_all_pages_have_standalone_meta(auth):
         assert f'<link rel="manifest" href="{manifest}">' in html, path
 
 
+def _page_with_css(client: TestClient, path: str) -> str:
+    """页面 HTML + 其引用的样式表拼起来 (2026-09-17 结构化重构后 CSS 拆出
+    html 进独立文件, "整页" 断言的口径 = markup + 引用的 css)。"""
+    html: str = client.get(path).text
+    refs = re.findall(r'<link rel="stylesheet" href="([^"]+)"', html)
+    css = "".join(client.get(href).text for href in refs)
+    return html + css
+
+
 def test_all_pages_disable_double_tap_zoom_on_controls(auth):
     """触屏双击控件不再整页放大 (2026-09-13 用户踩坑)。
 
@@ -84,8 +94,8 @@ def test_all_pages_disable_double_tap_zoom_on_controls(auth):
     (地图手势区是 div, 不受影响)。全站统一, 登录页也要有。
     """
     for path in ALL_PAGES:
-        html = auth.get(path).text
-        assert "button, a, summary { touch-action: manipulation; }" in html, path
+        page = _page_with_css(auth, path)
+        assert "button, a, summary { touch-action: manipulation; }" in page, path
 
 
 def test_all_pages_have_refresh_button(auth):
@@ -112,9 +122,9 @@ def test_all_pages_have_refresh_button(auth):
         "/accounts": ("accounts.js", "await loadAll();"),
     }
     for path, (js_file, call) in wiring.items():
-        html = auth.get(path).text
-        assert '<button id="refresh-btn"' in html, path        # 按钮在顶栏
-        assert "refresh-spin" in html, path                    # busy 旋转动画
+        page = _page_with_css(auth, path)   # refresh-spin/#refresh-btn 样式在 css 文件里
+        assert '<button id="refresh-btn"' in page, path       # 按钮在顶栏
+        assert "refresh-spin" in page, path                   # busy 旋转动画
         prefix = ("/bookkeeping/static" if path.startswith("/bookkeeping")
                   else "/music/static" if path == "/music"
                   else "/static" if path == "/accounts"
@@ -125,8 +135,8 @@ def test_all_pages_have_refresh_button(auth):
         assert call in js, f"{path} 刷新按钮没接上 {call}"
         # 刷新按钮始终顶栏最右: 有时间菜单的页菜单吃 auto 边距, 按钮跟在后面;
         # 没有的页 (分组/驾驶/设置/日志/记账/账号) 按钮自己吃 auto 边距
-        if 'id="time-menu"' not in html:
-            block = html[html.index("#refresh-btn {"):]
+        if 'id="time-menu"' not in page:
+            block = page[page.index("#refresh-btn {"):]
             assert "margin-left: auto" in block[:block.index("}")], path
 
 
@@ -691,7 +701,7 @@ def test_mymusic_topbar_is_own_app(auth):
     更新日志/退出登录全进设置页 (music.js 渲染)。与 My Tesla 只共享账号 ——
     页面里不出现任何 tesla 链接/脚本, 图标样式全自己的。"""
     html = auth.get("/music").text
-    js = auth.get("/music/static/music.js").text
+    js = auth.get("/music/static/js/music-settings-view.js").text
     assert 'class="nav-menu brand-menu" id="brand-menu"' not in html  # 菜单撤了
     assert 'id="logout"' not in html and 'id="stats-link"' not in html
     assert "重新扫描曲库" not in html          # 职能进设置页 (JS 渲染)

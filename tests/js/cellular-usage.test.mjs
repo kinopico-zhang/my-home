@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static/js");
 const { createCellularMonitor } = require(path.join(dir, "cellular-usage.js"));
 
 /** 让出事件循环: tick 里火后不理的 flush 走完收尾 (扣账/解在途锁)。 */

@@ -1,7 +1,7 @@
-// downloads.js — 离线下载纯逻辑: 状态机 (下载中/已下载) + 索引合并 + 删除/取消
-// + 缓存大小统计。网络/Cache API/localStorage 都是适配器注入 (node --test 直测 + tsc +
-// c8 覆盖), 浏览器接线在 music.js; Service Worker (sw.js) 负责离线回源。
-
+// downloads.js — 离线下载状态机 (下载中/已下载) + 索引合并 + 删除/取消 + 用量统计。
+// 网络与 Cache API 都是适配器注入 (node --test 直测 + tsc + c8); 浏览器接线在
+// music-downloads-integration.js; Service Worker (sw.js) 离线回源。
+// 能力探测 downloadsSupported 与 formatBytes 在 downloads-capability.js。
 /**
  * 一条下载索引 (localStorage "music-downloads"): 曲目展示信息 + 下载时刻。
  * @typedef {Object} DownloadEntry
@@ -41,36 +41,6 @@
  *                                                     totalBytes: number}>
  * @property {Function} onChange        (listener: Function) => void
  */
-
-/**
- * 离线下载要不要亮出来: 需要安全上下文 (HTTPS 或 localhost) ——
- * Cache API 和 Service Worker 在明文 HTTP 下浏览器根本不给。
- * @param {Object} environment {secureContext, cacheApi, serviceWorkerApi}
- * @returns {boolean}
- */
-function downloadsSupported(environment) {
-  return Boolean(environment.secureContext && environment.cacheApi
-                 && environment.serviceWorkerApi);
-}
-
-/**
- * 字节数 → 人话 ("38.2 MB"): B 恒整数, KB 以上百内一位小数、以上取整。
- * 下载管理页的合计/单行大小和测试共用。
- * @param {number} bytes
- * @returns {string}
- */
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  if (unit === 0) return `${Math.round(value)} B`;
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
 
 /**
  * 建下载管理器 (状态在实例里; 同一页面只建一个)。
@@ -204,5 +174,5 @@ function createDownloads(adapters) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { downloadsSupported, createDownloads, formatBytes };
+  module.exports = { createDownloads };
 }

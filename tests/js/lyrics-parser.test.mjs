@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static/js");
 const { parseLyrics, activeLyricIndex, formatPlaybackTime } = require(path.join(dir, "lyrics-parser.js"));
 
 test("parseLyrics: 同步歌词 (剥时间轴/排序/元数据与空行剔除)", () => {

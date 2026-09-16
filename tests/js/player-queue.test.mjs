@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static/js");
 const { createPlayQueue, queueCurrent, queueSetShuffle, queueShuffleAll,
         queueCycleRepeat, queueAdvance, queueGoBack, queueJump, queueUpcoming,
         queueReorder } =

@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)),
-  "../../app/music/static");
+  "../../app/music/static/js");
 const common = fs.readFileSync(path.join(dir, "music-common.js"), "utf8");
 const page = fs.readFileSync(path.join(dir, "music.html"), "utf8");
 

@@ -1,0 +1,169 @@
+/* music-views — My Music 前端样式 (一级视图: 统计页 / 搜索框 / 设置页 / 更新日志 / 已下载管理栏)。
+   拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 统计页 ---------- */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 22px;
+}
+.stat-card { background: var(--surface-2); border-radius: 12px; padding: 15px 14px; }
+.stat-card b {
+  display: block; font-size: 25px; font-weight: 700;
+  letter-spacing: -.5px; line-height: 1.2; font-variant-numeric: tabular-nums;
+}
+.stat-card b small { font-size: 13px; font-weight: 600; margin-left: 2px; }
+.stat-card > small {
+  display: block; color: var(--ink-3); font-size: 12px; margin-top: 3px;
+}
+.stats-title { font-size: 14px; font-weight: 600; margin: 2px 0 6px; }
+.format-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; font-size: 13px; color: var(--ink-1);
+}
+.format-row.disabled { color: var(--ink-3); }
+.format-name {
+  width: 88px; flex-shrink: 0; font-weight: 600;
+  text-transform: uppercase; font-variant-numeric: tabular-nums;
+}
+.format-name i { font-style: normal; font-weight: 400; font-size: 11px; }
+.format-bar {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: var(--surface-2); overflow: hidden;
+}
+.format-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.format-row.disabled .format-bar i { background: var(--ink-3); }
+.format-count {
+  width: 56px; flex-shrink: 0; text-align: right;
+  color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+.stat-empty { color: var(--ink-3); padding: 18px 2px; font-size: 13px; }
+
+/* ---------- 搜索 ---------- */
+.search-box {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface-2); border-radius: 10px; padding: 0 12px;
+}
+.search-box svg { color: var(--ink-3); flex-shrink: 0; }
+.search-box input {
+  flex: 1; background: none; border: 0; outline: none; color: var(--ink-1);
+  font: inherit; font-size: 16px;   /* iOS: 聚焦小于 16px 的输入框会自动放大整页 */
+  padding: 9px 0;
+}
+.search-box input::placeholder { color: var(--ink-3); }
+.search-box input::-webkit-search-cancel-button { display: none; }
+#search-clear { color: var(--ink-3); font-size: 14px; padding: 4px; }
+
+/* ---------- 设置页 ---------- */
+.settings-block {
+  background: var(--surface-2); border-radius: 12px;
+  padding: 4px 14px; margin-bottom: 14px;
+}
+.settings-title {
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  padding: 12px 0 2px;
+}
+.settings-field { padding: 10px 0 12px; border-bottom: 1px solid var(--hairline); }
+.settings-block .settings-field:last-child { border-bottom: 0; }
+.settings-field > label { display: block; font-size: 14px; font-weight: 500; }
+.settings-field > input {
+  width: 100%; margin-top: 8px; padding: 9px 12px;
+  background: var(--surface-3); border: 0; border-radius: 10px;
+  color: var(--ink-1); font: inherit; font-size: 16px;   /* iOS 聚焦 <16px 会自动放大整页 */
+}
+.settings-field > input:focus { outline: 1px solid var(--accent); }
+.settings-field > small { display: block; font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; }
+.switch {
+  position: relative; width: 46px; height: 28px; border-radius: 999px;
+  background: var(--surface-3); flex-shrink: 0; transition: background .2s;
+}
+.switch i {
+  position: absolute; top: 2px; left: 2px; width: 24px; height: 24px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  transition: transform .2s cubic-bezier(.32,.72,0,1);
+}
+.switch.on { background: var(--accent); }
+.switch.on i { transform: translateX(18px); }
+.set-save-row { display: flex; justify-content: center; margin: 4px 0 18px; }
+.month-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--hairline); font-size: 14px;
+}
+.settings-block .month-row:last-of-type { border-bottom: 0; }
+.month-row b { font-variant-numeric: tabular-nums; }
+.month-row small { color: var(--ink-3); font-size: 12px; }
+.settings-note { display: block; font-size: 11px; color: var(--ink-3); padding: 10px 0 12px; }
+/* 入口行 (原品牌菜单搬进设置页的职能: 统计/更新日志/重扫/退出登录) */
+.settings-row {
+  display: flex; align-items: center; width: 100%;
+  padding: 11px 0; text-align: left; font-size: 14px; color: var(--ink-1);
+  border-bottom: 1px solid var(--hairline);
+}
+.settings-block .settings-row:last-child { border-bottom: 0; }
+.settings-row:active { opacity: .6; }
+.settings-row.logout { color: #e5484d; }
+.settings-user {
+  display: flex; align-items: center; gap: 8px; padding: 11px 0;
+  border-bottom: 1px solid var(--hairline); font-size: 14px;
+  color: var(--ink-2); -webkit-user-select: none; user-select: none;
+}
+.settings-user svg { flex-shrink: 0; opacity: .7; }
+.settings-user span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-user em {
+  font-style: normal; font-size: 10px; color: #7db3f0;
+  border: 1px solid rgba(125,179,240,.5); border-radius: 4px;
+  padding: 0 4px; margin-left: auto; flex-shrink: 0;
+}
+
+/* ---------- 更新日志 (应用内视图, 听歌不中断) ----------
+   版本卡片样式与独立日志页 /music/changelog 同款 */
+#changelog-entries { background: var(--surface); border: 1px solid var(--hairline);
+                     border-radius: 14px; overflow: hidden; }
+#changelog-entries .ver { padding: 12px 14px; }
+#changelog-entries .ver + .ver { border-top: 1px solid var(--hairline); }
+#changelog-entries .v-head { display: flex; align-items: baseline;
+                             gap: 8px; margin-bottom: 9px; }
+#changelog-entries .v-badge {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 15px; font-weight: 600; color: #7db3f0;
+  font-variant-numeric: tabular-nums;
+}
+#changelog-entries .v-date {
+  font-size: 11px; color: var(--ink-3);
+  font-family: ui-monospace, Menlo, monospace;
+}
+#changelog-entries .v-items { list-style: none;
+                              display: flex; flex-direction: column; gap: 7px; }
+#changelog-entries .v-items li {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 13.5px; line-height: 1.45; word-break: break-word;
+}
+#changelog-entries .k { flex: none; margin-top: 2px; font-size: 10.5px;
+                        font-weight: 600; padding: 1.5px 7px; border-radius: 6px;
+                        white-space: nowrap; }
+#changelog-entries .k-add { color: #7db3f0; background: rgba(57,135,229,.18); }
+#changelog-entries .k-imp { color: #f0b13d; background: rgba(224,138,60,.16); }
+#changelog-entries .k-fix { color: #6fce8e; background: rgba(31,163,73,.16); }
+#changelog-entries .t { flex: 1; min-width: 0; }
+
+/* ---------- 已下载栏 ---------- */
+.dl-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px 0; text-align: left; border-bottom: 1px solid var(--hairline);
+}
+.dl-row:active { background: rgba(255,255,255,.04); }
+.dl-row.busy { opacity: .6; }
+.dl-state { font-size: 12px; color: var(--ink-3); flex-shrink: 0;
+            font-variant-numeric: tabular-nums; }
+.dl-remove {
+  font-size: 13px; color: var(--accent); padding: 6px 8px; flex-shrink: 0;
+}
+.dl-stats {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 0 8px; border-bottom: 1px solid var(--hairline);
+}
+.dl-stats-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dl-stats-main strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.dl-stats-main small { font-size: 11px; color: var(--ink-3); }
+.dl-clear { font-size: 13px; color: #ff3b30; padding: 6px 8px; flex-shrink: 0; }
+

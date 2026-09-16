@@ -1,0 +1,183 @@
+/* music-lists — My Music 前端样式 (内容列表: 专辑网格 / 曲目行 / 艺人行 / 播放列表行 / 左滑删除)。
+   拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 专辑网格 ---------- */
+.album-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 18px 14px;
+}
+.album-card { text-align: left; }
+.album-card .art-wrap {
+  position: relative; display: block; width: 100%; aspect-ratio: 1;
+  border-radius: 8px; overflow: hidden; background: var(--surface-2);
+  box-shadow: 0 4px 14px rgba(0,0,0,.4);
+}
+.album-card img { width: 100%; height: 100%; object-fit: cover; }
+.album-card b {
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: 13px; margin-top: 7px; font-weight: 500;
+}
+.album-card small {
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: 12px; color: var(--ink-2); margin-top: 2px;
+}
+.album-card:active .art-wrap { opacity: .75; }
+
+/* ---------- 曲目行 ---------- */
+.track-row, .lyric-hit {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px 0; text-align: left; border-bottom: 1px solid var(--hairline);
+}
+.track-row:active, .lyric-hit:active { background: rgba(255,255,255,.04); }
+.track-row.disabled .t-title, .track-row.disabled small { opacity: .4; }
+.t-lead { width: 22px; flex-shrink: 0; display: flex; justify-content: center; }
+.t-main { flex: 1; min-width: 0; }
+.t-title {
+  display: flex; align-items: center; gap: 5px; font-size: 15px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+/* 标题文字单独包一层可收缩: 不然 flex 行里裸文本压不扁,
+   长歌名把「词/格式」小标顶出屏幕 (元素超宽, 手机上整页跟着能左右滑) */
+.t-title-text {
+  flex: 1; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.track-row.playing .t-title { color: var(--accent); }
+/* 词标 ❝: 行右侧图标簇的一员 (下载标前面), 同 26px 高度框 ——
+   两个图标在行里同一个水平线上, 大小也一样 (17px)。 */
+.t-lyric {
+  display: flex; align-items: center; height: 26px; flex-shrink: 0;
+  color: var(--ink-2);
+}
+.t-format {
+  font-style: normal; font-size: 10px; color: var(--ink-3);
+  text-transform: uppercase; flex-shrink: 0;
+}
+.t-main small {
+  display: block; font-size: 12px; color: var(--ink-2);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+/* 右列多数是时长 (短), 歌词命中行放的是艺人名: 都要能收缩省略,
+   长名字不许把行撑破 */
+.t-time {
+  font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  flex-shrink: 1; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+
+/* 下载标 (曲目行右侧, 点按 = 下载; 已下载变勾; 明文 HTTP 下整列不渲染)。
+   颜色与词标 ❝ 同一档 (行右侧图标簇一个色, 没有色差)。 */
+.t-dl {
+  width: 26px; height: 26px; flex-shrink: 0; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--ink-2); border-radius: 50%; margin: -4px -6px -4px 0;
+}
+.t-dl:active { color: var(--ink-1); background: var(--surface-2); }
+.t-dl.done { color: var(--ink-1); }
+.dl-pct { font-size: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* 播放中的动条 (替掉序号) */
+.bars { display: none; align-items: flex-end; gap: 2px; height: 14px; }
+.bars i { width: 3px; background: var(--accent); border-radius: 1px;
+          animation: bars-bounce 1s ease-in-out infinite; }
+.bars i:nth-child(2) { animation-delay: .25s; }
+.bars i:nth-child(3) { animation-delay: .5s; }
+@keyframes bars-bounce { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+.playing .bars { display: inline-flex; }
+/* 序号行: 播放中动条顶掉序号; 封面行 (播放列表/选择单) 封面不许被顶掉
+   —— 动条胶囊叠在封面中央, 深底衬着, 任何封面都看得清 */
+.playing .t-lead:not(.art) > :not(.bars) { display: none; }
+.t-lead.art { position: relative; }
+.playing .t-lead.art .bars {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 6px 5px; border-radius: 999px;
+  background: rgba(0, 0, 0, .58);
+}
+
+/* ---------- 艺人行 ---------- */
+.artist-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px 0; text-align: left; border-bottom: 1px solid var(--hairline);
+}
+.artist-row:active { background: rgba(255,255,255,.04); }
+.artist-row .poster {
+  width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
+  background: var(--surface-2); flex-shrink: 0;
+}
+.a-main { flex: 1; min-width: 0; }
+.a-main b { display: block; font-size: 15px; font-weight: 500;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.a-main small { font-size: 12px; color: var(--ink-2); }
+.artist-row .chev { color: var(--ink-3); font-size: 18px; }
+
+/* ---------- 左滑删除 (iOS 同款) ----------
+   .swipe-wrap 里第一个子元素是行 (横移跟手), .swipe-del 垫在右缘底下;
+   行透明会让删除钮透出来 → 行必须铺底色 (与页面同色)。 */
+.swipe-wrap { position: relative; overflow: hidden; }
+.swipe-wrap > button:first-child {
+  position: relative; z-index: 1; background: var(--bg);
+  transition: transform .25s cubic-bezier(.25,.1,.25,1); touch-action: pan-y;
+}
+/* 拖动跟手 (松手的回位/定住才交给上面的过渡) —— 队列拖拽同款手法 */
+.swipe-wrap > button:first-child.swiping { transition: none; }
+.swipe-del {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 0;
+  width: 72px; display: flex; align-items: center; justify-content: center;
+  background: #e5484d; color: #fff; font-size: 14px; font-weight: 600;
+}
+.swipe-del:active { background: #cf3942; }
+
+.section-head {
+  font-size: 20px; font-weight: 700; margin: 22px 0 12px;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.section-head small { font-size: 13px; color: var(--ink-3); font-weight: 500; }
+
+/* ---------- 播放列表行 ---------- */
+.playlist-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px 0; text-align: left; border-bottom: 1px solid var(--hairline);
+}
+.playlist-row:active { background: rgba(255,255,255,.04); }
+.pl-icon {
+  width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: #fff;
+  background: linear-gradient(135deg, #6e40c8, #fa2d48);
+}
+.pl-icon.big {
+  width: min(62vw, 260px); height: auto; aspect-ratio: 1;
+  font-size: min(24vw, 96px); border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.55);
+}
+.playlist-row .chev { color: var(--ink-3); font-size: 18px; }
+.pl-icon.sm { width: 44px; height: 44px; font-size: 18px; border-radius: 8px; }
+/* 传过自定义封面的列表: 原图直出 (img 复用同一组尺寸类) */
+.pl-icon.art { object-fit: cover; }
+img.pl-icon { display: block; }
+
+/* 播放列表的大封面: 点一下直接换 (角标提示可点) */
+.pl-cover-btn {
+  position: relative; display: block; padding: 0; margin: 0;
+  border: none; background: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pl-cover-btn .pl-icon.big { transition: transform .15s ease; }
+.pl-cover-btn:active .pl-icon.big { transform: scale(.97); }
+.cover-hint {
+  position: absolute; right: 10px; bottom: 10px;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .55); color: #fff;
+}
+.cover-hint svg { width: 15px; height: 15px; }
+
+/* 播放列表里每首歌自己的封面 (元数据内嵌图, 44px 小方图替掉序号) */
+.t-art {
+  width: 44px; height: 44px; border-radius: 6px; object-fit: cover;
+  background: var(--surface-2); flex-shrink: 0; display: block;
+}
+span.t-art { display: flex; align-items: center; justify-content: center;
+             color: var(--ink-3); font-size: 16px; }
+.t-lead.art { width: auto; }
+
