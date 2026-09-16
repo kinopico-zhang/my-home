@@ -160,7 +160,9 @@ def test_music_swipe_delete_wiring():
     # 手势地盘分家 (1.7.0 后遗症修): 左滑只认左移 (右移归推入层返回手势,
     # 抢了会被 pointercancel 掐弹回); 左缘 24px 让给 iOS 系统边缘返回
     assert "swipeDrag.horizontal = dx < 0 && Math.abs(dx) > Math.abs(dy);" in js
-    assert 'event.pointerType !== "mouse" && event.clientX < 24' in js
+    # 左缘只让给系统手势; 主屏图标打开 (standalone) 没有系统手势, 自己接管
+    assert "const standaloneLaunch" in js
+    assert 'if (!standaloneLaunch && event.pointerType !== "mouse"' in js
     # 拖动跟手: 行上挂 .swiping 撤掉 transform 过渡, 松手回位才交给过渡
     # (不撤的话每帧都在重定 250ms 补间, 手指拖着行像皮筋 —— 队列拖拽同款)
     assert 'swipeDrag.row.classList.add("swiping")' in js
@@ -171,14 +173,34 @@ def test_music_swipe_delete_wiring():
 
 
 def test_music_pane_fixed_chrome_wiring():
-    """推入层从顶栏/播放气泡*底下*滑过 (用户点名: 界面切换时二者固定不动,
-    看起来不在一个图层): 顶栏 sticky z50、气泡 fixed z45 本来就压着推入层
-    z44 —— 真正显同层的是推入层顶边贴着 headerBottom (齐平像一整块);
-    改成全高推入层, 内容用 --pane-top (JS 量 headerBottom, resize 重量)
-    让开顶栏, 卡片整个从毛玻璃底下扫过去。"""
+    """顶栏/气泡在滚动和切页全程钉死 (用户点名两轮: 切页时不在一个图层 +
+    滑动过程中也保持不动)。两层手段: ① 固定壳 —— html/body 锁高锁滚,
+    文档永不滚 (iPhone 工具栏只跟文档滚动收放, 文档不滚视口恒定,
+    钉视口的顶栏/气泡物理上无从移动), main 变内部滚动器, 顶栏 (sticky
+    z50) 住进 main 钉在滚动器口; ② 全高推入层 (z44) 从毛玻璃顶栏
+    (z50)/气泡 (z45) 底下扫过, 内容用 --pane-top (JS 量 headerBottom)
+    让位。根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉顶栏)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
+    # 壳: 文档不滚, main 是唯一一级滚动器, 顶栏住 main 里
+    assert "height: 100%; overflow: hidden;" in html            # html
+    assert "height: 100dvh;" in html and "overflow: hidden;" in html  # body
+    main_css = html[html.index("main {"):html.index("#root-view {")]
+    assert "min-height: 0;" in main_css and "overflow-y: auto;" in main_css
+    assert "-webkit-overflow-scrolling: touch;" in main_css
+    root_css = html[html.index("#root-view {"):html.index(".push-pane {")]
+    assert "max-width: 860px; margin: 0 auto;" in root_css
+    assert "calc(90px + env(safe-area-inset-bottom))" in root_css
+    assert html.index('<main id="main">') < html.index("<header>") \
+        < html.index('<div id="root-view">') < html.index("</main>")
+    # 一级页滚动/渲染都走 main/#root-view, 文档滚动彻底退出
+    assert '$("#main").scrollTop = pageState.rootScroll;' in js
+    assert 'pageState.rootScroll = $("#main").scrollTop;' in js
+    assert "window.scrollY" not in js
+    assert '$("#root-view").innerHTML' in js
+    assert "window.scrollTo" not in js
+    # 推入层全高 + 让位顶栏
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
     assert "top: 0; bottom: 0;" in pane_css          # 全高: 从顶栏底下过
     scroll_css = html[html.index(".push-pane .pane-scroll"):

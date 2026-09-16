@@ -81,22 +81,31 @@ function route(force) {
 
 const pushStack = [];   // [{view, id, pane}]
 
+// 主屏图标打开的独立窗口 (standalone) 没有 Safari 左缘返回手势 —— 左缘
+// 必须自己接管, 不然那儿成了死区 (用户点名 "返回手势不好用"); 浏览器里
+// 照旧让出 24px 给系统手势 (抢了会被 pointercancel 掐到一半弹回)。
+const standaloneLaunch = (window.matchMedia
+  && window.matchMedia("(display-mode: standalone)").matches)
+  || window.navigator.standalone === true;
+
 function headerBottom() {
   return document.querySelector("header").getBoundingClientRect().bottom;
 }
 
-// 教训: 别用 html{overflow:hidden} 锁一级页滚动 —— iOS Safari 里它会把
-// sticky 顶栏打回原位跟着页面滚走 (顶栏整条消失), 而且根本锁不住触摸滚动。
-// 改成只记位置: 面板自身 overscroll-behavior:none 挡住链式滚动, 滑走时归位。
+// 一级页滚动状态: 文档本身永不滚 (固定壳, iOS 工具栏只跟文档滚动收放 ——
+// 文档不滚视口就恒定, 顶栏/气泡钉死), 滚的是 main 这层内部滚动器。
+// 层盖着时 main 摸不到 (点不到), 记/还原位置纯是兜底 (聚焦跳转等程序滚动)。
+// 旧教训存照: 动态给 html 挂 overflow:hidden 锁滚动会把 sticky 顶栏打回
+// 原位 —— 现在是常驻壳 + 顶栏住 main 里, 不再有动态开关。
 function lockRootScroll() {
-  if (!pushStack.length) pageState.rootScroll = window.scrollY;
+  if (!pushStack.length) pageState.rootScroll = $("#main").scrollTop;
 }
 
 function unlockRootScroll() {
-  window.scrollTo(0, pageState.rootScroll);
+  $("#main").scrollTop = pageState.rootScroll;
 }
 
-/** 一级页路由: 主页/资料库/搜索/统计/设置都铺在 #main 根层。 */
+/** 一级页路由: 主页/资料库/搜索/统计/设置都铺在 #root-view 根层。 */
 function routeRoot(view, force) {
   const mounted = pageState.rootView === view;
   if (pushStack.length) {
@@ -143,7 +152,7 @@ function renderPushedView(view, ids, target) {
 /** 二级层薄层当前该写内容的地方 (换封面等就地重铺用; 没层时兜底 #main)。 */
 function pushPaneTarget() {
   const top = pushStack[pushStack.length - 1];
-  return (top && top.pane.querySelector(".pane-scroll")) || $("#main");
+  return (top && top.pane.querySelector(".pane-scroll")) || $("#root-view");
 }
 
 /** 推入层内容该让开的顶栏高度: 量一次挂成 CSS 变量 (层本身全高, 从顶栏
@@ -179,14 +188,16 @@ function closePushStack(keep = 0) {
 /** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
     或带甩劲松手就收层, 否则弹回。收层自己滑完再 history.back 对齐地址栏
     (路由一看那层已就位, 只做收尾不动画第二遍)。
-    左缘 24px 让给 iOS 系统边缘返回 (bezel back): 从那儿起手不接管,
-    免得跟系统动画抢 —— 系统做完触发 hashchange, 路由照常收层;
-    抢了的话层跟到一半被 pointercancel 掐弹回 (用户点名
-    "返回了一半就取消了")。 */
+    左缘 24px 只在浏览器里让给 iOS 系统边缘返回 (bezel back): 从那儿
+    起手不接管, 系统做完触发 hashchange, 路由照常收层; 抢了的话层跟到
+    一半被 pointercancel 掐弹回 (用户点名 "返回了一半就取消了")。
+    主屏图标打开 (standaloneLaunch) 没有系统手势, 左缘自己接 —— 死区
+    才是 "返回手势不好用" 的真凶。 */
 function bindPaneSwipe(pane) {
   pane.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if (event.pointerType !== "mouse" && event.clientX < 24) return;
+    if (!standaloneLaunch && event.pointerType !== "mouse"
+        && event.clientX < 24) return;
     const startX = event.clientX;
     const startY = event.clientY;
     let horizontal = false;
@@ -1068,7 +1079,7 @@ function syncPlayerIndicators() {
 // ------------------------------------------------------------ 主页
 
 function renderHomeView() {
-  $("#main").innerHTML = `
+  $("#root-view").innerHTML = `
     <div class="section-head">播放列表</div>
     <div id="home-playlists">${listPlaceholderHTML("加载中…")}</div>
     <div class="section-head">最近播放</div>
@@ -1127,7 +1138,7 @@ function resetLibraryLists() {
 }
 
 function renderLibraryView() {
-  $("#main").innerHTML = `
+  $("#root-view").innerHTML = `
     <div class="seg" id="lib-seg">
       ${LIBRARY_SEGMENTS.map(([key, label]) => `
         <button data-segment="${key}"${key === pageState.segment ? ' class="on"' : ""}>${label}</button>`).join("")}
@@ -1597,7 +1608,7 @@ async function uploadPlaylistCover(playlistId) {
 // ------------------------------------------------------------ 搜索页
 
 function renderSearchView() {
-  $("#main").innerHTML = `
+  $("#root-view").innerHTML = `
     <div class="search-box">
       <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       <input id="search-input" type="search" enterkeyhint="search" autocomplete="off"
@@ -1714,7 +1725,7 @@ function renderSearchResults(body, results) {
 // ------------------------------------------------------------ 统计页
 
 async function renderStatsView() {
-  $("#main").innerHTML = '<div id="stats-body">'
+  $("#root-view").innerHTML = '<div id="stats-body">'
     + '<p class="stat-empty">正在统计…</p></div>';
   const body = $("#stats-body");
   let stats;
@@ -1757,7 +1768,7 @@ function formatRowHTML(row, totalCount) {
 // 曲库路径改了服务器会立刻重新扫描整个曲库。
 
 async function renderSettingsView() {
-  $("#main").innerHTML = '<div id="settings-body">'
+  $("#root-view").innerHTML = '<div id="settings-body">'
     + '<p class="stat-empty">加载中…</p></div>';
   const body = $("#settings-body");
   let settings;
@@ -1855,19 +1866,19 @@ function monthRowHTML(month) {
 const CHANGELOG_KIND_CLS = { "新增": "add", "改进": "imp", "修复": "fix" };
 
 async function renderChangelogView() {
-  $("#main").innerHTML = '<div class="list-empty">正在读取版本历史…</div>';
+  $("#root-view").innerHTML = '<div class="list-empty">正在读取版本历史…</div>';
   let versions = null;
   try {
     versions = await fetchJSON("/music/changelog/api/entries");
   } catch (error) {
-    $("#main").innerHTML = `<div class="list-empty">加载失败: ${escapeHTML(error.message)}</div>`;
+    $("#root-view").innerHTML = `<div class="list-empty">加载失败: ${escapeHTML(error.message)}</div>`;
     return;
   }
   if (!versions.length) {
-    $("#main").innerHTML = '<div class="list-empty">还没有版本记录</div>';
+    $("#root-view").innerHTML = '<div class="list-empty">还没有版本记录</div>';
     return;
   }
-  $("#main").innerHTML = `
+  $("#root-view").innerHTML = `
     <div id="changelog-entries">
       ${versions.map((version) => `
         <div class="ver">
