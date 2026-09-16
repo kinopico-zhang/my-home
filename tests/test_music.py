@@ -855,7 +855,7 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = (static / "music.html").read_text(encoding="utf-8")
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=22" in html
+    assert ("downloads.js?v=2" in html and "music.js?v=23" in html
             and "music-player.js?v=18" in html
             and "music-common.js?v=13" in html
             and "player-queue.js?v=3" in html)   # 版本号刷新
@@ -1101,7 +1101,7 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=22" in html
+    assert "music.js?v=23" in html
     # 长歌名不许把菜单撑超宽 (用户报"菜单非常宽, 建议截断"): 固定定位菜单
     # 收缩到内容, 不封顶会一路撑到视口; 320px 封顶后 nowrap 截断才接管
     assert "max-width: min(320px, calc(100vw - 24px))" in html
@@ -1184,7 +1184,7 @@ def test_music_search_page_and_lockscreen_wiring():
     assert "lib-chips" in js and "chipsHTML" in js
     assert "&language=" not in js
     # 横向溢出: html 兜底禁横滑 + 行内标题包收缩层 + 右列可省略
-    assert "overflow-x: hidden" in html
+    assert "overflow: hidden" in html   # 固定壳 (2026-09-16): 连 x 带 y 一起锁
     assert ".t-title-text" in html and "t-title-text" in js
     t_time_block = html.split(".t-time {", 1)[1].split("}", 1)[0]
     assert "min-width: 0" in t_time_block and "ellipsis" in t_time_block
