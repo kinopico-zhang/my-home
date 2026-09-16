@@ -47,6 +47,11 @@ body {
   height: 100vh; height: 100dvh;   /* 壳的高度 (dvh 优先); 文档不滚 */
   overflow: hidden;
   display: flex; flex-direction: column;
+  touch-action: pan-y;   /* 全应用禁双指缩放: 列表行本来就 pan-y 捏不动,
+                             但页签栏/气泡这种 fixed 层上捏还是会把页面放大
+                             (一放大钉底的页签栏就浮起来, 底下露出黑边) ——
+                             在 body 收口, 全站统一捏不动; 抓手/封面/滑杆
+                             这些手势区自带 touch-action: none 不受影响 */
 }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 button, a, summary { touch-action: manipulation; }
@@ -58,12 +63,13 @@ img { display: block; }
    横屏和浏览器里都好, 屏底的气泡一直清晰) —— 索性把导航整个搬到底部,
    顶上那块雷区让出去。主页/资料库/搜索/设置四个图标页签, 设置页签 =
    原品牌菜单的职能搬进设置页 (统计/重扫/更新日志/退出登录都在那)。 */
-:root { --tabbar-h: 52px; }   /* 页签栏自高: 气泡让位和内容下衬垫都按它算 */
+:root { --tabbar-h: 44px; }   /* 页签栏自高 (3+38+3, 图标23+标签10):
+                                  用户嫌 51px 高压了一档; 气泡让位和内容下衬垫都按它算 */
 #tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
   display: flex; justify-content: center;
-  padding: 5px max(8px, env(safe-area-inset-left))
-           calc(5px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  padding: 3px max(8px, env(safe-area-inset-left))
+           calc(3px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
   background: rgba(44,44,46,.6);   /* 磨砂玻璃, 气泡同款半透明 */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
@@ -72,8 +78,8 @@ img { display: block; }
 }
 #tabbar .tab-row { display: flex; gap: 2px; width: 100%; max-width: 860px; }
 #tabbar button {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 3px 0; border-radius: 10px; line-height: 1;
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 2px 0; border-radius: 8px; line-height: 1;
   font-size: 10px; font-weight: 500; color: var(--ink-3);
 }
 #tabbar button.on { color: var(--accent); font-weight: 600; }
@@ -372,7 +378,8 @@ body.pane-anim #mini-player, body.pane-anim #tabbar {
 .search-box svg { color: var(--ink-3); flex-shrink: 0; }
 .search-box input {
   flex: 1; background: none; border: 0; outline: none; color: var(--ink-1);
-  font: inherit; padding: 9px 0;
+  font: inherit; font-size: 16px;   /* iOS: 聚焦小于 16px 的输入框会自动放大整页 */
+  padding: 9px 0;
 }
 .search-box input::placeholder { color: var(--ink-3); }
 .search-box input::-webkit-search-cancel-button { display: none; }
@@ -445,7 +452,7 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 .settings-field > input {
   width: 100%; margin-top: 8px; padding: 9px 12px;
   background: var(--surface-3); border: 0; border-radius: 10px;
-  color: var(--ink-1); font: inherit; font-size: 13px;
+  color: var(--ink-1); font: inherit; font-size: 16px;   /* iOS 聚焦 <16px 会自动放大整页 */
 }
 .settings-field > input:focus { outline: 1px solid var(--accent); }
 .settings-field > small { display: block; font-size: 11px; color: var(--ink-3); margin-top: 6px; }
@@ -838,7 +845,8 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 }
 .picker-new input {
   flex: 1; min-width: 0; background: var(--surface-2); border: 0;
-  border-radius: 10px; padding: 9px 12px; color: var(--ink-1); font-size: 14px;
+  border-radius: 10px; padding: 9px 12px; color: var(--ink-1);
+  font-size: 16px;   /* iOS 聚焦 <16px 会自动放大整页 */
 }
 .picker-new input::placeholder { color: var(--ink-3); }
 #picker-create {
