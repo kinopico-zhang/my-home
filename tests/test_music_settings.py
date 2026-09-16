@@ -130,7 +130,7 @@ def test_lyrics_fetched_from_api_and_persisted(auth, tmp_path):
         return "[00:10.00]从API求来的"
 
     with pytest.MonkeyPatch.context() as patcher:
-        patcher.setattr(library_queries, "fetch_lyrics", fake_fetch)
+        patcher.setattr(library_queries.lyrics_queries, "fetch_lyrics", fake_fetch)
         lyrics = auth.get(f"/music/api/tracks/{tracks['曲A']}/lyrics").json()
     assert lyrics == {"track_id": tracks["曲A"],
                       "lyrics": "[00:10.00]从API求来的",
@@ -140,7 +140,7 @@ def test_lyrics_fetched_from_api_and_persisted(auth, tmp_path):
 
     # 写回了索引: 再问不再联网 (替身这次一被调就炸)
     with pytest.MonkeyPatch.context() as patcher:
-        patcher.setattr(library_queries, "fetch_lyrics",
+        patcher.setattr(library_queries.lyrics_queries, "fetch_lyrics",
                         lambda *a: (_ for _ in ()).throw(
                             AssertionError("不该再联网")))
         again = auth.get(f"/music/api/tracks/{tracks['曲A']}/lyrics").json()
@@ -148,7 +148,7 @@ def test_lyrics_fetched_from_api_and_persisted(auth, tmp_path):
 
     # 求不到 (空串): 保持没歌词
     with pytest.MonkeyPatch.context() as patcher:
-        patcher.setattr(library_queries, "fetch_lyrics", lambda *a: "")
+        patcher.setattr(library_queries.lyrics_queries, "fetch_lyrics", lambda *a: "")
         empty = auth.get(f"/music/api/tracks/{tracks['曲B']}/lyrics").json()
     assert empty == {"track_id": tracks["曲B"], "lyrics": "",
                      "lyrics_synced": False}
@@ -158,7 +158,7 @@ def test_lyrics_fetched_from_api_and_persisted(auth, tmp_path):
                      json={"lyrics_api_enabled": False}
                      ).json()["lyrics_api_enabled"] is False
     with pytest.MonkeyPatch.context() as patcher:
-        patcher.setattr(library_queries, "fetch_lyrics",
+        patcher.setattr(library_queries.lyrics_queries, "fetch_lyrics",
                         lambda *a: (_ for _ in ()).throw(
                             AssertionError("关了 API 不该联网")))
         empty = auth.get(f"/music/api/tracks/{tracks['曲B']}/lyrics").json()
