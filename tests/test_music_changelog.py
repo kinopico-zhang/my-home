@@ -58,6 +58,8 @@ def test_music_changelog_page_skeleton(auth):
 
 
 def test_changelog_link_in_music_menu(auth):
-    """听歌主页的品牌菜单里有更新日志入口 (应用内视图, 不再整页跳走)。"""
-    assert '<button id="changelog-link">更新日志</button>' \
-        in auth.get("/music").text
+    """听歌应用的更新日志入口: 顶栏菜单撤了 (导航挪去底部页签栏), 入口进
+    设置页的「更多」段 (应用内视图, 不再整页跳走)。"""
+    js = auth.get("/music/static/music.js").text
+    assert 'data-set-nav="changelog"' in js
+    assert "更新日志" in js

@@ -4,43 +4,6 @@
 // 蜂窝流量记账在 cellular-usage.js。
 "use strict";
 
-// 独立 app (主屏图标) 模式打标: display-mode 媒体查询在 iOS 各版本上认不认
-// 不一, navigator.standalone 是 iPhone 上唯一可靠信号 (安卓 Chrome 走查询)。
-// CSS 里 body.standalone 顶栏撤磨砂 —— 竖屏独立模式那块带刘海区的磨砂顶栏
-// 会被 iOS 栅成低清 (用户实测: 横屏/浏览器/气泡都清晰, 就它糊)。脚本住在
-// body 末尾, 首帧前就位, 不闪磨砂。
-if (window.matchMedia("(display-mode: standalone)").matches
-    || window.navigator.standalone === true) {
-  document.body.classList.add("standalone");
-}
-
-// 一次性探针 (顶栏发糊排查, 查完连后端接口一起撤): 手机上没有控制台,
-// 让页面把真实现场报回来 —— 独立模式检测命中没有 / body 标在不在 /
-// 顶栏实际高度 (还带不带刘海区 padding) / 磨砂计算值撤掉没有。探针
-// 绝不许把应用搞挂, 整段包 try。
-try {
-  const headerEl = document.querySelector("header");
-  const headerStyle = getComputedStyle(headerEl);
-  fetch("/music/api/header-probe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    keepalive: true,
-    body: JSON.stringify({
-      build: "header-blur-probe-1",
-      standalone: String(window.navigator.standalone),
-      displayMode: window.matchMedia("(display-mode: standalone)").matches,
-      bodyClass: document.body.className,
-      headerHeight: Math.round(headerEl.getBoundingClientRect().height),
-      headerBackdrop: headerStyle.backdropFilter
-        || headerStyle.webkitBackdropFilter || "",
-      headerBg: headerStyle.backgroundColor,
-      innerHeight: window.innerHeight,
-      pixelRatio: window.devicePixelRatio,
-      ua: navigator.userAgent,
-    }),
-  }).catch(() => {});
-} catch (_probeError) { /* 探针静默失败不算事 */ }
-
 const LIBRARY_SEGMENTS = [
   ["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"],
 ];
@@ -107,7 +70,8 @@ function currentRoute() {
   return { view: pageState.rootView };
 }
 
-/** 顶栏页签点亮同步 (进二级层时全灭 —— 层不算任何页签)。 */
+/** 页签栏点亮同步 (进二级层时全灭 —— 层不算任何页签; 统计/更新日志也不算,
+    它们是设置页里点进去的子页, 回头还按设置页签)。 */
 function syncViewTabs(view) {
   for (const button of document.querySelectorAll("[data-view-tab]")) {
     button.classList.toggle("on", button.dataset.viewTab === view);
@@ -131,8 +95,8 @@ function routeTo(parsed, force) {
   const view = parsed.view;
   const pushed = view === "album" || view === "artist" || view === "playlist";
   const pushId = parsed.albumId ?? parsed.artistId ?? parsed.playlistId;
-  // 主页/资料库页签常驻 (顶栏每个页面都一致, 搜索/统计/详情也能一键切回;
-  // 二级页不换顶栏, 返回一律右划)
+  // 主页/资料库/搜索/设置页签常驻 (页签栏每个页面都一致, 详情页也能一键切回;
+  // 二级页不换页签栏, 返回一律右划)
   syncViewTabs(view);
   stopScanPolling();
   if (pushed) routePushed(view, pushId, parsed, force);
@@ -152,15 +116,9 @@ function route(force) {
 // 或返回键/历史回退滑出。层叠各层保住自己的滚动; 一级页留在底下不动,
 // 滚动位置推入时存档、滑出后还原。(层栈 pushStack 声明在文件顶部。)
 
-function headerBottom() {
-  return document.querySelector("header").getBoundingClientRect().bottom;
-}
-
 // 一级页滚动状态: 文档本身永不滚 (固定壳, iOS 工具栏只跟文档滚动收放 ——
-// 文档不滚视口就恒定, 顶栏/气泡钉死), 滚的是 main 这层内部滚动器。
+// 文档不滚视口就恒定, 页签栏/气泡钉死), 滚的是 main 这层内部滚动器。
 // 层盖着时 main 摸不到 (点不到), 记/还原位置纯是兜底 (聚焦跳转等程序滚动)。
-// 旧教训存照: 动态给 html 挂 overflow:hidden 锁滚动会把 sticky 顶栏打回
-// 原位 —— 现在是常驻壳 + 顶栏住 main 里, 不再有动态开关。
 function lockRootScroll() {
   if (!pushStack.length) pageState.rootScroll = $("#main").scrollTop;
 }
@@ -219,16 +177,9 @@ function pushPaneTarget() {
   return (top && top.pane.querySelector(".pane-scroll")) || $("#root-view");
 }
 
-/** 推入层内容该让开的顶栏高度: 量一次挂成 CSS 变量 (层本身全高, 从顶栏
-    底下滑过); 顶栏换行/横竖屏由 resize 重算。 */
-function syncPaneTop() {
-  document.documentElement.style.setProperty(
-    "--pane-top", `${Math.round(headerBottom())}px`);
-}
-
-/** 层运动期标记 (body.pane-anim): 层铺满全高后会从磨砂气泡底下扫过,
+/** 层运动期标记 (body.pane-anim): 层铺满全高后会从磨砂气泡/页签栏底下扫过,
     fixed+backdrop-filter 遇上扫动的变换层是 WebKit 的重影配方 ——
-    运动期 CSS 把气泡换成实底 (暂撤磨砂取样), 停稳 500ms 后恢复磨砂。
+    运动期 CSS 把它们换成实底 (暂撤磨砂取样), 停稳 500ms 后恢复磨砂。
     拖动中每下都续期, 手不松标记不撤。 */
 let paneAnimTimer = 0;
 function paneMotion() {
@@ -1848,7 +1799,9 @@ function formatRowHTML(row, totalCount) {
 }
 
 // ------------------------------------------------------------ 设置页
-// 曲库路径 / 联网补歌词开关与地址 / 蜂窝流量月账。谁登录都能看;
+// 账号 (谁登录/退出) + 曲库路径 / 联网补歌词开关与地址 / 蜂窝流量月账 +
+// 统计和更新日志入口 + 重新扫描曲库 —— 原品牌菜单的职能全搬进了这页
+// (导航挪去底部页签栏以后菜单没地方挂了)。谁登录都能看;
 // 改 (路径/开关/地址/保存) 只有管理员 —— 普通账号进来是只读的。
 // 曲库路径改了服务器会立刻重新扫描整个曲库。
 
@@ -1868,6 +1821,11 @@ async function renderSettingsView() {
   const lock = editable ? "" : " disabled";
   body.innerHTML = `
     <div class="settings-block">
+      <div class="settings-title">账号</div>
+      ${me && me.name ? `<div class="settings-user"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 20a6.5 6.5 0 0 1 13 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${escapeHTML(me.name)}</span>${me.is_admin ? "<em>管理员</em>" : ""}</div>` : ""}
+      <button class="settings-row logout" id="set-logout">退出登录</button>
+    </div>
+    <div class="settings-block">
       <div class="settings-title">音乐库</div>
       <div class="settings-field">
         <label for="set-dir">曲库路径</label>
@@ -1876,6 +1834,8 @@ async function renderSettingsView() {
                value="${escapeHTML(settings.music_directory)}">
         <small>服务器上存放音乐的目录 (留空用默认); 改了会立刻重新扫描整个曲库</small>
       </div>
+      <button class="settings-row" id="set-rescan"
+              title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
     </div>
     <div class="settings-block">
       <div class="settings-title">联网补歌词</div>
@@ -1903,8 +1863,31 @@ async function renderSettingsView() {
         : '<p class="stat-empty">还没有记录</p>'}
       <small class="settings-note">能认出蜂窝网络的浏览器 (如安卓 Chrome) 会自动按月上报;
         iPhone 的 Safari 认不出网络类型, 那部分记不上。</small>
+    </div>
+    <div class="settings-block">
+      <div class="settings-title">更多</div>
+      <button class="settings-row" data-set-nav="stats">统计</button>
+      <button class="settings-row" data-set-nav="changelog">更新日志</button>
     </div>`;
   const toggle = $("#set-lyrics-on");
+  for (const row of body.querySelectorAll("[data-set-nav]")) {
+    row.addEventListener("click", () => navigate(row.dataset.setNav));
+  }
+  $("#set-rescan").addEventListener("click", async () => {
+    try {
+      await fetchJSON("/music/api/rescan", { method: "POST" });
+      userRescanPending = true;      // 这轮收尾要出提示 (后台自动扫的不出)
+      toast("开始扫描曲库");
+      checkScanStatus();
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  $("#set-logout").addEventListener("click", async () => {
+    try { await fetch("/music/api/logout", { method: "POST" }); }
+    catch (_error) { /* 清 cookie 失败也照样走 */ }
+    location.href = "/music/login";
+  });
   if (editable) {
     toggle.addEventListener("click", () => {
       const on = toggle.getAttribute("aria-checked") !== "true";
@@ -2040,13 +2023,9 @@ function stopScanPolling() {
 
 // ------------------------------------------------------------ 启动
 
-/** 收起品牌下拉 (菜单里点了会跳转的按钮后调用)。 */
-function closeBrandMenu() {
-  $("#brand-menu").removeAttribute("open");
-}
-
 function bindGlobalEvents() {
-  $("#view-tabs").addEventListener("click", (event) => {
+  // 底部页签栏: 主页/资料库/搜索/设置 (设置 = 原品牌菜单的职能进设置页)
+  $("#tabbar").addEventListener("click", (event) => {
     const button = event.target.closest("[data-view-tab]");
     if (!button) return;
     navigate(button.dataset.viewTab);
@@ -2056,35 +2035,8 @@ function bindGlobalEvents() {
     const input = $("#search-input");
     if (input) input.focus();
   });
-  $("#stats-link").addEventListener("click", () => {
-    closeBrandMenu();
-    navigate("stats");
-  });
-  $("#settings-link").addEventListener("click", () => {
-    closeBrandMenu();
-    navigate("settings");
-  });
-  $("#changelog-link").addEventListener("click", () => {
-    closeBrandMenu();
-    navigate("changelog");
-  });
   $("#cover-file").addEventListener("change", () => {
     if (coverUploadPlaylistId) uploadPlaylistCover(coverUploadPlaylistId);
-  });
-  $("#logout").addEventListener("click", async () => {
-    try { await fetch("/music/api/logout", { method: "POST" }); }
-    catch (_error) { /* 清 cookie 失败也照样走 */ }
-    location.href = "/music/login";
-  });
-  $("#rescan").addEventListener("click", async () => {
-    try {
-      await fetchJSON("/music/api/rescan", { method: "POST" });
-      userRescanPending = true;      // 这轮收尾要出提示 (后台自动扫的不出)
-      toast("开始扫描曲库");
-      checkScanStatus();
-    } catch (error) {
-      toast(error.message);
-    }
   });
   // 后台自动增量重扫的探针: 页面可见时每 30 秒问一次状态
   setInterval(() => {
@@ -2097,8 +2049,6 @@ function bindGlobalEvents() {
     if (playerOpen) closeFullPlayer();
     else if (pushStack.length) closePushStack(pushStack.length - 1);
   });
-  syncPaneTop();                     // 推入层内容让开顶栏的高度, 先量好
-  window.addEventListener("resize", syncPaneTop);
 }
 
 // ------------------------------------------------------------ 蜂窝流量

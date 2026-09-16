@@ -196,20 +196,20 @@ def test_music_swipe_delete_wiring():
 
 
 def test_music_pane_fixed_chrome_wiring():
-    """顶栏/气泡在滚动和切页全程钉死 (用户点名两轮: 切页时不在一个图层 +
+    """页签栏/气泡在滚动和切页全程钉死 (用户点名两轮: 切页时不在一个图层 +
     滑动过程中也保持不动)。两层手段: ① 固定壳 —— html/body 锁高锁滚,
     文档永不滚 (iPhone 工具栏只跟文档滚动收放, 文档不滚视口恒定,
-    钉视口的顶栏/气泡物理上无从移动), main 变内部滚动器, 顶栏 (sticky
-    z50) 住进 main 钉在滚动器口; ② 全高推入层 (z44) 从毛玻璃顶栏
-    (z50)/气泡 (z45) 底下扫过, 内容用 --pane-top (JS 量 headerBottom)
-    让位。层铺满全高 (设计一致, 用户点名: 气泡底下要有内容, 和主页
-    一样) —— 重影对策挪到运动期: body.pane-anim 暂撤气泡磨砂换实底
+    钉视口的页签栏/气泡物理上无从移动), main 变内部滚动器; ② 全高推入层
+    (z44) 从毛玻璃页签栏 (z50)/气泡 (z45) 底下扫过, 内容顶上用
+    env(safe-area-inset-top) 让位 (顶栏撤了, 不再要 JS 量高度)。
+    层铺满全高 (设计一致, 用户点名: 气泡底下要有内容, 和主页
+    一样) —— 重影对策挪到运动期: body.pane-anim 暂撤气泡/页签栏磨砂换实底
     (fixed+backdrop-filter 底下有扫动的变换层是 WebKit 的重影配方)。
-    根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉顶栏)。"""
+    根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉内容)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
-    # 壳: 文档不滚, main 是唯一一级滚动器, 顶栏住 main 里
+    # 壳: 文档不滚, main 是唯一一级滚动器
     assert "height: 100%; overflow: hidden;" in html            # html
     assert "height: 100dvh;" in html and "overflow: hidden;" in html  # body
     main_css = html[html.index("main {"):html.index("#root-view {")]
@@ -217,17 +217,17 @@ def test_music_pane_fixed_chrome_wiring():
     assert "-webkit-overflow-scrolling: touch;" in main_css
     root_css = html[html.index("#root-view {"):html.index(".push-pane {")]
     assert "max-width: 860px; margin: 0 auto;" in root_css
-    assert "calc(90px + env(safe-area-inset-bottom))" in root_css
-    assert html.index('<main id="main">') < html.index("<header>") \
-        < html.index('<div id="root-view">') < html.index("</main>")
+    assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in root_css
+    assert html.index('<main id="main">') < html.index('<div id="root-view">') \
+        < html.index("</main>") < html.index('<nav id="tabbar">')
     # 一级页滚动/渲染都走 main/#root-view, 文档滚动彻底退出
     assert '$("#main").scrollTop = pageState.rootScroll;' in js
     assert 'pageState.rootScroll = $("#main").scrollTop;' in js
     assert "window.scrollY" not in js
     assert '$("#root-view").innerHTML' in js
     assert "window.scrollTo" not in js
-    # 推入层铺满全高: 顶上从 sticky 顶栏底下过, 底下从磨砂气泡底下过
-    # (设计一致, 用户点名"气泡下面要有内容"); 底衬让位 90px+safe 同主页
+    # 推入层铺满全高: 顶上一直铺到屏顶 (顶栏撤了, env 让开刘海), 底下从磨砂
+    # 气泡/页签栏底下过 (设计一致, 用户点名"气泡下面要有内容")
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
     assert "top: 0;" in pane_css
     assert "bottom: 0;" in pane_css
@@ -240,16 +240,14 @@ def test_music_pane_fixed_chrome_wiring():
     # ③ 气泡自家合成层: 任何邻居的变换/合并都复印不到它
     mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
     assert "transform: translateZ(0);" in mini_css
-    # 顶栏同款护甲 (用户反馈: 顶栏像盖了层很模糊的涂层): sticky 住在滚动的
-    # main 里, 不给自家合成层就会被栅格进邻居层 (main 的滚动光栅 / 全高
-    # 推入层), 字跟着邻居的分辨率糊掉 —— 气泡有护甲没事, 顶栏要一样
-    header_css = html[html.index("header {"):html.index(".nav-row {")]
-    assert "transform: translateZ(0);" in header_css
+    # 页签栏同款护甲 (和气泡一样是 fixed 常驻件, 邻居层动起来时防复印)
+    tabbar_css = html[html.index("#tabbar {"):html.index("#tabbar .tab-row")]
+    assert "transform: translateZ(0);" in tabbar_css
     # 泳道撤了 (层铺满全高, 没有夹缝可露); 重影对策 = 运动期暂撤磨砂:
-    # CSS 挂 body.pane-anim 实底, JS 的 paneMotion() 在每段层运动前打标
-    # (拖动中每下续期), 停稳 500ms 恢复
+    # CSS 挂 body.pane-anim 实底 (气泡和页签栏两条一起), JS 的 paneMotion()
+    # 在每段层运动前打标 (拖动中每下续期), 停稳 500ms 恢复
     assert "#push-stack::after" not in html
-    assert "body.pane-anim #mini-player" in html
+    assert "body.pane-anim #mini-player, body.pane-anim #tabbar" in html
     assert "backdrop-filter: none;" in html
     assert "function paneMotion" in js
     open_pane = js[js.index("function openPushPane"):js.index("function closePushStack")]
@@ -263,47 +261,89 @@ def test_music_pane_fixed_chrome_wiring():
     assert swipe.count("paneMotion();") >= 4   # 拖动续期/滑出/弹回/取消
     scroll_css = html[html.index(".push-pane .pane-scroll"):
                       html.index(".seg {")]
-    assert "calc(var(--pane-top, 64px) + 14px) 16px" in scroll_css
-    assert "calc(90px + env(safe-area-inset-bottom));" in scroll_css
-    assert "function syncPaneTop" in js
-    assert '"--pane-top"' in js                       # 量出的高度写进 CSS 变量
-    assert 'window.addEventListener("resize", syncPaneTop)' in js
+    # 顶上让位纯 CSS (顶栏撤了, env 直读; 独立模式 black-translucent 下拿
+    # 得到真实刘海高度), 底下让开气泡+页签栏 —— JS 量高度那套 (syncPaneTop/
+    # --pane-top/headerBottom) 整个退役
+    assert "calc(env(safe-area-inset-top) + 14px) 16px" in scroll_css
+    assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in scroll_css
+    assert "function syncPaneTop" not in js
+    assert '"--pane-top"' not in js
+    assert "headerBottom" not in js
     assert 'pane.innerHTML = \'<div class="pane-scroll"></div>\'' in open_pane
 
 
-def test_music_standalone_header_frost_wiring():
-    """独立 app (主屏图标) 模式顶栏撤磨砂 (用户实测截图: 竖屏独立模式整条
-    顶栏连页签被栅成低清, 横屏清晰/浏览器清晰/气泡清晰 —— 触发点只在
-    竖屏带刘海的磨砂顶栏, translateZ 护甲在浏览器里够用、独立模式救不动):
-    ① 状态栏样式 black-translucent → black, 页面退到状态栏下面, 顶栏不再
-    叠在刘海区; ② JS 开局打 body.standalone 标 (display-mode 查询 +
-    navigator.standalone 双保险, iPhone 只认后者), CSS 撤 backdrop-filter
-    换近实底 —— 连吊在顶栏下沿的扫描条一起 (同样磨砂贴屏顶)。"""
+def test_music_bottom_tabbar_wiring():
+    """导航搬到底部: 原顶部页签栏在独立 app (主屏图标) 竖屏里整条被 iOS 栅
+    成低清 (用户实测: 钉自家合成层/撤磨砂/换状态栏样式三招全救不动; 横屏
+    和浏览器里都好, 屏底的气泡一直清晰) —— 干脆把导航挪到底部, 顶上那块
+    雷区整个让出去。主页/资料库/搜索/设置四键全带图标, 钉死视口底,
+    磨砂配方与气泡同款; 气泡叠在页签栏上面。原品牌菜单的职能全进设置页
+    (账号/退出/重扫/统计/更新日志)。顶栏相关的临时手段 (body.standalone
+    撤磨砂 + header-probe 探针 + 测试条) 连前端带后端一起撤净。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
-    # ① 页面不再伸进刘海区 (黑底应用看不出区别)
-    assert 'name="apple-mobile-web-app-status-bar-style" content="black"' in html
-    assert 'content="black-translucent"' not in html
-    # ② 独立模式撤磨砂: 前缀属性两条一起撤, 顶栏/扫描条各自保底色
-    standalone_css = html[html.index("body.standalone header"):
-                          html.index("/* ---------- 页签")]
-    assert "-webkit-backdrop-filter: none;" in standalone_css
-    assert "backdrop-filter: none;" in standalone_css
-    assert "body.standalone #scan-strip" in standalone_css
-    assert "rgba(10,10,12,.97)" in standalone_css
-    # 打标双保险住文件顶 (body 末尾脚本, 首帧前就位不闪磨砂)
-    assert 'matchMedia("(display-mode: standalone)")' in js
-    assert "navigator.standalone" in js
-    assert 'document.body.classList.add("standalone")' in js
-    # 一次性探针 (顶栏发糊排查, 查完连后端接口带断言一起撤): 前端启动上报
-    # 真实现场 (检测/几何/磨砂计算值), /api/header-probe 落 data/probe.jsonl
-    assert "header-blur-probe-1" in js
-    assert "/music/api/header-probe" in js
+    # 顶栏整个没了, 换固定壳底的页签栏
+    assert "<header>" not in html and "header {" not in html
+    assert ".brand-menu" not in html and "brand-menu" not in js
+    assert "menu-user.js" not in html          # 菜单没了, 全站小件没落脚点
+    tabbar_css = html[html.index("/* ---------- 底部页签栏"):
+                      html.index("/* ---------- 扫描进度条")]
+    assert "position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;" \
+        in tabbar_css
+    assert "rgba(44,44,46,.6);" in tabbar_css            # 磨砂配方与气泡同款
+    assert "backdrop-filter: blur(20px) saturate(180%);" in tabbar_css
+    assert "env(safe-area-inset-bottom)" in tabbar_css   # 让开小白条
+    assert "env(safe-area-inset-left)" in tabbar_css     # 横屏让开圆角
+    assert "--tabbar-h: 52px;" in tabbar_css
+    assert "color: var(--accent);" in tabbar_css         # 点亮页签吃苹果红
+    # 四键全带图标 (iconfont 素材, currentColor 吃点亮色) + 顺序
+    tabbar_html = html[html.index('<nav id="tabbar">'):html.index("</nav>")]
+    for name, label in [("home", "主页"), ("library", "资料库"),
+                        ("search", "搜索"), ("settings", "设置")]:
+        assert f'data-view-tab="{name}"><svg' in tabbar_html
+        assert f"<span>{label}</span>" in tabbar_html
+    assert tabbar_html.count("<svg") == 4
+    assert tabbar_html.count('fill="currentColor"') >= 4
+    # 气泡叠在页签栏上, 底偏移按页签栏高算 (两处共用 --tabbar-h)
+    mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
+    assert "bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);" \
+        in mini_css
+    # 扫描条吊在页签栏的上沿 (absolute 往上翻, 不挤布局)
+    scan_css = html[html.index("#scan-strip {"):html.index("#scan-strip .dot")]
+    assert "transform: translateY(-100%);" in scan_css
+    assert 'id="scan-strip"' in html[html.index('<nav id="tabbar">'):]
+    # 页签点击绑在 #tabbar, 搜索页签顺手聚焦输入框
+    assert '$("#tabbar").addEventListener' in js
+    assert 'button.dataset.viewTab !== "search"' in js
+    # 状态栏样式回到全出血: 顶栏没了, env(safe-area-inset-top) 只剩二级页
+    # 顶上让位在用, black 会让独立模式报 0
+    assert 'name="apple-mobile-web-app-status-bar-style"' \
+           ' content="black-translucent"' in html
+    # 独立模式打标/撤磨砂那套连标记一起撤 (页签栏在底部, 不再需要);
+    # 文档注释里的 standalone 字样是正当说明, 断言认检测调用本身
+    assert "body.standalone" not in html
+    assert 'matchMedia("(display-mode: standalone)")' not in js
+    assert "navigator.standalone" not in js
+    assert 'classList.add("standalone")' not in js
+    # 原菜单职能进设置页: 账号行 + 退出登录 + 重新扫描 + 统计/更新日志入口
+    assert 'data-set-nav="stats"' in js
+    assert 'data-set-nav="changelog"' in js
+    assert 'id="set-logout"' in js and 'id="set-rescan"' in js
+    settings_view = js[js.index("async function renderSettingsView"):
+                       js.index("function monthRowHTML")]
+    assert '"/music/api/logout"' in settings_view
+    assert '"/music/api/rescan"' in settings_view
+    assert "更多" in settings_view and "退出登录" in settings_view
+    # 排查期的探针 (前端上报 + 后端接口 + 模型) 全撤净
+    assert "header-probe" not in js
+    assert "测试条" not in js
     webapp = (Path(__file__).parent.parent / "app" / "music"
               / "webapp.py").read_text(encoding="utf-8")
-    assert '@api.post("/header-probe"' in webapp
-    assert "probe.jsonl" in webapp
+    schemas = (Path(__file__).parent.parent / "app" / "music"
+               / "schemas.py").read_text(encoding="utf-8")
+    assert "header-probe" not in webapp and "probe.jsonl" not in webapp
+    assert "HeaderProbeReport" not in schemas and "HeaderProbeReport" not in webapp
 
 
 def test_music_player_dismiss_wiring():
@@ -330,7 +370,7 @@ def test_music_player_dismiss_wiring():
     assert 'bindDismissDrag($("#fp-art-wrap"), true);' in player   # 封面照旧划切歌
     # Esc = 电脑上的返回: 先收播放页, 没开收顶层二级页
     esc_handler = js[js.index('event.key !== "Escape"'):
-                     js.index("syncPaneTop();")]
+                     js.index("// ------------------------------------------------------------ 蜂窝流量")]
     assert "if (playerOpen) closeFullPlayer();" in esc_handler
     assert "closePushStack(pushStack.length - 1)" in esc_handler
 
@@ -391,15 +431,16 @@ def test_music_download_all_wiring():
 def test_music_changelog_in_app_wiring():
     """更新日志改应用内视图 (用户点名"看日志别断歌"): 原来是整页跳转
     /music/changelog, 卸载 SPA 音频就停; 改 hash 路由铺在 #main,
-    播放气泡常驻。独立日志页保留 (直达链接仍可用)。"""
+    播放气泡常驻。入口在设置页「更多」段 (顶栏菜单撤了)。独立日志页
+    保留 (直达链接仍可用)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
-    assert '<button id="changelog-link">更新日志</button>' in html
-    assert 'href="/music/changelog"' not in html    # 菜单不再整页跳走
+    assert 'data-set-nav="changelog"' in js          # 设置页「更多」段的入口
+    assert 'href="/music/changelog"' not in html    # 不再整页跳走
     assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
             '.includes(name)) {') in js
     assert "function renderChangelogView()" in js
     assert 'fetchJSON("/music/changelog/api/entries")' in js
     assert "#changelog-entries" in html and ".v-badge" in html  # 版本卡片样式
-    assert "$(\"#changelog-link\").addEventListener" in js
+    assert 'navigate(row.dataset.setNav)' in js     # 更多段的行都是导航入口
