@@ -1,5 +1,5 @@
 // music.js — My Music 浏览页: 主页 (播放列表/最近播放) + 资料库
-// (专辑/艺人/歌曲/已下载 + 语种筛选) + 搜索 (歌名/专辑/艺人/歌词) +
+// (专辑/艺人/歌曲/已下载) + 搜索 (歌名/专辑/艺人/歌词) +
 // 专辑/艺人详情 + 设置。播放交给 music-player.js, 下载管理在 downloads.js,
 // 蜂窝流量记账在 cellular-usage.js。
 "use strict";
@@ -7,7 +7,6 @@
 const LIBRARY_SEGMENTS = [
   ["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"],
 ];
-const LANGUAGES = ["全部", "中文", "日文", "英文", "韩文", "俄文", "其他"];
 
 /** 老版本存过的段名 (recent/playlists) 已收窄掉, 认不出的回落专辑。 */
 function storedSegment() {
@@ -17,7 +16,6 @@ function storedSegment() {
 
 const pageState = {
   segment: storedSegment(),
-  language: localStorage.getItem("music-language") || "全部",
   searchQuery: "",
   lists: {},        // segment → {items, total, offset, done, loading}
   homeRecent: null,      // 主页最近播放段曲目 (队列用)
@@ -432,30 +430,6 @@ async function downloadAllFromUI(tracks) {
 }
 
 // ------------------------------------------------------------ 公共渲染件
-
-function chipsHTML() {
-  return LANGUAGES.map((language) => `
-    <button class="chip${language === pageState.language ? " on" : ""}"
-            data-language="${language}">${language}</button>`).join("");
-}
-
-function bindChips(container) {
-  container.addEventListener("click", (event) => {
-    const chip = event.target.closest("[data-language]");
-    if (!chip || chip.dataset.language === pageState.language) return;
-    pageState.language = chip.dataset.language;
-    localStorage.setItem("music-language", pageState.language);
-    document.querySelectorAll("[data-language]").forEach((element) => {
-      element.classList.toggle("on",
-        element.dataset.language === pageState.language);
-    });
-    if (pageState.searchQuery) runSearch();
-    else if (currentRoute().view === "library") {
-      resetLibraryLists();
-      renderLibraryBody();
-    }
-  });
-}
 
 /** 专辑卡 (网格): 封面 + 标题 + 艺人。 */
 function albumCardHTML(album) {
@@ -1179,7 +1153,6 @@ function renderLibraryView() {
       ${LIBRARY_SEGMENTS.map(([key, label]) => `
         <button data-segment="${key}"${key === pageState.segment ? ' class="on"' : ""}>${label}</button>`).join("")}
     </div>
-    <div class="chips" id="lib-chips">${chipsHTML()}</div>
     <div id="lib-body"></div>`;
   $("#lib-seg").addEventListener("click", (event) => {
     const button = event.target.closest("[data-segment]");
@@ -1189,18 +1162,10 @@ function renderLibraryView() {
     document.querySelectorAll("#lib-seg [data-segment]")
       .forEach((item) => item.classList.toggle("on",
         item.dataset.segment === pageState.segment));
-    syncChipsVisibility();
     renderLibraryBody();
   });
-  bindChips($("#lib-chips"));
   bindLibraryBody();
-  syncChipsVisibility();
   renderLibraryBody();
-}
-
-/** 语种筛选只对专辑/歌曲有意义; 艺人/已下载段把筛选行收起来。 */
-function syncChipsVisibility() {
-  $("#lib-chips").hidden = pageState.segment === "downloads";
 }
 
 /** 资料库容器事件 (专辑/艺人跳转 + 曲目开播 + 下载管理), 只绑一次。 */
@@ -1338,7 +1303,7 @@ async function loadListPage(segment) {
 
 async function fetchListPage(segment, list) {
   try {
-    const parameters = new URLSearchParams({ language: pageState.language, limit: "60" });
+    const parameters = new URLSearchParams({ limit: "60" });
     if (segment === "albums") parameters.set("sort", "title");
     if (segment === "songs") parameters.set("limit", "100");
     parameters.set("offset", String(list.offset));
@@ -1364,8 +1329,7 @@ function appendListPage(body, segment, list) {
     && !body.querySelector(".album-grid") && !body.querySelector(".track-row")
     && !body.querySelector(".artist-row");
   if (firstRender && !list.items.length) {
-    body.innerHTML = listPlaceholderHTML(
-      pageState.language === "全部" ? "曲库还是空的" : "这个语种下没有内容");
+    body.innerHTML = listPlaceholderHTML("曲库还是空的");
     return;
   }
   const existingSentinel = body.querySelector(".list-sentinel");
@@ -1374,8 +1338,8 @@ function appendListPage(body, segment, list) {
   if (segment === "artists") {
     body.insertAdjacentHTML("beforeend", added.map(artistRowHTML).join(""));
   } else if (segment === "songs") {
-    body.insertAdjacentHTML("beforeend", added.map((track, offset) => trackRowHTML(
-      track, `<span class="t-index">${(list.renderedCount || 0) + offset + 1}</span>`)).join(""));
+    body.insertAdjacentHTML("beforeend",
+      added.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join(""));
   } else {
     let grid = body.querySelector(".album-grid");
     if (!grid) {
@@ -1447,8 +1411,7 @@ async function renderAlbumView(albumId, target) {
         ${ICON_DOWNLOAD} 下载全部</button>` : ""}
     </div>
     <div class="track-list" id="album-tracks">
-      ${page.tracks.map((track, index) => trackRowHTML(track,
-        `<span class="t-index">${track.track_number || index + 1}</span>`)).join("")}
+      ${page.tracks.map((track) => trackRowHTML(track, trackArtHTML(track), "art")).join("")}
     </div>`;
   target.querySelector(".hero-artist").addEventListener("click", (event) => {
     navigate(`artist/${event.currentTarget.dataset.artistId}`);
@@ -2088,10 +2051,14 @@ if (window.performance && performance.getEntriesByType
 // env(safe-area-inset-top) 误报成 0 —— 26.2 修过一次, 26.5.2 和 iOS 27
 // 又复发了。env 一报 0, 页面里所有顶部让位全部失效, 内容照样钻进磨砂带
 // 被糊掉、还顶出屏幕外。
-// 对策: 独立模式 + 竖屏 + iPhone 上, 用探针量 env; 报 0 且系统没有自己
-// 把网页层往下推 (innerHeight 没被吃掉一截) 时, 按机型屏幕尺寸表兜一个
-// 「刘海高 + 磨砂深度」写进 --sys-top-inset, CSS 一律 max(env, 兜底) 取值 ——
-// 健康 iOS 和浏览器里 env 正常, 兜底恒 0, 一切照旧。
+// 这个 bug 有两副面孔, 兜底各给各的值写进 --sys-top-inset:
+//   盖磨砂型 (env=0): 按机型屏幕尺寸表兜「刘海高 + 磨砂深度」;
+//   推下型 (innerHeight 被吃掉一截): 兜「推下量 + 渗边」, 让不透明黑罩
+//     (#top-shield) 盖过整条系统带 —— 带子里显示的是系统从网页顶部抓拍
+//     的画面, 黑罩够高, 抓拍条里就只剩纯黑, 残影带跟着隐形 (磨砂盖在
+//     纯黑上看不出来)。
+// 黑罩把「滚进带子的内容被栅糊」也一并了结: 内容从罩子底下扫过, 只会被
+// 干净地遮住。健康 iOS 和浏览器里 env 正常, 兜底恒 0, 一切照旧。
 const SYS_TOP_INSETS = {  // 机型屏幕 (短边x长边, CSS px) → 刘海/灵动岛高度
   "375x812": 47, "390x844": 47, "393x852": 59, "414x896": 47,
   "428x926": 47, "430x932": 59, "440x956": 62,
@@ -2102,6 +2069,9 @@ const SYS_TOP_INSETS = {  // 机型屏幕 (短边x长边, CSS px) → 刘海/灵
 // 兜底值在刘海高度上再垫这 56, 内容从带子底下干净开始 (只在 env 谎报
 // 0 的中招系统上生效, 多让的这截不影响健康设备)。
 const SYS_FROST_EXTRA = 56;
+// 推下变体里系统带的抓拍条比推下线还渗出一小截 (用户 iOS 27.2 实测:
+// 推下 81, 阴影渗到 ~92), 黑罩在推下量上再垫这 12, 把渗边也盖进纯黑里
+const SYS_PUSH_BLEED = 12;
 function sysTopInsetFor(w, h) {
   const exact = SYS_TOP_INSETS[`${Math.min(w, h)}x${Math.max(w, h)}`];
   const inset = exact || (h >= 940 ? 62 : h >= 850 ? 59 : 47);  // 表外新机型按高度估
@@ -2116,45 +2086,36 @@ function envTopPx() {
   probe.remove();
   return px;
 }
-function updateSysDebug(state) {
-  let chip = document.getElementById("sys-debug");
-  if (!chip) {
-    chip = document.createElement("div");
-    chip.id = "sys-debug";
-    document.body.appendChild(chip);
-  }
-  // 开头自报脚本版本 (J34 = ?v=34): 读数先对版本, 排除"点图标其实是唤醒旧会话"
-  // 那种假象 —— 版本对不上, 看到的就不是新代码的行为
-  chip.textContent = `调试J34 ${state.os} envT=${state.envTop} `
-    + `兜底=${state.sysTop} 屏${screen.width}x${screen.height} 视口${innerHeight} `
-    + `${state.standalone ? "独立" : "浏览器"}${state.portrait ? "竖" : "横"}`
-    + (state.pushed ? " 系统推下" : "");
-}
-// 会话锁: env 谎报 0 认定一次后, 本会话内 env 就算偶发抖回真值也不撤兜底
-// (抖回去那一下带走让位, 内容会整页跳回磨砂带里); 系统自己开始代推
-// (innerHeight 被吃掉) 时才解锁 —— 那种场合我们再让就双重让位了。
-// 苹果哪天真修好: 冷启动第一次同步 env 就是真值, 锁不会上, 一切照旧。
+// 会话锁 (只锁在中招变体里): env 偶发抖回真值的那一下不许撤兜底
+// (撤了内容整页跳回磨砂带); 离开中招状态 (横屏/浏览器) 立即清零 ——
+// 锁着进横屏会把竖屏的兜底高度带过去, 顶部凭空让出一大截。
+// 苹果哪天真修好: 冷启动第一次同步 env 就是真值且没推下, 锁不会上,
+// 一切照旧。
 let sysTopLocked = 0;
 function syncSysTopInset() {
   const state = {
-    os: (navigator.userAgent.match(/OS \d+_\d+/) || ["OS?"])[0],
     envTop: envTopPx(),
     standalone: matchMedia("(display-mode: standalone)").matches,
     portrait: matchMedia("(orientation: portrait)").matches,
-    // 系统自己把网页层往下推也是这个 bug 的一个变种: innerHeight 已被
-    // 吃掉一截, 再兜底就双重让位了
-    pushed: screen.height - innerHeight > 40,
   };
   const phone = /iPhone|iPod/.test(navigator.userAgent);
   const tall = Math.max(screen.width, screen.height) >= 800;  // SE 这类无刘海机除外
-  const need = state.standalone && state.portrait && phone && tall
-    && !state.pushed && state.envTop === 0;
-  if (need) sysTopLocked = sysTopInsetFor(screen.width, screen.height);
-  else if (state.pushed) sysTopLocked = 0;
-  state.sysTop = sysTopLocked;
+  const push = screen.height - innerHeight;
+  const eligible = state.standalone && state.portrait && phone && tall;
+  let target = 0;
+  if (eligible) {
+    if (push > 40) {
+      // 推下变体: 兜底盖过整条系统带 (含渗边), 让抓拍条里只剩黑罩
+      target = push + SYS_PUSH_BLEED;
+    } else if (state.envTop === 0) {
+      // 盖磨砂变体: 机型表 + 磨砂深度
+      target = sysTopInsetFor(screen.width, screen.height);
+    }
+  }
+  if (target) sysTopLocked = target;
+  else if (!eligible) sysTopLocked = 0;
   document.documentElement.style.setProperty(
-    "--sys-top-inset", `${state.sysTop}px`);
-  updateSysDebug(state);   // 排查期读数条, 拿到用户真值就撤
+    "--sys-top-inset", `${sysTopLocked}px`);
 }
 addEventListener("resize", syncSysTopInset);
 addEventListener("orientationchange", syncSysTopInset);

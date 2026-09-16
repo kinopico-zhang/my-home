@@ -1,6 +1,9 @@
 // sw.js — My Music 的 Service Worker (scope /music):
 //  - 曲目音频流: 已下载的从 Cache API 直接回 (拖进度条的 Range 请求切 206),
 //    没下载的原样走网络;
+//  - 封面图: 缓存优先 —— 后端虽已发长缓存头, iOS 的 HTTP 缓存容易被系统
+//    整体清掉, 50k 曲库一刷列表就是几百张图全回源; Cache API 里存一份,
+//    系统清不动 (配合 storage.persist), 只在没缓存过时才走网络;
 //  - 应用壳 (页面 + 静态资源): 网络优先, 顺路存进缓存 —— 断网时页面也打得开,
 //    已下载的歌才谈得上离线播放 (api/* 数据接口不缓存, 离线时列表加载不了
 //    属正常, 已下载栏读的是本机索引, 不走接口);
@@ -11,7 +14,12 @@
 
 const DOWNLOAD_CACHE = "music-downloads-v1";
 const SHELL_CACHE = "music-shell-v1";
+const ARTWORK_CACHE = "music-artwork-v1";
 const TRACK_URL_PATTERN = /\/music\/media\/stream\/\d+$/;
+// 封面族: 专辑/艺人/单曲封面 + 播放列表自定义封面
+// (URL 全带 ?v= 版本号, 换图即换址 —— 缓存键跟着换, 不会读到旧图)
+const ARTWORK_PATTERN
+  = /^\/music\/media\/(?:albums|artists|tracks)\/\d+\/artwork$|^\/music\/media\/playlists\/\d+\/cover$/;
 const SHELL_PATHS = new Set(["/music", "/music/", "/music/login", "/music/changelog"]);
 
 function isShellPath(path) {
@@ -24,6 +32,8 @@ self.addEventListener("fetch", (event) => {
   const path = new URL(request.url).pathname;
   if (TRACK_URL_PATTERN.test(path)) {
     event.respondWith(serveTrack(request));
+  } else if (ARTWORK_PATTERN.test(path)) {
+    event.respondWith(serveArtwork(request));
   } else if (isShellPath(path)) {
     event.respondWith(serveShell(request));
   }
@@ -75,12 +85,38 @@ function rangeSlice(blob, rangeHeader) {
   return { start, end, total: blob.size, body: blob.slice(start, end + 1) };
 }
 
+/** 封面: 缓存优先 (URL 自带 ?v= 版本, 缓存里的内容永不换), 没缓存过才走
+    网络并顺手存下。条数封顶防无限膨胀: 超了丢最早一批 (Cache API 没有
+    LRU, keys() 顺序近似先来后到, 够用)。 */
+async function serveArtwork(request) {
+  const cache = await caches.open(ARTWORK_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) {
+    await cache.put(request, response.clone());
+    trimArtworkCache(cache);
+  }
+  return response;
+}
+
+async function trimArtworkCache(cache) {
+  const keys = await cache.keys();
+  if (keys.length <= 600) return;
+  for (const key of keys.slice(0, keys.length - 400)) {
+    await cache.delete(key);
+  }
+}
+
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     // 壳缓存换版本号时清旧账; 下载缓存 (DOWNLOAD_CACHE) 是用户数据, 不动
     const names = await caches.keys();
     for (const name of names) {
       if (name.startsWith("music-shell-") && name !== SHELL_CACHE) {
+        await caches.delete(name);
+      }
+      if (name.startsWith("music-artwork-") && name !== ARTWORK_CACHE) {
         await caches.delete(name);
       }
     }
