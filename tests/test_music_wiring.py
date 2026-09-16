@@ -179,7 +179,9 @@ def test_music_pane_fixed_chrome_wiring():
     钉视口的顶栏/气泡物理上无从移动), main 变内部滚动器, 顶栏 (sticky
     z50) 住进 main 钉在滚动器口; ② 全高推入层 (z44) 从毛玻璃顶栏
     (z50)/气泡 (z45) 底下扫过, 内容用 --pane-top (JS 量 headerBottom)
-    让位。根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉顶栏)。"""
+    让位 —— 但气泡例外: 推入层停在气泡泳道 (74px+safe) 上沿, 不从它
+    底下过 (fixed+磨砂气泡遇上底下扫过的变换层会重影)。根视图渲染目标
+    #root-view (main 是滚动器, 直写会抹掉顶栏)。"""
     static = Path(__file__).parent.parent / "app" / "music" / "static"
     html = (static / "music.html").read_text(encoding="utf-8")
     js = (static / "music.js").read_text(encoding="utf-8")
@@ -200,12 +202,19 @@ def test_music_pane_fixed_chrome_wiring():
     assert "window.scrollY" not in js
     assert '$("#root-view").innerHTML' in js
     assert "window.scrollTo" not in js
-    # 推入层全高 + 让位顶栏
+    # 推入层: 顶上从 sticky 顶栏底下过; 底下停在气泡泳道上沿
+    # (fixed+磨砂气泡底下有变换动画扫过 → WebKit 吐重影, 用户截图两个气泡)
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
-    assert "top: 0; bottom: 0;" in pane_css          # 全高: 从顶栏底下过
+    assert "top: 0;" in pane_css
+    assert "bottom: calc(74px + env(safe-area-inset-bottom));" in pane_css
+    # 泳道: 层开着时铺底色+吃点按 (盖住底下一级页, 别露内容别隔带摸按钮);
+    # 不做淡入淡出 —— 气泡底下连渐变动画都不许有
+    assert "#push-stack::after" in html
+    assert "#push-stack:not(:empty)::after { display: block;" \
+        " pointer-events: auto; }" in html
     scroll_css = html[html.index(".push-pane .pane-scroll"):
                       html.index(".seg {")]
-    assert "calc(var(--pane-top, 64px) + 14px)" in scroll_css
+    assert "calc(var(--pane-top, 64px) + 14px) 16px 16px;" in scroll_css
     assert "function syncPaneTop" in js
     assert '"--pane-top"' in js                       # 量出的高度写进 CSS 变量
     assert 'window.addEventListener("resize", syncPaneTop)' in js
