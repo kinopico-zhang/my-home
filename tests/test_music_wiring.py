@@ -215,9 +215,15 @@ def test_music_pane_fixed_chrome_wiring():
     main_css = html[html.index("main {"):html.index("#root-view {")]
     assert "min-height: 0;" in main_css and "overflow-y: auto;" in main_css
     assert "-webkit-overflow-scrolling: touch;" in main_css
+    # 顶部雷区让位 (顶栏发糊同源): main 整个下移, 滚动内容永远进不了那条带子
+    # —— 只给内容加 padding 的话, 一滚字就又钻进去 (2026-09-16 用户复测四个
+    # 一级页页顶全被栅糊+切出屏幕, 就是因为 root-view 顶衬是写死的 14px)
+    assert "margin-top: env(safe-area-inset-top);" in main_css
     root_css = html[html.index("#root-view {"):html.index(".push-pane {")]
     assert "max-width: 860px; margin: 0 auto;" in root_css
     assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in root_css
+    assert "max(16px, env(safe-area-inset-right))" in root_css  # 横屏让开侧刘海
+    assert "max(16px, env(safe-area-inset-left))" in root_css
     assert html.index('<main id="main">') < html.index('<div id="root-view">') \
         < html.index("</main>") < html.index('<nav id="tabbar">')
     # 一级页滚动/渲染都走 main/#root-view, 文档滚动彻底退出
