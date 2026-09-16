@@ -8,7 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
      <!-- ↑ 全出血 (页面伸进刘海区): 顶部雷区 (主屏图标竖屏里被系统栅糊的那条
         带) 靠 main 的 margin-top 让出去; env(safe-area-inset-top) 在 main 让位
-        和二级页顶衬两处用, 要拿真实值 —— black 会让独立模式报 0 -->
+        和二级页顶衬两处用, 要拿真实值 —— black 会让独立模式报 0。
+        但 iOS 26.1 起苹果把 env 误报成 0 (WebKit 301994, 26.5.2/27 复发),
+        music.js 的 --sys-top-inset 按机型兜底, CSS 一律 max(env, 兜底) -->
 <meta name="apple-mobile-web-app-title" content="My Music">
 <link rel="icon" type="image/png" sizes="32x32" href="/music/static/favicon-32.png?v=4">
 <link rel="icon" type="image/svg+xml" href="/music/static/favicon.svg?v=3">
@@ -85,6 +87,17 @@ img { display: block; }
 #tabbar button.on { color: var(--accent); font-weight: 600; }
 #tabbar svg { display: block; }
 
+/* 顶部系统带排查期的临时读数条 (music.js 注入; 拿到真值就撤):
+   env 被 iOS 27 的系统 bug 打成 0 时, 兜底逻辑靠屏幕尺寸表猜高度,
+   这条把实测 env / 兜底值 / 屏幕尺寸摆出来, 好校表 */
+#sys-debug {
+  position: fixed; left: 8px; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 46px);
+  z-index: 60; pointer-events: none;
+  font: 10px/1.5 ui-monospace, Menlo, monospace; color: #7ee787;
+  background: rgba(0, 0, 0, .78); padding: 4px 7px; border-radius: 6px;
+  white-space: pre; max-width: 92vw; overflow: hidden;
+}
+
 /* ---------- 扫描进度条 (吊在页签栏上沿的浮层, 不挤布局) ---------- */
 #scan-strip {
   position: absolute; left: 0; right: 0; top: 0; transform: translateY(-100%);
@@ -107,8 +120,10 @@ main {
   flex: 1; width: 100%; min-height: 0;   /* min-height:0: flex 子不缩就滚不动 */
   /* 顶部雷区让位 (顶栏发糊同源: 独立模式竖屏里屏幕最上那条带子被系统栅成
      低清, 什么进去都糊) —— main 整个下移, 滚动内容永远进不了那条带子,
-     带子里只剩 body 黑底。只给内容加 padding 不行: 一滚字就又钻进带子里 */
-  margin-top: env(safe-area-inset-top);
+     带子里只剩 body 黑底。只给内容加 padding 不行: 一滚字就又钻进带子里。
+     max(env, 兜底): iOS 26.1+ 的系统 bug (WebKit 301994) 把 env 误报成 0,
+     music.js 按机型屏幕尺寸表给 --sys-top-inset 兜一个近似刘海高度 */
+  margin-top: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
 }
 /* 一级页内容列: 限宽居中 (页签栏/气泡都是 fixed, 内容得自己让开底下的高度);
@@ -151,7 +166,8 @@ body.pane-anim #mini-player, body.pane-anim #tabbar {
 .push-pane .pane-scroll {
   width: 100%; max-width: 860px; height: 100%;
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
-  padding: calc(env(safe-area-inset-top) + 14px) 16px
+  padding: calc(max(env(safe-area-inset-top), var(--sys-top-inset, 0px)) + 14px)
+           16px
            calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom));
 }
 .seg {
@@ -613,7 +629,8 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 /* 顶部抓手条: 点一下 (或往下拖) 收起播放页 */
 #fp-grab {
   display: flex; justify-content: center; align-items: flex-start;
-  padding: calc(env(safe-area-inset-top, 0px) + 3px) 0 0;
+  padding: calc(max(env(safe-area-inset-top, 0px), var(--sys-top-inset, 0px)) + 3px)
+           0 0;
   border: 0; background: none; touch-action: none;
 }
 #fp-grab div { width: 60px; height: 5px; border-radius: 2.5px;
@@ -996,6 +1013,6 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=13"></script>
 <script src="/music/static/music-player.js?v=19"></script>
-<script src="/music/static/music.js?v=30"></script>
+<script src="/music/static/music.js?v=31"></script>
 </body>
 </html>
