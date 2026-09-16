@@ -2082,6 +2082,71 @@ if (window.performance && performance.getEntriesByType
   }).start();
 }
 
+// ------------------------------------------------------------ iOS 系统顶带兜底
+// 苹果的系统 bug (WebKit 301994): iOS 26.1 起主屏独立模式里, 系统在屏幕
+// 顶部盖一条磨砂带 (画在网页层外面, DOM/CSS 都够不着), 同时把
+// env(safe-area-inset-top) 误报成 0 —— 26.2 修过一次, 26.5.2 和 iOS 27
+// 又复发了。env 一报 0, 页面里所有顶部让位全部失效, 内容照样钻进磨砂带
+// 被糊掉、还顶出屏幕外。
+// 对策: 独立模式 + 竖屏 + iPhone 上, 用探针量 env; 报 0 且系统没有自己
+// 把网页层往下推 (innerHeight 没被吃掉一截) 时, 按机型屏幕尺寸表兜一个
+// 近似刘海高度写进 --sys-top-inset, CSS 一律 max(env, 兜底) 取值 ——
+// 健康 iOS 和浏览器里 env 正常, 兜底恒 0, 一切照旧。
+const SYS_TOP_INSETS = {  // 机型屏幕 (短边x长边, CSS px) → 刘海/灵动岛高度
+  "375x812": 47, "390x844": 47, "393x852": 59, "414x896": 47,
+  "428x926": 47, "430x932": 59, "440x956": 62,
+};
+function sysTopInsetFor(w, h) {
+  const exact = SYS_TOP_INSETS[`${Math.min(w, h)}x${Math.max(w, h)}`];
+  if (exact) return exact;
+  return h >= 940 ? 62 : h >= 850 ? 59 : 47;   // 表外新机型按高度估
+}
+function envTopPx() {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;top:0;left:0;"
+    + "height:env(safe-area-inset-top);visibility:hidden;pointer-events:none;";
+  document.body.appendChild(probe);
+  const px = probe.offsetHeight;
+  probe.remove();
+  return px;
+}
+function updateSysDebug(state) {
+  let chip = document.getElementById("sys-debug");
+  if (!chip) {
+    chip = document.createElement("div");
+    chip.id = "sys-debug";
+    document.body.appendChild(chip);
+  }
+  chip.textContent = `调试 ${state.os} envT=${state.envTop} `
+    + `兜底=${state.sysTop} 屏${screen.width}x${screen.height} 视口${innerHeight} `
+    + `${state.standalone ? "独立" : "浏览器"}${state.portrait ? "竖" : "横"}`
+    + (state.pushed ? " 系统推下" : "");
+}
+function syncSysTopInset() {
+  const state = {
+    os: (navigator.userAgent.match(/OS \d+_\d+/) || ["OS?"])[0],
+    envTop: envTopPx(),
+    standalone: matchMedia("(display-mode: standalone)").matches,
+    portrait: matchMedia("(orientation: portrait)").matches,
+    // 系统自己把网页层往下推也是这个 bug 的一个变种: innerHeight 已被
+    // 吃掉一截, 再兜底就双重让位了
+    pushed: screen.height - innerHeight > 40,
+  };
+  const phone = /iPhone|iPod/.test(navigator.userAgent);
+  const tall = Math.max(screen.width, screen.height) >= 800;  // SE 这类无刘海机除外
+  const need = state.standalone && state.portrait && phone && tall
+    && !state.pushed && state.envTop === 0;
+  state.sysTop = need ? sysTopInsetFor(screen.width, screen.height) : 0;
+  document.documentElement.style.setProperty(
+    "--sys-top-inset", `${state.sysTop}px`);
+  updateSysDebug(state);   // 排查期读数条, 拿到用户真值就撤
+}
+addEventListener("resize", syncSysTopInset);
+addEventListener("orientationchange", syncSysTopInset);
+syncSysTopInset();
+setTimeout(syncSysTopInset, 800);    // 冷启动 env 可能晚到 (短暂报 0),
+setTimeout(syncSysTopInset, 2500);   // 稳定后自会翻回真值, max() 无缝接手
+
 bindGlobalEvents();
 // 旧深链只消化一次 (#playlist/5 之类 → 按它开局), 随即把 URL 洗成光杆
 // /music —— 之后全程一个地址, 应用内导航不再碰浏览器历史 (系统侧滑/
