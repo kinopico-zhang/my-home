@@ -406,10 +406,16 @@ def test_music_sys_top_fallback():
     # env 用 DOM 探针量 (fixed 元素高 = env 值), 量完即撤
     assert "height:env(safe-area-inset-top)" in block and "probe.remove();" in block
     # 冷启动 env 可能晚到: 启动即算, +800ms/+2500ms 再算 (晚到的真值经
-    # max() 无缝接手), 旋转/resize 也重算
+    # max() 无缝接手), 旋转/resize/回前台也重算
     assert "syncSysTopInset();" in block
     assert block.count("setTimeout(syncSysTopInset") == 2
     assert "addEventListener(\"orientationchange\", syncSysTopInset);" in block
+    assert "visibilitychange" in block
+    # 会话锁 (2026-09-16 二次排查): env 抖回真值的那一下不许撤兜底
+    # (撤了内容整页跳回磨砂带); 系统代推时解锁, 冷启动首读真值则锁不上
+    assert "let sysTopLocked = 0;" in block
+    assert "if (need) sysTopLocked = sysTopInsetFor" in block
+    assert "else if (state.pushed) sysTopLocked = 0;" in block
     # 排查期读数条: 挂在 body 上, 独立/浏览器、env/兜底、屏幕尺寸都报
     assert 'chip.id = "sys-debug"' in block
     assert "envT=" in block and "屏${screen.width}x${screen.height}" in block
