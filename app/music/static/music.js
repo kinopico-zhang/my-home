@@ -4,6 +4,16 @@
 // 蜂窝流量记账在 cellular-usage.js。
 "use strict";
 
+// 独立 app (主屏图标) 模式打标: display-mode 媒体查询在 iOS 各版本上认不认
+// 不一, navigator.standalone 是 iPhone 上唯一可靠信号 (安卓 Chrome 走查询)。
+// CSS 里 body.standalone 顶栏撤磨砂 —— 竖屏独立模式那块带刘海区的磨砂顶栏
+// 会被 iOS 栅成低清 (用户实测: 横屏/浏览器/气泡都清晰, 就它糊)。脚本住在
+// body 末尾, 首帧前就位, 不闪磨砂。
+if (window.matchMedia("(display-mode: standalone)").matches
+    || window.navigator.standalone === true) {
+  document.body.classList.add("standalone");
+}
+
 const LIBRARY_SEGMENTS = [
   ["albums", "专辑"], ["artists", "艺人"], ["songs", "歌曲"], ["downloads", "已下载"],
 ];
