@@ -4,8 +4,10 @@
 JSON 接口在 /music/api (主应用中间件统一 no-store), 媒体流在
 /music/media (自带长缓存头: 封面带版本号可 immutable)。
 """
+from datetime import datetime, timezone
 from html import escape as escape_html
 from pathlib import Path
+import json
 
 from fastapi import (APIRouter, Depends, FastAPI, HTTPException, Query,
                      Request)
@@ -20,10 +22,11 @@ from ..models import User
 from ..schemas import ChangelogVersion, OkResponse
 from . import (changelog, library_media, library_playlists,
                library_queries, library_settings, library_shares, service)
-from .library_database import (Album, Artist, Track, get_db)
+from .library_database import (PROJECT_DIR, Album, Artist, Track, get_db)
 from .library_languages import LANGUAGE_FILTERS
 from .schemas import (AlbumPage, AlbumPageList, ArtistPage, ArtistPageList,
-                      CellularUsageReport, LibraryStats, LyricsResponse,
+                      CellularUsageReport, HeaderProbeReport,
+                      LibraryStats, LyricsResponse,
                       MusicSettingsState, MusicSettingsUpdate,
                       MusicStatusResponse,
                       PlayRecordRequest, PlaylistBrief, PlaylistCreateRequest,
@@ -336,6 +339,20 @@ def music_cellular_usage(body: CellularUsageReport, request: Request,
     """客户端报一笔蜂窝流量 (能认出蜂窝网络的浏览器定期上报, 记进当月账)。"""
     _require_user(request, users)
     library_settings.record_cellular_bytes(library, body.bytes)
+    return OkResponse(ok=True)
+
+
+@api.post("/header-probe", response_model=OkResponse)
+def music_header_probe(body: HeaderProbeReport, request: Request,
+                       users: Session = Depends(database.get_users_db)) -> OkResponse:
+    """顶栏发糊排查探针 (临时, 查完连前端上报一起撤): 页面启动时把独立
+    模式检测/顶栏几何/磨砂计算值报一条, 落 data/probe.jsonl。"""
+    entry = body.model_dump()
+    entry["ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    entry["user"] = _require_user(request, users).name
+    with (PROJECT_DIR / "data" / "probe.jsonl").open(
+            "a", encoding="utf-8") as probe_file:
+        probe_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
     return OkResponse(ok=True)
 
 
