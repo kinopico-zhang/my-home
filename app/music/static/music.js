@@ -2123,7 +2123,9 @@ function updateSysDebug(state) {
     chip.id = "sys-debug";
     document.body.appendChild(chip);
   }
-  chip.textContent = `调试 ${state.os} envT=${state.envTop} `
+  // 开头自报脚本版本 (J34 = ?v=34): 读数先对版本, 排除"点图标其实是唤醒旧会话"
+  // 那种假象 —— 版本对不上, 看到的就不是新代码的行为
+  chip.textContent = `调试J34 ${state.os} envT=${state.envTop} `
     + `兜底=${state.sysTop} 屏${screen.width}x${screen.height} 视口${innerHeight} `
     + `${state.standalone ? "独立" : "浏览器"}${state.portrait ? "竖" : "横"}`
     + (state.pushed ? " 系统推下" : "");
