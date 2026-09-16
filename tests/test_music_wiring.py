@@ -416,8 +416,10 @@ def test_music_sys_top_fallback():
     assert "let sysTopLocked = 0;" in block
     assert "if (need) sysTopLocked = sysTopInsetFor" in block
     assert "else if (state.pushed) sysTopLocked = 0;" in block
-    # 排查期读数条: 挂在 body 上, 独立/浏览器、env/兜底、屏幕尺寸都报
+    # 排查期读数条: 挂在 body 上, 独立/浏览器、env/兜底、屏幕尺寸都报;
+    # 开头自报脚本版本 (J34 = ?v=34), 读数先对版本再解读
     assert 'chip.id = "sys-debug"' in block
+    assert "调试J34" in block
     assert "envT=" in block and "屏${screen.width}x${screen.height}" in block
     debug_css = html[html.index("#sys-debug {"):html.index("}\n", html.index("#sys-debug {"))]
     assert "pointer-events: none;" in debug_css   # 只读不挡
