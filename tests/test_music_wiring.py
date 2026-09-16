@@ -207,6 +207,15 @@ def test_music_pane_fixed_chrome_wiring():
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
     assert "top: 0;" in pane_css
     assert "bottom: calc(74px + env(safe-area-inset-bottom));" in pane_css
+    # 收层方向的加固 (用户回访: 进层不重影了, 返回时气泡跟着二级页跑):
+    # ① 层终身常驻不降级 —— 动画结束的合并瞬间 WebKit 会把旁边固定元素
+    #    复印进合并层; ② 投影收紧竖向渗出 —— 磨砂取样区比气泡本体外扩
+    #    blur(20), 投影渗进取样区也是重影引子
+    assert "will-change: transform;" in pane_css
+    assert "box-shadow: -10px 0 26px -8px" in pane_css
+    # ③ 气泡自家合成层: 任何邻居的变换/合并都复印不到它
+    mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
+    assert "transform: translateZ(0);" in mini_css
     # 泳道: 层开着时铺底色+吃点按 (盖住底下一级页, 别露内容别隔带摸按钮);
     # 不做淡入淡出 —— 气泡底下连渐变动画都不许有
     assert "#push-stack::after" in html
