@@ -217,8 +217,11 @@ def test_music_pane_fixed_chrome_wiring():
     assert "-webkit-overflow-scrolling: touch;" in main_css
     # 顶部雷区让位 (顶栏发糊同源): main 整个下移, 滚动内容永远进不了那条带子
     # —— 只给内容加 padding 的话, 一滚字就又钻进去 (2026-09-16 用户复测四个
-    # 一级页页顶全被栅糊+切出屏幕, 就是因为 root-view 顶衬是写死的 14px)
-    assert "margin-top: env(safe-area-inset-top);" in main_css
+    # 一级页页顶全被栅糊+切出屏幕, 就是因为 root-view 顶衬是写死的 14px)。
+    # max(env, 兜底): iOS 26.1+ 系统 bug (WebKit 301994, 用户已升 iOS 27)
+    # 把 env 误报 0, music.js 的 --sys-top-inset 按机型兜底
+    assert "margin-top: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));" \
+        in main_css
     root_css = html[html.index("#root-view {"):html.index(".push-pane {")]
     assert "max-width: 860px; margin: 0 auto;" in root_css
     assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in root_css
@@ -269,8 +272,10 @@ def test_music_pane_fixed_chrome_wiring():
                       html.index(".seg {")]
     # 顶上让位纯 CSS (顶栏撤了, env 直读; 独立模式 black-translucent 下拿
     # 得到真实刘海高度), 底下让开气泡+页签栏 —— JS 量高度那套 (syncPaneTop/
-    # --pane-top/headerBottom) 整个退役
-    assert "calc(env(safe-area-inset-top) + 14px) 16px" in scroll_css
+    # --pane-top/headerBottom) 整个退役。env 被 iOS 26.1+/27 系统 bug 报 0 的
+    # 场合由 --sys-top-inset 兜底 (见 test_music_sys_top_fallback)
+    assert "calc(max(env(safe-area-inset-top), var(--sys-top-inset, 0px)) + 14px)" \
+        in scroll_css
     assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in scroll_css
     assert "function syncPaneTop" not in js
     assert '"--pane-top"' not in js
@@ -337,9 +342,10 @@ def test_music_bottom_tabbar_wiring():
     assert 'name="apple-mobile-web-app-status-bar-style"' \
            ' content="black-translucent"' in html
     # 独立模式打标/撤磨砂那套连标记一起撤 (页签栏在底部, 不再需要);
-    # 文档注释里的 standalone 字样是正当说明, 断言认检测调用本身
+    # 文档注释里的 standalone 字样是正当说明, 断言认检测调用本身。
+    # matchMedia("(display-mode: standalone)") 2026-09-16 起合法回归:
+    # iOS 27 顶带兜底要用它识别主屏独立模式 (见 test_music_sys_top_fallback)
     assert "body.standalone" not in html
-    assert 'matchMedia("(display-mode: standalone)")' not in js
     assert "navigator.standalone" not in js
     assert 'classList.add("standalone")' not in js
     # 原菜单职能进设置页: 账号行 + 退出登录 + 重新扫描 + 统计/更新日志入口
@@ -360,6 +366,50 @@ def test_music_bottom_tabbar_wiring():
                / "schemas.py").read_text(encoding="utf-8")
     assert "header-probe" not in webapp and "probe.jsonl" not in webapp
     assert "HeaderProbeReport" not in schemas and "HeaderProbeReport" not in webapp
+
+
+def test_music_sys_top_fallback():
+    """iOS 26.1+/27 顶带 bug 的兜底 (2026-09-16): 苹果系统在主屏应用顶部盖
+    一条 DOM 够不着的磨砂带, 且 env(safe-area-inset-top) 被误报成 0
+    (WebKit 301994, 26.5.2/27 复发; 用户手机已升 iOS 27)。env 失效后所有
+    CSS 顶部让位全废 —— JS 在独立模式+竖屏+iPhone+系统没代推 (innerHeight
+    没被吃) 的场合, 按机型屏幕尺寸表把近似刘海高度写进 --sys-top-inset,
+    CSS 三处让位 (main/二级页顶衬/播放页抓手) 全部 max(env, 兜底)。
+    顺带一条排查期读数条 (#sys-debug), 拿到用户真值就撤。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    # 三处让位都收兜底变量 (缺一处 = 那个界面照钻磨砂带)
+    main_css = html[html.index("main {"):html.index("#root-view {")]
+    assert "margin-top: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));" \
+        in main_css
+    scroll_css = html[html.index(".push-pane .pane-scroll"):html.index(".seg {")]
+    assert "calc(max(env(safe-area-inset-top), var(--sys-top-inset, 0px)) + 14px)" \
+        in scroll_css
+    grab_css = html[html.index("#fp-grab {"):html.index("#fp-grab div")]
+    assert "calc(max(env(safe-area-inset-top, 0px), var(--sys-top-inset, 0px)) + 3px)" \
+        in grab_css
+    # 兜底只在「独立模式 + 竖屏 + iPhone + env 报 0 + 系统没代推」时启动:
+    # 浏览器/健康 iOS 里 --sys-top-inset 恒 0, env 原样生效
+    block = js[js.index("const SYS_TOP_INSETS"):js.index("bindGlobalEvents();")]
+    assert "375x812" in block and "440x956" in block      # 机型表覆盖两代刘海
+    assert 'matchMedia("(display-mode: standalone)").matches' in block
+    assert 'matchMedia("(orientation: portrait)").matches' in block
+    assert "screen.height - innerHeight > 40" in block     # 系统代推的场合不兜
+    assert "document.documentElement.style.setProperty" in block
+    assert '"--sys-top-inset"' in block
+    # env 用 DOM 探针量 (fixed 元素高 = env 值), 量完即撤
+    assert "height:env(safe-area-inset-top)" in block and "probe.remove();" in block
+    # 冷启动 env 可能晚到: 启动即算, +800ms/+2500ms 再算 (晚到的真值经
+    # max() 无缝接手), 旋转/resize 也重算
+    assert "syncSysTopInset();" in block
+    assert block.count("setTimeout(syncSysTopInset") == 2
+    assert "addEventListener(\"orientationchange\", syncSysTopInset);" in block
+    # 排查期读数条: 挂在 body 上, 独立/浏览器、env/兜底、屏幕尺寸都报
+    assert 'chip.id = "sys-debug"' in block
+    assert "envT=" in block and "屏${screen.width}x${screen.height}" in block
+    debug_css = html[html.index("#sys-debug {"):html.index("}\n", html.index("#sys-debug {"))]
+    assert "pointer-events: none;" in debug_css   # 只读不挡
 
 
 def test_music_player_dismiss_wiring():
