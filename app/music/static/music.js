@@ -2090,16 +2090,22 @@ if (window.performance && performance.getEntriesByType
 // 被糊掉、还顶出屏幕外。
 // 对策: 独立模式 + 竖屏 + iPhone 上, 用探针量 env; 报 0 且系统没有自己
 // 把网页层往下推 (innerHeight 没被吃掉一截) 时, 按机型屏幕尺寸表兜一个
-// 近似刘海高度写进 --sys-top-inset, CSS 一律 max(env, 兜底) 取值 ——
+// 「刘海高 + 磨砂深度」写进 --sys-top-inset, CSS 一律 max(env, 兜底) 取值 ——
 // 健康 iOS 和浏览器里 env 正常, 兜底恒 0, 一切照旧。
 const SYS_TOP_INSETS = {  // 机型屏幕 (短边x长边, CSS px) → 刘海/灵动岛高度
   "375x812": 47, "390x844": 47, "393x852": 59, "414x896": 47,
   "428x926": 47, "430x932": 59, "440x956": 62,
 };
+// 系统磨砂带比安全区还深一截: 用户 iOS 27.2 实测 (2026-09-16, 393x852),
+// 兜底 59 时第一排内容 (CSS 60-88) 仍被栅糊 (边缘强度只有下面几排的
+// 1/4), 到 CSS 116 才完全锐利 —— 带子实际 ≈115px ≈ 刘海高 + 56。
+// 兜底值在刘海高度上再垫这 56, 内容从带子底下干净开始 (只在 env 谎报
+// 0 的中招系统上生效, 多让的这截不影响健康设备)。
+const SYS_FROST_EXTRA = 56;
 function sysTopInsetFor(w, h) {
   const exact = SYS_TOP_INSETS[`${Math.min(w, h)}x${Math.max(w, h)}`];
-  if (exact) return exact;
-  return h >= 940 ? 62 : h >= 850 ? 59 : 47;   // 表外新机型按高度估
+  const inset = exact || (h >= 940 ? 62 : h >= 850 ? 59 : 47);  // 表外新机型按高度估
+  return inset + SYS_FROST_EXTRA;
 }
 function envTopPx() {
   const probe = document.createElement("div");
