@@ -1,0 +1,193 @@
+/* music-player — My Music 前端样式 (全屏播放页: 氛围底 / 大封面 / 控件栈 / 歌词视图 / 队列视图)。
+   拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 全屏播放页 (参考图 1:1: 氛围底 + 顶部抓手 + 大封面 + 底部控件栈) ---------- */
+#full-player {
+  position: fixed; inset: 0; z-index: 90; background: #000;
+  transform: translateY(100%); transition: transform .32s cubic-bezier(.32,.72,0,1);
+}
+#full-player.open { transform: none; }
+/* 抓手条横拖收起: 整页向右甩出 (默认收起仍向下) */
+#full-player.dismiss-right { transform: translateX(100%); }
+.fp-bg { position: absolute; inset: -60px; overflow: hidden; }
+.fp-bg img { width: 100%; height: 100%; object-fit: cover;
+             filter: blur(70px) brightness(.45) saturate(1.3); }
+#full-player.lyrics .fp-bg img { filter: blur(70px) brightness(.22) saturate(1.35); }
+#full-player.queue .fp-bg img { filter: blur(70px) brightness(.3) saturate(1.35); }
+.fp-sheet {
+  position: relative; height: 100%; max-width: 520px; margin: 0 auto;
+  display: flex; flex-direction: column;
+}
+/* 顶部抓手条: 点一下 (或往下拖) 收起播放页 */
+#fp-grab {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: calc(max(env(safe-area-inset-top, 0px), var(--sys-top-inset, 0px)) + 3px)
+           0 0;
+  border: 0; background: none; touch-action: none;
+}
+#fp-grab div { width: 60px; height: 5px; border-radius: 2.5px;
+               background: rgba(255,255,255,.5); }
+.fp-body {
+  position: relative; flex: 1; min-height: 120px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 41px 24px 42px;
+}
+#fp-art-wrap { width: 100%; aspect-ratio: 1; max-height: 100%;
+               max-width: min(100%, 440px); touch-action: none; }
+/* 封面不许原生拖拽/长按呼出 (不然下拉手势被 dragstart 劫持, 桌面端直接断流) */
+#fp-art-wrap, #fp-art { -webkit-user-drag: none; user-select: none;
+                        -webkit-touch-callout: none; }
+#fp-art { width: 100%; height: 100%; object-fit: cover; border-radius: 8px;
+          background: rgba(255,255,255,.08); box-shadow: 0 18px 50px rgba(0,0,0,.55); }
+#fp-lyrics {
+  position: absolute; inset: 0; overflow-y: auto; z-index: 2;
+  -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+  padding: 30% 28px;
+}
+#lyrics-resume {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 3; padding: 7px 16px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--ink-1);
+  background: rgba(44,44,46,.9); border: 1px solid var(--hairline);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+.lyrics-line {
+  font-size: 21px; font-weight: 700; color: rgba(255,255,255,.32);
+  padding: 12px 0; line-height: 1.34; text-align: left;
+  filter: blur(3px); will-change: filter;
+  transition: filter .5s cubic-bezier(.22,.61,.36,1),
+              color .5s cubic-bezier(.22,.61,.36,1),
+              font-size .5s cubic-bezier(.22,.61,.36,1);
+}
+/* 距离模糊: 离当前句越近越清晰 (默认远处 3px), 近一两句半模糊,
+   正在唱的一句全清 + 放大 (滚动动画在 music-player.js) */
+.lyrics-line.near-2 { filter: blur(2px); }
+.lyrics-line.near-1 { filter: blur(1px); }
+.lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0); }
+/* 手动滑动浏览期间整页清晰 (music-player.js 切换 browsing);
+   无时间轴歌词没有"当前句"可依 (static), 也整页清晰 */
+#fp-lyrics.browsing .lyrics-line,
+#fp-lyrics.static .lyrics-line { filter: blur(0); }
+.lyrics-empty { position: absolute; inset: 0; display: flex; align-items: center;
+                justify-content: center; color: var(--ink-3); }
+/* 标题行: 左歌名歌手, 右 ⋯ */
+.fp-meta { display: flex; align-items: center; gap: 12px; padding: 0 32px; }
+.fp-now { flex: 1; min-width: 0; }
+.fp-now b { display: block; font-size: 19px; font-weight: 700; color: #fff;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fp-now small { display: block; font-size: 12px; color: rgba(255,255,255,.62);
+                margin-top: 2px; overflow: hidden; white-space: nowrap;
+                text-overflow: ellipsis; }
+#fp-menu-btn { color: #fff; opacity: .9; padding: 12px; flex-shrink: 0; }
+/* 传输三键: 站进度条正上方居中 (用户点名: 在上面, 不是旁边);
+   三键一般大 —— 播放键不再大一号 (用户: 中间的播放键过于巨大) */
+.fp-controls { display: flex; align-items: center; justify-content: center;
+               gap: 32px; margin-top: 16px; }
+.fp-controls > button {
+  width: 44px; height: 44px; color: #fff; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .16s ease, opacity .16s ease;
+}
+.fp-controls > button:active { transform: scale(.86); opacity: .75; }
+/* 进度行: 两头倒数式时间 (−已播/−剩余), 中间进度条撑满剩余空间 */
+.fp-transport { display: flex; align-items: center; gap: 10px;
+                margin-top: 10px; padding: 0 24px; }
+.fp-time { flex-shrink: 0; font-size: 10px; color: rgba(255,255,255,.5);
+           font-variant-numeric: tabular-nums; }
+/* 细进度条: 无旋钮 (滑块和填充同色, 静止时看不出)。range 住在 flex 行里
+   不会自动让位 (固有宽度顶住), flex:1 + min-width:0 才肯撑满剩余空间 */
+.fp-scrub { flex: 1; min-width: 0; }
+/* 滑杆命中层: iOS 的 range 点轨道不跳值、小滑钮抓不住 (音量条整个点不动),
+   输入框蒙一层透明垫子自己算比例 —— 按下即跳、拖动跟手 (见 music-player.js) */
+.slider-hit { position: relative; touch-action: none;
+              -webkit-user-select: none; user-select: none;
+              -webkit-touch-callout: none; }
+.fp-scrub .slider-hit { height: 28px; }   /* 轨道只有 7px, 命中区给足 */
+.slider-hit input[type="range"] { pointer-events: none; width: 100%; height: 100%;
+  appearance: none; -webkit-appearance: none; background: none; }
+#fp-scrub::-webkit-slider-runnable-track {
+  height: 7px; border-radius: 3.5px;
+  background: linear-gradient(to right, rgba(255,255,255,.7) var(--fill, 0%),
+                              rgba(255,255,255,.3) 0);
+}
+#fp-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255,255,255,.7); margin-top: 0;
+}
+/* 底部三键: 加列表 / 歌词 / 队列 (无损标挂在队列键右上角) —— 与传输区
+   分成两拨, 中间留白给足 */
+.fp-actions { display: flex; align-items: center; justify-content: space-between;
+              margin-top: 18px; padding: 0 53px; color: rgba(255,255,255,.58); }
+.fp-actions > button { position: relative; width: 40px; height: 40px; padding: 0;
+  display: flex; align-items: center; justify-content: center; }
+.fp-actions > button:active { opacity: .6; }
+#fp-lyrics-btn.on { color: #fff; }
+#fp-lyrics-btn:disabled { opacity: .35; }   /* 探明没歌词的曲子, 键灰掉点不开 */
+#fp-queue-btn.on { color: #fff; }           /* 队列翻开着 (封面区显示队列) */
+.fp-source { margin-top: 10px; padding: 0 32px; text-align: center; font-size: 13px;
+             color: rgba(255,255,255,.75); overflow: hidden; white-space: nowrap;
+             text-overflow: ellipsis; }
+.fp-pad { height: 22px; flex-shrink: 0; }
+/* 横屏 (矮屏): 藏来源行, 收紧留白, 保控件行完整 */
+@media (max-height: 520px) {
+  .fp-body { padding: 12px 24px; }
+  .fp-source { display: none; }
+  .fp-controls { margin-top: 8px; }
+  .fp-transport { margin-top: 6px; }
+  .fp-actions { margin-top: 10px; }
+}
+
+/* ---------- 队列视图 (占封面那块地方, 不再弹底部单) ---------- */
+/* 点队列键: 封面原地翻开成播放队列 (照 Apple Music 待播放排版) —— 头部
+   待播放 + 歌曲数 (左) 和 随机/循环 (右); 下面滚动列表: 当前曲 eq 动条,
+   其余序号, 行右缘拖拽把手按住上下拖换顺序。 */
+#fp-queue {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; overflow: hidden;
+  /* 四边留白与大封面同款 (用户点名: 列表贴屏幕边太挤, 边距对齐封面) ——
+     inset:0 是 .fp-body 的 padding 盒 (罩到边), 得自己再衬回来 */
+  padding: 6px 24px 30px;
+  -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 94%, transparent);
+  mask-image: linear-gradient(transparent, #000 10%, #000 94%, transparent);
+}
+.fq-head { display: flex; align-items: center; justify-content: space-between;
+           padding: 6px 0 10px; }
+.fq-head-txt b { display: block; font-size: 19px; font-weight: 700;
+                 color: #fff; line-height: 1.25; }
+.fq-head-txt small { font-size: 12px; color: rgba(255,255,255,.5); }
+.fq-head-btns { display: flex; gap: 16px; }
+.fq-head-btns button {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,.55);
+}
+.fq-head-btns button.on { color: #fff; }
+#fp-repeat.one::after { content: "1"; font-size: 10px; font-weight: 700;
+                        color: #fff; margin-left: 3px; }
+#queue-list {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 2px 0 14px;
+}
+.queue-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 0; text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+  transition: transform .18s ease; touch-action: pan-y;
+}
+.queue-row.dragging { position: relative; z-index: 3; transition: none;
+  background: rgba(255,255,255,.08); box-shadow: 0 8px 22px rgba(0,0,0,.5);
+  border-radius: 8px; border-bottom-color: transparent; }
+.q-lead { width: 24px; flex-shrink: 0; display: flex; align-items: center;
+          justify-content: center; color: rgba(255,255,255,.4); }
+.q-num { font-size: 14px; font-style: normal;
+         font-variant-numeric: tabular-nums; }
+.queue-row.on .bars { display: inline-flex; }
+.queue-row.on .q-title { color: #fff; font-weight: 600; }
+.q-title { font-size: 15px; color: rgba(255,255,255,.85); flex-shrink: 1;
+           overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.q-artist { font-size: 13px; color: rgba(255,255,255,.4);
+            flex-shrink: 1; margin-left: auto; max-width: 42%;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.q-grip { flex-shrink: 0; width: 30px; height: 38px;
+          display: flex; align-items: center; justify-content: center;
+          color: rgba(255,255,255,.3); touch-action: none; }
+

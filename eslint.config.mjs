@@ -188,20 +188,22 @@ export default [
     },
   },
 
-  // 音乐应用 (app/music/static): 按脚本分层声明跨文件全局 (定义者与
-  // 使用者分开, 避免同文件 no-redeclare)。加载顺序: 纯逻辑模块
-  // (lyrics-parser / player-queue / downloads) → 公共小件 → 播放器 → 浏览页。
+  // 音乐应用 (app/music/static): 纯逻辑模块 + 公共小件 + 播放器/浏览页模块
+  // 都住 js/ 子目录 (结构化重构: music.js / music-player.js 按逻辑拆成
+  // 见名知意的小文件, 经典脚本按 music.html 里的顺序加载; 分享页模块在
+  // js/share/, 按 share.html 的顺序, 与应用页同名助手 ($ 等) 互不相干)。
+  // 跨模块引用走全局, 每个文件头部自带 /* global */ (用到别处定义的) 与
+  // /* exported */ (本文件定义、别处用的) 注释 —— 配置里不再按文件列举。
   {
-    files: ["app/music/static/lyrics-parser.js",
-            "app/music/static/player-queue.js",
-            "app/music/static/downloads.js",
-            "app/music/static/cellular-usage.js",
-            "app/music/static/music-common.js"],
+    files: ["app/music/static/js/*.js", "app/music/static/js/share/*.js"],
     ...pageScript,
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
-      globals: { ...globals.browser, module: "readonly" },
+      globals: {
+        ...globals.browser,
+        module: "readonly",        // downloads 两文件的 UMD 尾巴 (node 测试路径)
+      },
     },
   },
   {
@@ -212,60 +214,6 @@ export default [
       ecmaVersion: 2022,
       sourceType: "script",
       globals: { ...globals.serviceworker },
-    },
-  },
-  {
-    files: ["app/music/static/music-player.js"],
-    ...pageScript,
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: "script",
-      globals: {
-        ...globals.browser,
-        // 纯逻辑模块 + 公共小件先于本脚本加载 (经典脚本, 函数声明进全局)
-        parseLyrics: "readonly", activeLyricIndex: "readonly",
-        formatPlaybackTime: "readonly",
-        createPlayQueue: "readonly", queueCurrent: "readonly",
-        queueSetShuffle: "readonly", queueShuffleAll: "readonly",
-        queueCycleRepeat: "readonly",
-        queueAdvance: "readonly", queueGoBack: "readonly",
-        queueJump: "readonly", queueUpcoming: "readonly",
-        queueReorder: "readonly",
-        $: "readonly", escapeHTML: "readonly", fetchJSON: "readonly",
-        toast: "readonly", PLACEHOLDER_ARTWORK: "readonly",
-        ICON_PLAY: "readonly", ICON_PAUSE: "readonly", ICON_BARS: "readonly",
-        ICON_PLAY_BIG: "readonly", ICON_PAUSE_BIG: "readonly",
-        ICON_GRIP: "readonly",
-      },
-    },
-  },
-  {
-    files: ["app/music/static/music.js"],
-    ...pageScript,
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: "script",
-      globals: {
-        ...globals.browser,
-        // 纯逻辑模块 + 公共小件 + 播放器入口 (music-player.js 先加载)
-        formatPlaybackTime: "readonly",
-        $: "readonly", escapeHTML: "readonly", fetchJSON: "readonly",
-        toast: "readonly", albumArtworkURL: "readonly",
-        artistArtworkURL: "readonly", trackArtworkURL: "readonly",
-        playlistCoverURL: "readonly", PLACEHOLDER_ARTWORK: "readonly",
-        describeDuration: "readonly", formatAddedDate: "readonly",
-        ICON_BARS: "readonly", ICON_DOWNLOAD: "readonly", ICON_LYRICS: "readonly",
-        ICON_ACTION_PLAY: "readonly", ICON_ACTION_SHUFFLE: "readonly",
-        ICON_ACTION_TRASH: "readonly", ICON_ACTION_IMAGE: "readonly",
-        ICON_ACTION_SHARE: "readonly",
-        playerStart: "readonly", updatePlayButtons: "readonly",
-        openFullPlayer: "readonly", openLyricsView: "readonly",
-        closeFullPlayer: "readonly", playerOpen: "readonly",
-        onTrackChange: "readonly", playerCurrentTrackId: "readonly",
-        playerCurrentTrack: "readonly",
-        downloadsSupported: "readonly", createDownloads: "readonly",
-        formatBytes: "readonly", createCellularMonitor: "readonly",
-      },
     },
   },
 

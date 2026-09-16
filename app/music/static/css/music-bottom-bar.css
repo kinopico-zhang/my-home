@@ -1,0 +1,107 @@
+/* music-bottom-bar — My Music 前端样式 (底部常驻件: 页签栏 / 顶带护罩 / 扫描进度条 / 迷你播放条)。
+   拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 底部页签栏 (磨砂, 与气泡同配方) ----------
+   原来的顶部页签栏在独立 app (主屏图标) 竖屏里整条被 iOS 栅成低清
+   (用户实测: 钉自家合成层/撤磨砂/换状态栏样式三招全试过救不动;
+   横屏和浏览器里都好, 屏底的气泡一直清晰) —— 索性把导航整个搬到底部,
+   顶上那块雷区让出去。主页/资料库/搜索/设置四个图标页签, 设置页签 =
+   原品牌菜单的职能搬进设置页 (统计/重扫/更新日志/退出登录都在那)。 */
+:root { --tabbar-h: 38px; }   /* 页签栏自高 (行高定死, 图标23+标签10 整体居中):
+                                  44 用户还嫌高再压一档; 气泡让位和内容下衬垫都按它算 */
+#tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; justify-content: center;
+  padding: 0 max(8px, env(safe-area-inset-left))
+           env(safe-area-inset-bottom) max(8px, env(safe-area-inset-right));
+  background: rgba(44,44,46,.6);   /* 磨砂玻璃, 气泡同款半透明 */
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--hairline);
+  transform: translateZ(0);   /* 自家合成层: 推入层从它底下扫过时复印不进 */
+}
+#tabbar .tab-row {
+  display: flex; gap: 2px; width: 100%; max-width: 860px;
+  height: var(--tabbar-h); align-items: stretch;
+}
+#tabbar button {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 1px;   /* 图标+文字作为整体在键高里上下居中 */
+  padding: 0; border-radius: 8px; line-height: 1;
+  font-size: 10px; font-weight: 500; color: var(--ink-3);
+}
+#tabbar button.on { color: var(--accent); font-weight: 600; }
+#tabbar svg { display: block; }
+
+/* ---------- 顶带护罩 (不透明黑顶带) ----------
+   iOS 26.1+ 系统 bug (WebKit 301994) 会在主屏独立应用顶部盖一条网页
+   永远够不着的磨砂带; 磨砂盖在纯黑上时看不出来, 所以让位区里铺一块
+   不透明的黑罩 —— 滚进顶部的内容只会被它干净遮住 (像普通应用的状态
+   栏), 不再被系统栅糊; 推下变体里系统从网页顶部抓拍的带子也只剩纯黑,
+   残影跟着隐形。高度与三处让位同源: max(env, 兜底), 健康设备/浏览器
+   里 env 正常、罩子只到状态栏下缘, 看不出区别; 桌面上恒 0 不渲染。 */
+#top-shield {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 96;
+  height: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));
+  background: #000;
+}
+
+/* 首帧兜底: 中招系统里 JS 启动前的那一帧也别让内容钻进磨砂带 —— 独立
+   模式竖屏先给 --sys-top-inset 一个按最深带子量的默认值 (393×852 机型
+   59+88=147), music.js 一跑就按真实机型/变体覆写成准确值 (健康设备/
+   横屏/浏览器清回 0)。不然首帧内容顶到 env 谎报的位置, 系统抓拍条
+   (推下变体) 拍到的就是内容而不是黑罩。 */
+@media (display-mode: standalone) and (orientation: portrait) {
+  :root { --sys-top-inset: 147px; }
+}
+
+/* ---------- 扫描进度条 (吊在页签栏上沿的浮层, 不挤布局) ---------- */
+#scan-strip {
+  position: absolute; left: 0; right: 0; top: 0; transform: translateY(-100%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px; font-size: 12px; color: var(--ink-2);
+  background: rgba(58,58,60,.85);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--hairline);
+  box-shadow: 0 -10px 20px rgba(0,0,0,.35);
+}
+#scan-strip .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: .25; } }
+
+/* ---------- 迷你播放条 ---------- */
+#mini-player {
+  position: fixed; left: 8px; right: 8px;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);   /* 叠在页签栏上 */
+  z-index: 45; height: 58px; overflow: hidden;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(44,44,46,.6);   /* 磨砂玻璃 (用户点名): 六成底色,
+    blur(20) 把底下划过的内容糊成影子透上来 —— 和顶栏一个质感 */
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline); border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  transform: translateZ(0);   /* 自家合成层: WebKit 复印不进旁边任何变换层
+    (收层动画里气泡跟着页面跑的另一半保险) */
+}
+#mini-progress {
+  position: absolute; top: 0; left: 0; height: 2px;
+  background: var(--accent); width: 0; transition: width .3s linear;
+}
+#mini-open { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+             height: 100%; text-align: left; padding-left: 10px; }
+#mini-art { width: 42px; height: 42px; border-radius: 6px; object-fit: cover;
+            background: var(--surface-3); flex-shrink: 0; }
+.mini-txt { flex: 1; min-width: 0; }
+.mini-txt b { display: block; font-size: 14px; overflow: hidden;
+              white-space: nowrap; text-overflow: ellipsis; }
+.mini-txt small { display: block; font-size: 12px; color: var(--ink-2);
+                  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#mini-player > button { padding: 10px; color: var(--ink-1); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; }
+/* 播放键字形 28px 比上下曲 24px 大一号: 三角/双杠是紧凑实心形,
+   跟宽箭头同尺寸会显得小 (用户点名 "比上一首下一首还小"), 大一号才齐平 */
+#mini-play svg { display: block; }
+
