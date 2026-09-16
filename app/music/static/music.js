@@ -191,10 +191,8 @@ function closePushStack(keep = 0) {
     (路由一看那层已就位, 只做收尾不动画第二遍)。
     左缘也自己接管: 浏览器里 iOS 系统边缘返回是整页截图滑走, 钉死的
     气泡跟着截图跑 (用户点名 "都是气泡固定") —— 配套的非被动 touchstart
-    在层内左缘 preventDefault 掐掉系统手势起手, 拖拽照常跟手;
-    standalone 没有系统手势, 不必掐 (左缘起手的竖向滚动得以保留)。
-    被掐掉的兼容 click 在 end 里给没挪过的点按补一记合成 (standalone
-    没掐过不能补, 会双发)。 */
+    把左缘起手掐掉 (见下方拦截块), 拖拽照常跟手;
+    standalone 没有系统手势, 不掐 (左缘起手的竖向滚动得以保留)。 */
 function bindPaneSwipe(pane) {
   pane.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -223,17 +221,7 @@ function bindPaneSwipe(pane) {
     };
     const end = (ev) => {
       cleanup();
-      if (!horizontal) {
-        // 浏览器里左缘被 preventDefault 的点按, 浏览器兼容 click 也被掐
-        // 了 —— 没挪过的补一记合成 (行都是 button/a, 兜不到就当点空处);
-        // standalone 没掐过, 原生 click 还在, 补了会双发
-        if (!standaloneLaunch && startX < 24 && !decided) {
-          const hit = document.elementFromPoint(ev.clientX, ev.clientY);
-          const clickable = hit && hit.closest("button, a");
-          if (clickable) clickable.click();
-        }
-        return;
-      }
+      if (!horizontal) return;      // 点按/竖向: 点按的兼容 click 由拦截块统一补发
       const dx = Math.max(0, ev.clientX - startX);
       const width = pane.offsetWidth || 1;
       const flick = ev.timeStamp - lastT < 100 && lastX - startX > 40;
@@ -260,19 +248,43 @@ function bindPaneSwipe(pane) {
   });
 }
 
-/** 浏览器里掐掉 iOS 系统边缘返回在推入层左缘的起手 (一次性挂在
-    document, 只在层开着时对层内左缘 24px 生效): 系统返回是拿整页截图
-    滑走, 气泡这种钉死的固定件也跟着截图跑 —— 只有不让系统手势起手,
-    "气泡唯一且固定" 才在两种返回手势下都成立 (用户点名)。非被动
-    touchstart + preventDefault 是唯一掐得动系统手势的口子; pointer
-    事件不受影响, 拖拽照常跟手。代价: 层内左缘起手的竖向滚动没了
-    (24px 的缝), 点按由 bindPaneSwipe 的 end 合成补发。
+/** 浏览器里掐掉 iOS 系统边缘返回的起手 (一次性挂在 document, 层开着时
+    对左缘 44px 生效, 不论起手落点): 系统返回是拿整页截图滑走, 气泡这种
+    钉死的固定件也跟着截图跑 —— 只有不让系统手势起手, "气泡唯一且固定"
+    才在两种返回手势下都成立 (用户点名)。非被动 touchstart +
+    preventDefault 是唯一掐得动系统手势的口子; pointer 事件不受影响,
+    拖拽照常跟手。第一版 24px + 只认层内落点, Safari 实测没掐住 ——
+    系统识别带比 24 宽 (社区配方都取 ~10% 视口宽), 磨砂顶栏和气泡也
+    压在层外; 这版放宽到 44 且不限落点。代价: 左缘起手的竖向滚动没了
+    (44px 的缝), 点按的兼容 click 也被掐, 由 touchend 按落点合成补发
+    (页面上可点的都是 button/a, 兜不到就当点空处)。
     standalone 没有系统手势, 不挂 (左缘滚动保留)。 */
 if (!standaloneLaunch) {
+  const EDGE_STRIP_PX = 44;
+  let edgeTouchId = null;              // 被掐的那根手指 (按 identifier 追)
+  let edgeStartX = 0;
+  let edgeStartY = 0;
   document.addEventListener("touchstart", (event) => {
-    if (pushStack.length && event.touches[0].clientX < 24
-        && event.target.closest(".push-pane")) event.preventDefault();
+    if (!pushStack.length || !event.touches.length) return;
+    const touch = event.touches[0];
+    if (touch.clientX >= EDGE_STRIP_PX) return;
+    edgeTouchId = touch.identifier;
+    edgeStartX = touch.clientX;
+    edgeStartY = touch.clientY;
+    event.preventDefault();
   }, { passive: false });
+  document.addEventListener("touchend", (event) => {
+    if (edgeTouchId === null) return;
+    const touch = Array.from(event.changedTouches)
+      .find((item) => item.identifier === edgeTouchId);
+    edgeTouchId = null;
+    if (!touch || Math.hypot(touch.clientX - edgeStartX,
+                             touch.clientY - edgeStartY) > 12) return;
+    const hit = document.elementFromPoint(touch.clientX, touch.clientY);
+    const clickable = hit && hit.closest("button, a");
+    if (clickable) clickable.click();  // 原生 click 被一并掐了, 补一记
+  });
+  document.addEventListener("touchcancel", () => { edgeTouchId = null; });
 }
 
 // ------------------------------------------------------------ 下载 (离线)
