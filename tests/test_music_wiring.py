@@ -179,13 +179,17 @@ def test_music_swipe_delete_wiring():
     assert "swipeDrag.horizontal = dx < 0 && Math.abs(dx) > Math.abs(dy);" in js
     # 左缘两种返回手势都归应用自己 (用户点名 "都是气泡固定"): 浏览器里
     # iOS 系统边缘返回是整页截图滑走, 钉死的气泡跟着截图跑 —— 非被动
-    # touchstart 在层内左缘 preventDefault 掐掉系统手势起手; 掐掉的兼容
-    # click 由 pointerup 合成补发; standalone 没系统手势不掐 (左缘滚动保留)
+    # touchstart 在左缘 44px preventDefault 掐掉系统手势起手 (第一版
+    # 24px 只认层内落点, Safari 实测没掐住: 系统识别带比 24 宽, 磨砂
+    # 顶栏/气泡也压在层外 —— 放宽到 44 且不限落点); 掐掉的兼容 click
+    # 由 touchend 按落点合成补发; standalone 没系统手势不掐 (左缘滚动保留)
     assert "const standaloneLaunch" in js
     assert 'if (!standaloneLaunch && event.pointerType !== "mouse"' not in js
-    assert "event.touches[0].clientX < 24" in js
-    assert 'event.target.closest(".push-pane")' in js
+    assert "const EDGE_STRIP_PX = 44;" in js
+    assert "if (touch.clientX >= EDGE_STRIP_PX) return;" in js
+    assert 'closest(".push-pane")' not in js     # 不限落点: 顶栏/气泡上起手也掐
     assert '{ passive: false });' in js
+    assert 'document.addEventListener("touchend", (event) => {' in js
     assert 'hit.closest("button, a")' in js
     # 拖动跟手: 行上挂 .swiping 撤掉 transform 过渡, 松手回位才交给过渡
     # (不撤的话每帧都在重定 250ms 补间, 手指拖着行像皮筋 —— 队列拖拽同款)
