@@ -9,6 +9,27 @@ from typing import Final
 from ..schemas import ChangelogItem, ChangelogVersion
 
 VERSIONS: Final[list[ChangelogVersion]] = [
+    ChangelogVersion(version="1.7.2", date="2026-09-16", items=[
+        ChangelogItem(kind="修复", text="资料库修好了一个大问题: 换着页签翻列表时,"
+                                       " 前一个页签还在路上的一页会灌进当前页签"
+                                       " (专辑里混进艺人, 看着像乱序); 切回翻过的页签时"
+                                       " 又只显示没铺完的尾巴 —— 专辑每次进来都从"
+                                       " 不同的地方开始 (像随机的), 艺人翻到底后再进来"
+                                       " 干脆整个空白。后台的排序一直是定的,"
+                                       " 病根在页面拼接上, 已修"),
+        ChangelogItem(kind="修复", text="页顶黑带再垫高一些 —— 那条系统带的深浅会浮动,"
+                                       " 原来的高度偶尔还露一线糊边; 另外应用刚启动的"
+                                       " 头一帧也先垫上黑带, 系统抓拍的残影条从第一帧起"
+                                       " 拍到的就只有黑 (磨砂盖在纯黑上看不出来)"),
+        ChangelogItem(kind="改进", text="资料库的页签条和搜索页的搜索框固定在顶端,"
+                                       " 不再跟着列表滚走 (翻列表随时能换页签/改搜索词)"),
+        ChangelogItem(kind="改进", text="底部页签的图标放大回来, 图标和文字作为整体"
+                                       " 在栏里上下居中"),
+        ChangelogItem(kind="改进", text="资料库的「歌曲」页签撤掉 —— 找歌用搜索更顺手"
+                                       " (拼音、歌词都能搜)"),
+        ChangelogItem(kind="修复", text="列表第一页没拉到时 (弱网) 不再误报「曲库还是空的」,"
+                                       " 切个页签回来会重试"),
+    ]),
     ChangelogVersion(version="1.7.1", date="2026-09-16", items=[
         ChangelogItem(kind="修复", text="页顶那条系统带的最后一块: 让位区里铺一块不透明的黑顶带,"
                                        " 系统磨砂盖在纯黑上就看不出来了 —— 滚进顶部的内容"

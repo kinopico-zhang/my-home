@@ -398,8 +398,8 @@ def test_music_sys_top_fallback():
     # 会话锁只锁在中招变体里: env 抖回真值不撤兜底; 横屏/浏览器立即清零
     # (锁着进横屏会把竖屏兜底高度带过去, 顶部凭空让出一大截)。
     block = js[js.index("const SYS_TOP_INSETS"):js.index("bindGlobalEvents();")]
-    assert "SYS_FROST_EXTRA = 56" in block
-    assert "SYS_PUSH_BLEED = 12" in block
+    assert "SYS_FROST_EXTRA = 88" in block
+    assert "SYS_PUSH_BLEED = 16" in block
     assert "return inset + SYS_FROST_EXTRA;" in block
     assert "375x812" in block and "440x956" in block      # 机型表覆盖两代刘海
     assert 'matchMedia("(display-mode: standalone)").matches' in block
@@ -457,6 +457,49 @@ def test_music_171_polish_batch():
     assert "serveArtwork(request)" in sw
     assert "trimArtworkCache(cache);" in sw
     assert "/artwork$|^\\/music\\/media\\/playlists" in sw   # 封面族正则 (含列表封面)
+
+
+def test_music_172_fix_batch():
+    """1.7.2 修复批接线 (2026-09-16, 用户手机实测反馈):
+    - 资料库分页串台/空列表竞态: 换页签后在途旧分页回来灌进新页签
+      (顺序看着随机), 切回来时 renderedCount 没归零只渲染「下一页」
+      (艺人 218 首全加载完的段直接空白) —— 段守卫 + 缓存重铺归零;
+      首页没拉到不再缓存空单 (切回来会重试);
+    - 段选择条/搜索框 sticky 钉在顶端, 不随列表滚走;
+    - 歌曲页签撤掉 (找歌用搜索), 旧存的段名自动回落专辑;
+    - 页签栏图标 23px, 图标+文字整体在 38px 键高里上下居中;
+    - 顶罩兜底加高 (磨砂带实测会浮动, 刘海+88), 独立竖屏首帧 CSS
+      先垫 147px —— JS 启动前系统抓拍条拍到的也是黑罩不是内容。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    # 段守卫三件套: 装配时打标 / 追加对不上就丢 / 缓存重铺归零
+    assert "body.dataset.segment = segment;" in js
+    assert js.count("body.dataset.segment !== segment") == 2   # 追加 + 装载
+    assert "list.renderedCount = 0;" in js
+    assert "delete pageState.lists[segment];" in js        # 空单不缓存
+    # 歌曲页签撤掉: 段表只剩三段, fetchListPage 不再有 songs 分支
+    assert '["songs", "歌曲"]' not in js
+    assert 'segment === "songs"' not in js
+    # 资料库体里没有 bindTrackLists 了 (曲目行没了, 专辑/艺人/下载各有各的)
+    library_bind = js[js.index("function bindLibraryBody")
+                      :js.index("function playDownloadedRow")]
+    assert "bindTrackLists" not in library_bind
+    # 段选择条/搜索框: sticky 包裹 + 不透明底衬, 钉 main 顶端
+    sticky_css = html[html.index(".sticky-head {"):html.index(".seg {")]
+    assert "position: sticky; top: 0; z-index: 5;" in sticky_css
+    assert "background: var(--bg);" in sticky_css
+    assert js.count('<div class="sticky-head">') == 2      # 资料库 + 搜索
+    assert "margin-bottom: 12px;" not in html[html.index(".seg {"):html.index(".seg button")]   # 间距挪进包裹层
+    # 页签栏: 行高定死 38, 键内纵向居中, 图标回到 23
+    tabbar_css = html[html.index("#tabbar .tab-row"):html.index("#tabbar button.on")]
+    assert "height: var(--tabbar-h); align-items: stretch;" in tabbar_css
+    button_css = html[html.index("#tabbar button {"):html.index("#tabbar button.on")]
+    assert "justify-content: center; gap: 1px;" in button_css
+    assert html.count('width="23" height="23"') == 4
+    # 首帧兜底: 独立竖屏先垫最深带子的高度, JS 再按机型覆写
+    assert "@media (display-mode: standalone) and (orientation: portrait)" in html
+    assert "--sys-top-inset: 147px;" in html
 
 
 def test_music_player_dismiss_wiring():
