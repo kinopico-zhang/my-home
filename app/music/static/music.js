@@ -82,8 +82,9 @@ function route(force) {
 const pushStack = [];   // [{view, id, pane}]
 
 // 主屏图标打开的独立窗口 (standalone) 没有 Safari 左缘返回手势 —— 左缘
-// 必须自己接管, 不然那儿成了死区 (用户点名 "返回手势不好用"); 浏览器里
-// 照旧让出 24px 给系统手势 (抢了会被 pointercancel 掐到一半弹回)。
+// 必须自己接管, 不然那儿成了死区 (用户点名 "返回手势不好用")。浏览器里
+// 左缘也不能让给系统手势: 系统返回是拿整页截图滑走, 钉死的气泡跟着截图
+// 一起跑 (用户点名两边都要气泡固定) —— 掐法见 bindPaneSwipe 后的监听。
 const standaloneLaunch = (window.matchMedia
   && window.matchMedia("(display-mode: standalone)").matches)
   || window.navigator.standalone === true;
@@ -188,16 +189,15 @@ function closePushStack(keep = 0) {
 /** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
     或带甩劲松手就收层, 否则弹回。收层自己滑完再 history.back 对齐地址栏
     (路由一看那层已就位, 只做收尾不动画第二遍)。
-    左缘 24px 只在浏览器里让给 iOS 系统边缘返回 (bezel back): 从那儿
-    起手不接管, 系统做完触发 hashchange, 路由照常收层; 抢了的话层跟到
-    一半被 pointercancel 掐弹回 (用户点名 "返回了一半就取消了")。
-    主屏图标打开 (standaloneLaunch) 没有系统手势, 左缘自己接 —— 死区
-    才是 "返回手势不好用" 的真凶。 */
+    左缘也自己接管: 浏览器里 iOS 系统边缘返回是整页截图滑走, 钉死的
+    气泡跟着截图跑 (用户点名 "都是气泡固定") —— 配套的非被动 touchstart
+    在层内左缘 preventDefault 掐掉系统手势起手, 拖拽照常跟手;
+    standalone 没有系统手势, 不必掐 (左缘起手的竖向滚动得以保留)。
+    被掐掉的兼容 click 在 end 里给没挪过的点按补一记合成 (standalone
+    没掐过不能补, 会双发)。 */
 function bindPaneSwipe(pane) {
   pane.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if (!standaloneLaunch && event.pointerType !== "mouse"
-        && event.clientX < 24) return;
     const startX = event.clientX;
     const startY = event.clientY;
     let horizontal = false;
@@ -223,7 +223,17 @@ function bindPaneSwipe(pane) {
     };
     const end = (ev) => {
       cleanup();
-      if (!horizontal) return;
+      if (!horizontal) {
+        // 浏览器里左缘被 preventDefault 的点按, 浏览器兼容 click 也被掐
+        // 了 —— 没挪过的补一记合成 (行都是 button/a, 兜不到就当点空处);
+        // standalone 没掐过, 原生 click 还在, 补了会双发
+        if (!standaloneLaunch && startX < 24 && !decided) {
+          const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+          const clickable = hit && hit.closest("button, a");
+          if (clickable) clickable.click();
+        }
+        return;
+      }
       const dx = Math.max(0, ev.clientX - startX);
       const width = pane.offsetWidth || 1;
       const flick = ev.timeStamp - lastT < 100 && lastX - startX > 40;
@@ -248,6 +258,21 @@ function bindPaneSwipe(pane) {
     pane.addEventListener("pointerup", end, { signal: signals.signal });
     pane.addEventListener("pointercancel", cancel, { signal: signals.signal });
   });
+}
+
+/** 浏览器里掐掉 iOS 系统边缘返回在推入层左缘的起手 (一次性挂在
+    document, 只在层开着时对层内左缘 24px 生效): 系统返回是拿整页截图
+    滑走, 气泡这种钉死的固定件也跟着截图跑 —— 只有不让系统手势起手,
+    "气泡唯一且固定" 才在两种返回手势下都成立 (用户点名)。非被动
+    touchstart + preventDefault 是唯一掐得动系统手势的口子; pointer
+    事件不受影响, 拖拽照常跟手。代价: 层内左缘起手的竖向滚动没了
+    (24px 的缝), 点按由 bindPaneSwipe 的 end 合成补发。
+    standalone 没有系统手势, 不挂 (左缘滚动保留)。 */
+if (!standaloneLaunch) {
+  document.addEventListener("touchstart", (event) => {
+    if (pushStack.length && event.touches[0].clientX < 24
+        && event.target.closest(".push-pane")) event.preventDefault();
+  }, { passive: false });
 }
 
 // ------------------------------------------------------------ 下载 (离线)

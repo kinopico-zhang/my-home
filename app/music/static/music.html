@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="My Music">
-<link rel="icon" type="image/png" sizes="32x32" href="/music/static/favicon-32.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="/music/static/favicon-32.png?v=3">
 <link rel="icon" type="image/svg+xml" href="/music/static/favicon.svg?v=2">
 <link rel="apple-touch-icon" href="/music/static/apple-touch-icon.png?v=3">
 <link rel="manifest" href="/music/static/manifest.json">
@@ -26,7 +26,10 @@
   --nav-bg: rgba(10,10,12,.72);
   --accent: #fa2d48;          /* Apple Music 红 */
 }
-* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+/* app 思路: 全程不画滚动条 (手机本来就不画, 电脑上也干净) —— 能滚, 只是不显示 */
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent;
+    scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; height: 100%; overflow: hidden; }
      /* 固定壳: 文档本身永不滚 —— 一级页滚动全在 main 内部滚 (用户点名
@@ -175,9 +178,7 @@ main {
 
 .chips {
   display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px;
-  scrollbar-width: none;
 }
-.chips::-webkit-scrollbar { display: none; }
 .chip {
   flex-shrink: 0; font-size: 12px; color: var(--ink-2);
   background: var(--surface-2); padding: 5px 13px; border-radius: 999px;
@@ -621,12 +622,10 @@ span.t-art { display: flex; align-items: center; justify-content: center;
           background: rgba(255,255,255,.08); box-shadow: 0 18px 50px rgba(0,0,0,.55); }
 #fp-lyrics {
   position: absolute; inset: 0; overflow-y: auto; z-index: 2;
-  scrollbar-width: none;              /* 浏览器不画滚动条 (iOS 本来就不画) */
   -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
   mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
   padding: 30% 28px;
 }
-#fp-lyrics::-webkit-scrollbar { display: none; }
 #lyrics-resume {
   position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
   z-index: 3; padding: 7px 16px; border-radius: 999px;
