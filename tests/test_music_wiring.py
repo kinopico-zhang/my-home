@@ -240,6 +240,11 @@ def test_music_pane_fixed_chrome_wiring():
     # ③ 气泡自家合成层: 任何邻居的变换/合并都复印不到它
     mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
     assert "transform: translateZ(0);" in mini_css
+    # 顶栏同款护甲 (用户反馈: 顶栏像盖了层很模糊的涂层): sticky 住在滚动的
+    # main 里, 不给自家合成层就会被栅格进邻居层 (main 的滚动光栅 / 全高
+    # 推入层), 字跟着邻居的分辨率糊掉 —— 气泡有护甲没事, 顶栏要一样
+    header_css = html[html.index("header {"):html.index(".nav-row {")]
+    assert "transform: translateZ(0);" in header_css
     # 泳道撤了 (层铺满全高, 没有夹缝可露); 重影对策 = 运动期暂撤磨砂:
     # CSS 挂 body.pane-anim 实底, JS 的 paneMotion() 在每段层运动前打标
     # (拖动中每下续期), 停稳 500ms 恢复

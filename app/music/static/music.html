@@ -57,6 +57,10 @@ header {
   backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--hairline);
   z-index: 50; position: sticky; top: 0;
+  transform: translateZ(0);   /* 自家合成层 (气泡同款护甲, 用户反馈顶栏糊成涂层):
+    sticky 顶栏住在滚动的 main 里, 底下还垫着 will-change 的全高推入层 ——
+    不隔离的话 iOS 会把顶栏连同它的字栅格进邻居层的光栅, 清晰度跟着邻居
+    的分辨率走, 看着就像盖了一层很模糊的涂层; 气泡有这层护甲所以没事 */
 }
 /* 顶栏单行: 左边主页/资料库/搜索页签, 右边菜单钮 (统计/设置/重扫/日志/退出)。
    品牌行和放大镜撤了 —— 应用自己叫什么用户知道, 搜索进了页签。 */
