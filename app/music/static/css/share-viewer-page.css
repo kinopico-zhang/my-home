@@ -1,0 +1,105 @@
+/* share-viewer-page — 分享页样式: 变量/骨架/失效态/卡片/曲目清单。 */
+/* 拆自 share.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+     从公开的 /music/static 借用), 深色基调与应用一致 */
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --ink-1: #f5f5f7;
+    --ink-2: rgba(235,235,245,.62);
+    --ink-3: rgba(235,235,245,.32);
+    --hairline: rgba(255,255,255,.09);
+    --accent: #fa2d48;
+  }
+  /* app 思路: 全程不画滚动条 (手机本来就不画, 电脑上也干净) —— 能滚, 只是不显示 */
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent;
+      scrollbar-width: none; }
+  ::-webkit-scrollbar { display: none; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
+  body {
+    background: var(--bg); color: var(--ink-1);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+                 "Helvetica Neue", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.45;
+    min-height: 100vh; min-height: 100dvh;
+  }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; }
+
+  .share-mark {
+    margin: 20px 0 4px; text-align: center;
+    font-size: 13px; font-weight: 700; letter-spacing: .4px; color: var(--accent);
+  }
+  main { max-width: 520px; margin: 0 auto;
+         padding: 8px 20px calc(110px + env(safe-area-inset-bottom)); }
+
+  /* ---------- 失效态 ---------- */
+  #share-error { padding: 96px 24px 0; text-align: center; color: var(--ink-2); }
+  #share-error svg { color: var(--ink-3); margin-bottom: 16px; }
+  #share-error h1 { font-size: 17px; font-weight: 600; color: var(--ink-1); }
+  #share-error p { font-size: 13px; margin-top: 6px; color: var(--ink-3); }
+
+  /* ---------- 卡片 ---------- */
+  #share-card { text-align: center; padding-top: 18px; }
+  .hero-art {
+    width: min(52vw, 208px); aspect-ratio: 1; margin: 0 auto;
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 18px 40px rgba(0,0,0,.55);
+    background: var(--surface-2);
+  }
+  .hero-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-art.ph {          /* 没有封面: 渐变音符块 (与列表无封面占位同一语言) */
+    background: linear-gradient(135deg, #48484c, #232326);
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,.5); font-size: 64px; font-weight: 700;
+  }
+  #share-title { font-size: 20px; font-weight: 700; margin-top: 18px;
+                 overflow-wrap: anywhere; }
+  #share-subtitle { font-size: 14px; color: var(--ink-2); margin-top: 4px;
+                    overflow-wrap: anywhere; }
+  #hero-play {
+    width: 54px; height: 54px; border-radius: 50%; border: 0; cursor: pointer;
+    margin-top: 16px; background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #hero-play:active { transform: scale(.94); }
+  #hero-play.off { background: var(--surface-3); pointer-events: none; }
+  #hero-play svg { width: 22px; height: 22px; }
+
+  /* ---------- 曲目清单 ---------- */
+  .list-head { margin-top: 26px; text-align: left;
+               font-size: 12px; color: var(--ink-3); }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--hairline);
+    cursor: pointer; text-align: left; width: 100%; background: none; border: 0;
+    border-bottom: 1px solid var(--hairline); color: inherit; font: inherit;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .lead { width: 22px; flex-shrink: 0; text-align: center;
+               color: var(--ink-3); font-size: 13px;
+               font-variant-numeric: tabular-nums; }
+  .row .lead i { font-style: normal; }
+  .row .txt { flex: 1; min-width: 0; }
+  .row .t { font-size: 15px; overflow: hidden; white-space: nowrap;
+            text-overflow: ellipsis; }
+  .row .a { font-size: 12px; color: var(--ink-2); margin-top: 1px;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row .dur { color: var(--ink-3); font-size: 12px; flex-shrink: 0;
+              font-variant-numeric: tabular-nums; }
+  .row.on .t { color: var(--accent); }
+  .row.na { opacity: .45; pointer-events: none; }
+  .bars { width: 14px; height: 14px; fill: var(--accent); }
+  .bars rect { transform-origin: center 11px; animation: eq 1s ease-in-out infinite; }
+  .bars rect:nth-child(2) { animation-delay: .25s; }
+  .bars rect:nth-child(3) { animation-delay: .5s; }
+  .bars.paused rect { animation-play-state: paused; }
+  @keyframes eq { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+  @media (prefers-reduced-motion: reduce) { .bars rect { animation: none; } }
+
+  .expire { margin-top: 26px; font-size: 12px; color: var(--ink-3); }
+
+  /* ---------- 底部迷你条 ---------- */

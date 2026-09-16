@@ -2,7 +2,13 @@
 传输区/队列封面视图/返回手势收起/下载全部/更新日志应用内化 —— 都是
 "静态文本断言"型测试 (读 html/js 源码查接线), 不碰数据库。
 """
+import re
 from pathlib import Path
+
+from tests.music_static_files import (
+    MUSIC_STATIC, music_browser_js, music_page_shell, music_player_js,
+    share_page_js, share_page_shell,
+)
 
 
 def test_music_controls_apple_style_wiring():
@@ -11,9 +17,8 @@ def test_music_controls_apple_style_wiring():
     进度条 range 住在 flex 行里要 flex:1+min-width:0 才肯让位收缩。
     迷你气泡三键齐全 (上一首/播放/下一首)。图标包围盒中心对准按键中心的
     不变量在 player-icons.test.mjs。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    common = (static / "music-common.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    common = (MUSIC_STATIC / "js" / "music-common.js").read_text(encoding="utf-8")
     # 键行在进度行**上面** (markup 顺序即视觉顺序)
     assert html.index('<div class="fp-controls">') < html.index('<div class="fp-transport">')
     controls = html[html.index(".fp-controls {"):html.index(".fp-transport {")]
@@ -54,9 +59,8 @@ def test_music_queue_cover_view_wiring():
     播放列表"): 头部一行 (待播放 + N 首歌曲 左, 随机/循环两枚键 右 —— 照
     Apple Music Playing Next 排版), 下面 upcoming 列表; 与歌词视图同住封面区
     互斥; 全屏页收起时跟着收。旧底部弹层 (queue-sheet/mask/close) 全撤。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    player = music_player_js()
     for frag in ['<div id="fp-queue" hidden>', 'class="fq-head"',
                  'class="fq-head-txt"', 'id="fq-count"',
                  'class="fq-head-btns"', 'id="fp-shuffle"', 'id="fp-repeat"',
@@ -87,11 +91,10 @@ def test_music_queue_drag_wiring():
     把手按下即捕获指针, 行跟手位移让位, 松手按落点改 order 并存档;
     换过的顺序和随机/循环开关存进 localStorage, 恢复前先验 order 是完整
     排列 (缺/重/越界的旧档弃用, 随机旗只在顺序真恢复时才点亮)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
-    common = (static / "music-common.js").read_text(encoding="utf-8")
-    queue = (static / "player-queue.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    player = music_player_js()
+    common = (MUSIC_STATIC / "js" / "music-common.js").read_text(encoding="utf-8")
+    queue = (MUSIC_STATIC / "js" / "player-queue.js").read_text(encoding="utf-8")
     # 拖动中的行浮起来 (阴影 + 免过渡): 拖把图标进 common, music-player 引用
     assert ".queue-row.dragging" in html
     assert "ICON_GRIP" in common and "const ICON_GRIP" in common
@@ -113,9 +116,9 @@ def test_music_share_link_wiring():
     """分享改链接制 (1.7.0, 用户点名"单独生成一个 uuid 的 url, 有效期 1 天,
     不用鉴权"): 开 24 小时免登录链接, 系统分享面板优先、复制回落;
     公开页 share.html 自包含 (不引应用 JS —— 访客没有会话)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    js = (static / "music.js").read_text(encoding="utf-8")
-    share = (static / "share.html").read_text(encoding="utf-8")
+    js = music_browser_js()
+    share = share_page_shell()
+    share_all = share + share_page_js()   # markup+css+脚本, 拆分前的整页口径
     for frag in ["async function shareByLink",
                  'fetchJSON("/music/api/shares"',
                  "async function sharePlaylist", 'id="playlist-share"',
@@ -126,8 +129,8 @@ def test_music_share_link_wiring():
                  "/music/share/${token}/stream/${track.track_id}",
                  "链接不存在或已过期", "playsinline",
                  "fmtDateTime", "playQueue", "togglePlay"]:
-        assert frag in share, f"share.html 缺 {frag}"
-    assert "music.js?v=" not in share      # 自包含, 不引应用脚本
+        assert frag in share_all, f"share.html 缺 {frag}"
+    assert "js/music-" not in share    # 自包含, 不引应用模块 (只带自己的 share 脚本)
     # 整页不画滚动条 (与应用同款: 星规则 + 伪元素)
     assert "scrollbar-width: none;" in share
     assert "::-webkit-scrollbar { display: none; }" in share
@@ -139,9 +142,9 @@ def test_music_share_link_wiring():
                  'id="fp-bg"', "toggleLyricsView", "openFullPlayer",
                  "closeFullPlayer", "bindPullClose", "updateMediaSession",
                  "/music/share/${token}/lyrics/${track.track_id}",
-                 'src="/music/static/lyrics-parser.js"',
+                 'src="/music/static/js/lyrics-parser.js',
                  ".lyrics-line.near-1", ".lyrics-line.active"]:
-        assert frag in share, f"share.html 缺 {frag}"
+        assert frag in share_all, f"share.html 缺 {frag}"
     # 微信卡片: <head> 留 og 占位注释, 服务端换掉 (占位符漏替换卡片就漏空)
     assert "<!--og-->" in share
     webapp = (Path(__file__).parent.parent / "app" / "music"
@@ -158,9 +161,8 @@ def test_music_swipe_delete_wiring():
     """左滑删除 (用户点名两处: 列表内曲目移出 + 主页列表整列删): iOS 同款
     红色删除钮。与长按菜单共存 (阈值分家), 滚动让位 (touch-action pan-y +
     捕获 scroll 即收), 尾随 click 吞掉, 同一时间只开一行。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     for frag in [".swipe-wrap {", ".swipe-del {", "touch-action: pan-y;"]:
         assert frag in html, f"左滑样式缺 {frag}"
     assert "#e5484d" in html                          # 删除钮红底
@@ -206,9 +208,8 @@ def test_music_pane_fixed_chrome_wiring():
     一样) —— 重影对策挪到运动期: body.pane-anim 暂撤气泡/页签栏磨砂换实底
     (fixed+backdrop-filter 底下有扫动的变换层是 WebKit 的重影配方)。
     根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉内容)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     # 壳: 文档不滚, main 是唯一一级滚动器
     assert "height: 100%; overflow: hidden;" in html            # html
     assert "height: 100dvh;" in html and "overflow: hidden;" in html  # body
@@ -293,9 +294,8 @@ def test_music_bottom_tabbar_wiring():
     撤磨砂 + header-probe 探针 + 测试条) 连前端带后端一起撤净。
     页签栏压扁一档 (51→44px); 双指缩放全禁 (body pan-y) + 文本输入框
     16px 防 iOS 聚焦自动放大 (搜索/设置/新列表名/登录页)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     # 顶栏整个没了, 换固定壳底的页签栏
     assert "<header>" not in html and "header {" not in html
     assert ".brand-menu" not in html and "brand-menu" not in js
@@ -377,9 +377,8 @@ def test_music_sys_top_fallback():
     CSS 三处让位 (main/二级页顶衬/播放页抓手) 全部 max(env, 兜底)。
     让位区再铺一块不透明黑罩 (#top-shield): 磨砂盖纯黑 = 隐形, 滚进顶部
     的内容只会被罩子干净遮住; 推下型里系统抓拍条里也只剩黑罩, 残影隐形。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     # 三处让位都收兜底变量 (缺一处 = 那个界面照钻磨砂带)
     main_css = html[html.index("main {"):html.index("#root-view {")]
     assert "margin-top: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));" \
@@ -439,10 +438,9 @@ def test_music_171_polish_batch():
     歌曲行/专辑页曲目行的编号换成封面缩略图 (序号没用还常从 101 起 ——
     多碟专辑的音轨标签); 封面图加 SW Cache API 一层缓存 (iOS 的 HTTP
     缓存容易被系统清掉, 大库一刷列表几百张图全回源)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
-    sw = (static / "sw.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
+    sw = (MUSIC_STATIC / "sw.js").read_text(encoding="utf-8")
     # 队列视图: inset:0 罩到 .fp-body 边, 自己衬回和大封面同款的 24px
     queue_css = html[html.index("#fp-queue {"):html.index(".fq-head {")]
     assert "padding: 6px 24px 30px;" in queue_css
@@ -470,9 +468,8 @@ def test_music_172_fix_batch():
     - 页签栏图标 23px, 图标+文字整体在 38px 键高里上下居中;
     - 顶罩兜底加高 (磨砂带实测会浮动, 刘海+88), 独立竖屏首帧 CSS
       先垫 147px —— JS 启动前系统抓拍条拍到的也是黑罩不是内容。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     # 段守卫三件套: 装配时打标 / 追加对不上就丢 / 缓存重铺归零
     assert "body.dataset.segment = segment;" in js
     assert js.count("body.dataset.segment !== segment") == 2   # 追加 + 装载
@@ -490,7 +487,8 @@ def test_music_172_fix_batch():
     assert "position: sticky; top: 0; z-index: 5;" in sticky_css
     assert "background: var(--bg);" in sticky_css
     assert js.count('<div class="sticky-head">') == 2      # 资料库 + 搜索
-    assert "margin-bottom: 12px;" not in html[html.index(".seg {"):html.index(".seg button")]   # 间距挪进包裹层
+    seg_css = html[html.index(".seg {"):html.index(".seg button")]
+    assert "margin-bottom: 12px;" not in seg_css   # 间距挪进包裹层
     # 页签栏: 行高定死 38, 键内纵向居中, 图标回到 23
     tabbar_css = html[html.index("#tabbar .tab-row"):html.index("#tabbar button.on")]
     assert "height: var(--tabbar-h); align-items: stretch;" in tabbar_css
@@ -507,10 +505,9 @@ def test_music_player_dismiss_wiring():
     向右收 —— 全是纯视图开关, 不再挂历史条目 (一个地址批后浏览器里没有
     可退的条目, 播放页也跟着撤了 pushState/popstate 那套)。
     电脑上的"返回"是 Esc: 先收播放页, 没开就收顶层二级页。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    player = music_player_js()
+    js = music_browser_js()
     assert "#full-player.dismiss-right { transform: translateX(100%); }" in html
     # 历史耦合撤净: 播放页开关不再碰 pushState/back/popstate
     assert "pushState" not in player and "history.back" not in player
@@ -526,7 +523,8 @@ def test_music_player_dismiss_wiring():
     assert 'bindDismissDrag($("#fp-art-wrap"), true);' in player   # 封面照旧划切歌
     # Esc = 电脑上的返回: 先收播放页, 没开收顶层二级页
     esc_handler = js[js.index('event.key !== "Escape"'):
-                     js.index("// ------------------------------------------------------------ 蜂窝流量")]
+                     js.index("// ------------------------------------------------------------"
+                              " 蜂窝流量")]
     assert "if (playerOpen) closeFullPlayer();" in esc_handler
     assert "closePushStack(pushStack.length - 1)" in esc_handler
 
@@ -537,9 +535,8 @@ def test_music_single_url_navigation_wiring():
     不碰 location.hash / pushState / history.back —— 浏览器返回/前进和
     iOS 系统侧滑在应用里没有条目可退, 整页截图滑走 (气泡跟着跑) 绝迹。
     旧深链开局消化一次, URL 随即洗成光杆 /music。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    js = (static / "music.js").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
+    js = music_browser_js()
+    player = music_player_js()
     # 不写 hash、不挂 hashchange、不加/弹历史条目 (认调用形式 —— 文件头
     # 注释里提到这些词是说明, 不算数)
     assert "location.hash =" not in js
@@ -567,9 +564,8 @@ def test_music_download_all_wiring():
     (几十个 40MB 并发请求在手机上必炸), 已在库/正在下的跳过,
     下载管理「全部删除」把整批叫停。列表页操作行 1.7.0 起改纯图标
     (播放/随机/下载/分享/删除 五枚一般大, 一行装下不再换行)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     assert 'id="album-download"' in js and "下载全部" in js
     assert 'id="playlist-download"' in js
     for frag in ["function downloadAllFromUI", "let downloadAllCancelled = false;",
@@ -589,9 +585,8 @@ def test_music_changelog_in_app_wiring():
     /music/changelog, 卸载 SPA 音频就停; 改 hash 路由铺在 #main,
     播放气泡常驻。入口在设置页「更多」段 (顶栏菜单撤了)。独立日志页
     保留 (直达链接仍可用)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     assert 'data-set-nav="changelog"' in js          # 设置页「更多」段的入口
     assert 'href="/music/changelog"' not in html    # 不再整页跳走
     assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
@@ -600,3 +595,26 @@ def test_music_changelog_in_app_wiring():
     assert 'fetchJSON("/music/changelog/api/entries")' in js
     assert "#changelog-entries" in html and ".v-badge" in html  # 版本卡片样式
     assert 'navigate(row.dataset.setNav)' in js     # 更多段的行都是导航入口
+
+
+def test_music_frontend_structure():
+    """结构化重构 (2026-09-17 用户令): 前端源文件 ≤200 行, 超了按逻辑拆分
+    互相引用; html/css/js 分家 —— 页面不再内联 <style> 与脚本正文;
+    js/css 引用一律带版本参数 (改动必 bump, 否则手机缓存不刷新)。"""
+    for page in ("music.html", "share.html", "changelog.html"):
+        html = (MUSIC_STATIC / page).read_text(encoding="utf-8")
+        assert "<style" not in html, f"{page} 还有内联样式"
+        inline = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", html)
+        assert not inline, f"{page} 还有无 src 的内联脚本: {inline}"
+        for path, query in re.findall(
+                r'(?:src|href)="(/music/static/(?:js|css)/[^"?]+)(\?[^"]*)?"',
+                html):
+            assert query, f"{page} 引用 {path} 没带版本参数"
+    oversize = []
+    for path in MUSIC_STATIC.rglob("*"):
+        if path.suffix not in (".js", ".css", ".html") or not path.is_file():
+            continue
+        count = len(path.read_text(encoding="utf-8").splitlines())
+        if count > 200:
+            oversize.append(f"{path.relative_to(MUSIC_STATIC)} ({count} 行)")
+    assert not oversize, f"超过 200 行的前端文件: {oversize}"

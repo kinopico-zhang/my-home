@@ -9,9 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
-const { downloadsSupported, createDownloads, formatBytes } =
-  require(path.join(dir, "downloads.js"));
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static/js");
+const { createDownloads } = require(path.join(dir, "downloads.js"));
+const { downloadsSupported, formatBytes } =
+  require(path.join(dir, "downloads-capability.js"));
 
 const TRACK = { track_id: 7, title: "曲A", artist: "AI机组", album_id: 3,
                 album_title: "甲", duration_seconds: 200, playable: true };

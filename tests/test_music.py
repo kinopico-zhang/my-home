@@ -4,6 +4,7 @@
 不依赖曲库真文件; 扫描器用临时曲库目录, 接口用 TestClient 走完整 HTTP 栈。
 """
 import os
+import re
 import struct
 import threading
 import time
@@ -22,6 +23,9 @@ from app.music.library_database import (Album, Artist, PlayStat, Track,
                                         session_factory)
 from app.music.library_languages import (detect_script, language_for_script,
                                          scripts_for_language)
+from tests.music_static_files import (
+    MUSIC_STATIC, music_browser_js, music_page_shell, music_player_js,
+)
 from app.music.library_media import parse_range_header
 from app.music.library_scanner import LibraryScanner, backfill_legacy_rows
 from app.music.library_tags import (extract_album_artwork,
@@ -802,10 +806,9 @@ def test_music_stats_endpoint(auth):
 
 def test_music_stats_page_wiring():
     """统计页接线: 设置页「更多」段入口 + hash 路由 + 渲染函数 (E2E 再验真数据)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
+    html = music_page_shell()
     assert "stat-grid" in html and "format-bar" in html   # 统计卡片 + 比例条
-    js = (static / "music.js").read_text(encoding="utf-8")
+    js = music_browser_js()
     assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
             '.includes(name)) {') in js
     assert "function renderStatsView()" in js
@@ -816,8 +819,7 @@ def test_music_stats_page_wiring():
 def test_music_home_page_wiring():
     """主页接线: 底部页签栏主页/资料库/搜索/设置 + 播放列表/最近播放两段 +
     播放列表详情路由 (E2E 再验真数据)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
+    html = music_page_shell()
     assert '<nav id="tabbar">' in html
     assert ('data-view-tab="home"' in html and 'data-view-tab="library"' in html
             and 'data-view-tab="search"' in html
@@ -825,7 +827,7 @@ def test_music_home_page_wiring():
     assert 'id="search-btn"' not in html    # 放大镜按钮已撤
     assert 'id="sync-playlists"' not in html     # Plex 同步入口已撤
     assert "playlist-row" in html                  # 行样式在
-    js = (static / "music.js").read_text(encoding="utf-8")
+    js = music_browser_js()
     assert "function renderHomeView()" in js
     assert '"/music/api/plays/recent?limit=20"' in js
     assert '"/music/api/playlists"' in js          # 主页播放列表段
@@ -840,8 +842,7 @@ def test_music_home_page_wiring():
 
 def test_music_downloads_wiring():
     """下载接线: 纯逻辑模块 (node 直测) + SW 拦流 + 已下载段 + 能力门控 + 下载管理。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    js = (static / "music.js").read_text(encoding="utf-8")
+    js = music_browser_js()
     assert "downloadsSupported" in js and "createDownloads" in js
     assert '"/music/sw.js"' in js                  # SW 注册
     assert "isSecureContext" in js                 # 明文 HTTP 整个功能收起
@@ -852,16 +853,16 @@ def test_music_downloads_wiring():
     assert "navigator.storage.estimate" in js      # 手机存储占用
     # 已下载行也带封面: 曲目封面接口 + 裂图退音符 (和播放列表行同款)
     assert 'src="/music/media/tracks/${entry.track_id}/artwork"' in js
-    downloads_js = (static / "downloads.js").read_text(encoding="utf-8")
+    downloads_js = (MUSIC_STATIC / "js" / "downloads.js").read_text(encoding="utf-8")
     assert "/music/media/stream/" in downloads_js  # 缓存键 = 音频流地址
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
-    html = (static / "music.html").read_text(encoding="utf-8")
+    html = music_page_shell()
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
-    assert ("downloads.js?v=2" in html and "music.js?v=36" in html
-            and "music-player.js?v=19" in html
-            and "music-common.js?v=13" in html
-            and "player-queue.js?v=3" in html)   # 版本号刷新
-    sw = (static / "sw.js").read_text(encoding="utf-8")
+    scripts = re.findall(r'<script src="([^"]+)"', html)
+    # 结构化重构后 39 个独立脚本, 引用一律带版本参数 (改哪个 bump 哪个)
+    assert len(scripts) == 39 and all("?v=" in src for src in scripts)
+    assert "js/downloads.js?v=" in html and "js/music-app-boot.js?v=" in html
+    sw = (MUSIC_STATIC / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
     assert "music-shell" in sw                     # 应用壳也进缓存 (断网打得开)
@@ -1076,9 +1077,8 @@ def test_playlist_endpoints(auth):
 def test_music_track_context_menu_wiring():
     """长按菜单接线: 检测 (500ms/右键/移动作废)、菜单四项、选择单、
     分享回落都在页面上; 行样式禁掉 iOS 长按气泡。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     for frag in ['id="track-menu"', 'id="track-menu-mask"',
                  'data-track-action="play"', 'data-track-action="artist"',
                  'data-track-action="playlist"', 'data-track-action="share"',
@@ -1103,12 +1103,12 @@ def test_music_track_context_menu_wiring():
         ]:
         assert frag in js, f"music.js 缺少 {frag}"
     # 新版图标/脚本地址随行; Plex 同步全撤了
-    assert "music.js?v=36" in html
+    assert "js/music-app-boot.js?v=" in html   # 浏览页模块链以 boot 收尾
     # 长歌名不许把菜单撑超宽 (用户报"菜单非常宽, 建议截断"): 固定定位菜单
     # 收缩到内容, 不封顶会一路撑到视口; 320px 封顶后 nowrap 截断才接管
     assert "max-width: min(320px, calc(100vw - 24px))" in html
     # fetchJSON 把 HTTP 状态码挂上错误对象 (加歌 409 分叉靠它)
-    common = (static / "music-common.js").read_text(encoding="utf-8")
+    common = (MUSIC_STATIC / "js" / "music-common.js").read_text(encoding="utf-8")
     assert "status: response.status" in common
     assert "picker-sync" not in html and "picker-sync" not in js
     assert "picker-del" not in html and "picker-del" not in js
@@ -1119,9 +1119,8 @@ def test_music_settings_view_wiring():
     """设置页接线: 底部页签栏「设置」入口 + 表单三件 (曲库路径/歌词开关/
     API 地址) + 流量月账 + 原菜单职能 (账号/退出/重扫/统计/更新日志入口);
     普通账号只读 (开关/输入框锁着, 保存钮不出)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     assert 'data-view-tab="settings"' in html            # 页签直通设置页
     assert ".settings-block" in html and ".switch" in html and ".month-row" in html
     assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
@@ -1139,9 +1138,8 @@ def test_music_settings_view_wiring():
 def test_music_cellular_wiring():
     """蜂窝流量接线: 纯逻辑模块 (node 直测) + 安卓 connection.type 判定 +
     keepalive 上报 + onHide 兜底 (切后台/离页都报)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
     assert "cellular-usage.js?v=1" in html                     # 模块加载
     assert "createCellularMonitor" in js
     assert 'connection.type === "cellular"' in js              # 只有认得出的才记
@@ -1152,10 +1150,9 @@ def test_music_cellular_wiring():
 def test_music_playlist_cover_and_track_art_wiring():
     """封面接线: 详情页点大封面换图, 长按/右键弹菜单 (换/移除) + 隐藏文件选择器;
     列表行/选择单/主页播放列表带封面; 曲目行带元数据封面 (没封面给音符占位)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
-    common = (static / "music-common.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
+    common = (MUSIC_STATIC / "js" / "music-common.js").read_text(encoding="utf-8")
     assert 'id="cover-file"' in html \
         and 'accept="image/png,image/jpeg,image/webp"' in html
     assert ".t-art" in html and ".pl-icon.art" in html           # 行样式
@@ -1179,10 +1176,9 @@ def test_music_search_page_and_lockscreen_wiring():
     """1.4.1 后半批接线: 搜索页语种筛选撤掉 (2026-09-16 资料库也撤了) +
     页面不许横向溢出 (标题/右列文字收口, 长艺人名撑不宽) +
     锁屏进度随暂停/跳句/变速重报真实位置。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
+    player = music_player_js()
     # 语种筛选两处都撤净 (1.4.1 撤搜索页, 2026-09-16 再撤资料库):
     # chips 行/常量/接口参数全不该再出现
     assert "search-chips" not in js and "search-chips" not in html
@@ -1204,9 +1200,8 @@ def test_music_search_page_and_lockscreen_wiring():
 def test_music_lyrics_animation_wiring():
     """歌词滚动动画接线: 当前行放大清晰/其余模糊退后 (CSS 缓动) +
     rAF 逐帧缓动滚动, 手指一按就让位 (JS)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    player = music_player_js()
     assert ".lyrics-line {" in html and "filter: blur(3px)" in html   # 其余模糊
     assert ".lyrics-line.active" in html and "font-size: 26px" in html \
         and "blur(0)" in html                                          # 当前行放大清晰
@@ -1223,9 +1218,8 @@ def test_music_click_play_starts_from_beginning():
     currentTime 是"待生效进度", Safari 会把它漏到之后点开的歌上。
     loadTrack 换源后显式归零兜底; 冷启动续听 (playerRestore) 不走
     loadTrack, 特性照旧。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    player = (static / "music-player.js").read_text(encoding="utf-8")
-    html = (static / "music.html").read_text(encoding="utf-8")
+    player = music_player_js()
+    html = music_page_shell()
     load_track = player[player.index("function loadTrack"):
                         player.index("function prefetchNextTrack")]
     assert "audio.currentTime = 0;" in load_track  # 点播归零, 待生效进度不外漏
@@ -1239,9 +1233,8 @@ def test_music_volume_ui_removed():
     """音量条全平台撤除 (用户点名"音量条去掉吧"): iOS 的 audio.volume
     写了也白写, 1.5.0 的 WebAudio 增益又拖不动还脱开音量键 —— 桌面也
     不留了, 音量统一设备自己的键。回归: 旧的音量代码不许再爬回来。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    player = (static / "music-player.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    player = music_player_js()
     for gone in ["AudioContext", "createGain", "createMediaElementSource",
                  "ensureVolumeRouting", "loadSavedVolume", "nativeVolumeWorks",
                  "applyVolume", "music-volume", "volume-off", "fp-volume"]:
@@ -1253,10 +1246,9 @@ def test_music_lyrics_mark_row_badge():
     """词标 ❝: 行右侧图标簇的一员 (下载标前面), 17×17 与下载标同大、
     同 26px 高度框里垂直居中 —— 两个图标同一水平线, 不再像小上标;
     颜色同一档, 行右侧图标簇没有色差 (用户点名)。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    html = (static / "music.html").read_text(encoding="utf-8")
-    js = (static / "music.js").read_text(encoding="utf-8")
-    common = (static / "music-common.js").read_text(encoding="utf-8")
+    html = music_page_shell()
+    js = music_browser_js()
+    common = (MUSIC_STATIC / "js" / "music-common.js").read_text(encoding="utf-8")
     assert 'width="17" height="17"' in common              # 与下载标同大
     assert ".t-lyric" in html and "height: 26px" in html   # 与 .t-dl 同框高
     # 同色: 词标和下载标都是 ink-2 (下载完的勾加深到 ink-1 是另一态)
@@ -1275,8 +1267,7 @@ def test_music_lyrics_mark_row_badge():
 def test_music_scan_polling_wiring():
     """增量扫描接线: 页面 30 秒问一次状态; 在扫出进度条, 收尾动过库
     (changed) 才静默刷新, 手动触发的才出提示, 重复一轮不再响应。"""
-    static = Path(__file__).parent.parent / "app" / "music" / "static"
-    js = (static / "music.js").read_text(encoding="utf-8")
+    js = music_browser_js()
     assert "SCAN_POLL_INTERVAL_MS = 30000" in js
     assert "function checkScanStatus" in js and "function digestScanSettled" in js
     assert "lastScanSignature" in js          # finished_at+changed 签名去重

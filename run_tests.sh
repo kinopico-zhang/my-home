@@ -43,10 +43,11 @@ node node_modules/c8/bin/c8.js \
   --include 'app/tesla/static/format.js' --include 'app/tesla/static/trip-playback.js' \
   --include 'app/tesla/static/lastpage.js' --include 'app/bookkeeping/static/bookkeeping-merge.js' \
   --include 'app/bookkeeping/static/amount-calculator.js' \
-  --include 'app/music/static/lyrics-parser.js' \
-  --include 'app/music/static/player-queue.js' \
-  --include 'app/music/static/downloads.js' \
-  --include 'app/music/static/cellular-usage.js' \
+  --include 'app/music/static/js/lyrics-parser.js' \
+  --include 'app/music/static/js/player-queue.js' \
+  --include 'app/music/static/js/downloads.js' \
+  --include 'app/music/static/js/downloads-capability.js' \
+  --include 'app/music/static/js/cellular-usage.js' \
   --check-coverage --lines 95 --branches 95 --functions 95 \
   --reporter text node --test tests/js/ || rc=1
 
