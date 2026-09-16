@@ -519,14 +519,15 @@ def test_list_tracks_and_lyrics(tmp_path):
 def test_lyrics_online_fetch_and_negative_cache(tmp_path, monkeypatch):
     """联网补歌词: 求到写回索引; 求不到记 24 小时负缓存 (同一首不再打外网)。"""
     _seed_library()
-    library_queries._lyrics_fetch_misses.clear()   # 模块级账本, 别让别的测试留旧账
+    library_queries.lyrics_queries._lyrics_fetch_misses.clear()   # 模块级账本, 别让别的测试留旧账
     calls = []
 
     def fake_fetch(api_base, title, artist, album_title):
         calls.append(title)
         return "[00:01.00]联网歌词" if title == "曲B" else ""
 
-    monkeypatch.setattr(library_queries, "fetch_lyrics", fake_fetch)
+    monkeypatch.setattr(library_queries.lyrics_queries, "fetch_lyrics",
+                        fake_fetch)
     api = (True, "https://lrc.invalid/api")
     with session_factory()() as session:
         page = library_queries.list_tracks(session, limit=10)
