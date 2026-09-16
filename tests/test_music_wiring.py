@@ -114,6 +114,23 @@ def test_music_share_link_wiring():
                  "fmtDateTime", "playQueue", "togglePlay"]:
         assert frag in share, f"share.html 缺 {frag}"
     assert "music.js?v=" not in share      # 自包含, 不引应用脚本
+    # 全屏播放页 (用户点名"和 app 自己的播放界面大致一样"): 点迷你条掀开,
+    # 封面点一下 ↔ 歌词 (近邻模糊同款), 传输三键 + 进度 + 毛玻璃底 +
+    # 下拉收起; 歌词解析借公开的 lyrics-parser.js (纯模块, 不带会话)
+    for frag in ['id="fp"', 'id="fp-play"', 'id="fp-prev"', 'id="fp-next"',
+                 'id="fp-lyrics"', 'id="fp-scrub"', 'id="fp-grab"',
+                 'id="fp-bg"', "toggleLyricsView", "openFullPlayer",
+                 "closeFullPlayer", "bindPullClose", "updateMediaSession",
+                 "/music/share/${token}/lyrics/${track.track_id}",
+                 'src="/music/static/lyrics-parser.js"',
+                 ".lyrics-line.near-1", ".lyrics-line.active"]:
+        assert frag in share, f"share.html 缺 {frag}"
+    # 微信卡片: <head> 留 og 占位注释, 服务端换掉 (占位符漏替换卡片就漏空)
+    assert "<!--og-->" in share
+    webapp = (Path(__file__).parent.parent / "app" / "music"
+              / "webapp.py").read_text(encoding="utf-8")
+    assert '_OG_MARK = "<!--og-->"' in webapp
+    assert '"/share/{token}/lyrics/{track_id}"' in webapp
     # 分享页对整站是公开前缀 (中间件只认这个面, 过期由路由自己验)
     main_py = (Path(__file__).parent.parent / "app" / "main.py").read_text(
         encoding="utf-8")
@@ -140,9 +157,39 @@ def test_music_swipe_delete_wiring():
     # 两处挂载: 列表详情的曲目行 + 主页的列表行
     assert 'bindSwipeDelete(target.querySelector("#playlist-tracks")' in js
     assert 'bindSwipeDelete($("#home-playlists")' in js
+    # 手势地盘分家 (1.7.0 后遗症修): 左滑只认左移 (右移归推入层返回手势,
+    # 抢了会被 pointercancel 掐弹回); 左缘 24px 让给 iOS 系统边缘返回
+    assert "swipeDrag.horizontal = dx < 0 && Math.abs(dx) > Math.abs(dy);" in js
+    assert 'event.pointerType !== "mouse" && event.clientX < 24' in js
+    # 拖动跟手: 行上挂 .swiping 撤掉 transform 过渡, 松手回位才交给过渡
+    # (不撤的话每帧都在重定 250ms 补间, 手指拖着行像皮筋 —— 队列拖拽同款)
+    assert 'swipeDrag.row.classList.add("swiping")' in js
+    assert ".swipe-wrap > button:first-child.swiping { transition: none; }" in html
     # 删除钮的点击走捕获层 (}, true); 行自己的冒泡 click 处理器看不到它
     assert 'container.addEventListener("click", async (event) => {' in js
     assert "}, true);" in js
+
+
+def test_music_pane_fixed_chrome_wiring():
+    """推入层从顶栏/播放气泡*底下*滑过 (用户点名: 界面切换时二者固定不动,
+    看起来不在一个图层): 顶栏 sticky z50、气泡 fixed z45 本来就压着推入层
+    z44 —— 真正显同层的是推入层顶边贴着 headerBottom (齐平像一整块);
+    改成全高推入层, 内容用 --pane-top (JS 量 headerBottom, resize 重量)
+    让开顶栏, 卡片整个从毛玻璃底下扫过去。"""
+    static = Path(__file__).parent.parent / "app" / "music" / "static"
+    html = (static / "music.html").read_text(encoding="utf-8")
+    js = (static / "music.js").read_text(encoding="utf-8")
+    pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
+    assert "top: 0; bottom: 0;" in pane_css          # 全高: 从顶栏底下过
+    scroll_css = html[html.index(".push-pane .pane-scroll"):
+                      html.index(".seg {")]
+    assert "calc(var(--pane-top, 64px) + 14px)" in scroll_css
+    assert "function syncPaneTop" in js
+    assert '"--pane-top"' in js                       # 量出的高度写进 CSS 变量
+    assert 'window.addEventListener("resize", syncPaneTop)' in js
+    open_pane = js[js.index("function openPushPane"):js.index("function closePushStack")]
+    assert "lockRootScroll()" in open_pane
+    assert 'pane.innerHTML = \'<div class="pane-scroll"></div>\'' in open_pane
 
 
 def test_music_player_back_gesture_wiring():

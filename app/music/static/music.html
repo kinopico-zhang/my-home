@@ -120,7 +120,9 @@ main {
 /* ---------- 二级页推入层 (专辑/艺人/播放列表, iOS 设置式滑入) ---------- */
 #push-stack { position: fixed; inset: 0; z-index: 44; pointer-events: none; }
 .push-pane {
-  position: absolute; left: 0; right: 0; bottom: 0;
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;   /* 全高:
+    从顶栏和播放气泡*底下*滑过 —— 二者浮在更上层 (z 50/45), 看起来不在
+    一个图层 (用户点名); 内容用 --pane-top 让开顶栏 */
   display: flex; justify-content: center;      /* 内容列宽对齐 main 的 860px */
   background: var(--bg);
   box-shadow: -10px 0 28px rgba(0,0,0,.4);
@@ -135,7 +137,8 @@ main {
 .push-pane .pane-scroll {
   width: 100%; max-width: 860px; height: 100%;
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
-  padding: 14px 16px calc(90px + env(safe-area-inset-bottom));
+  padding: calc(var(--pane-top, 64px) + 14px) 16px
+           calc(90px + env(safe-area-inset-bottom));
 }
 .seg {
   display: flex; background: var(--surface-2); border-radius: 9px;
@@ -346,6 +349,8 @@ main {
   position: relative; z-index: 1; background: var(--bg);
   transition: transform .25s cubic-bezier(.25,.1,.25,1); touch-action: pan-y;
 }
+/* 拖动跟手 (松手的回位/定住才交给上面的过渡) —— 队列拖拽同款手法 */
+.swipe-wrap > button:first-child.swiping { transition: none; }
 .swipe-del {
   position: absolute; top: 0; right: 0; bottom: 0; z-index: 0;
   width: 72px; display: flex; align-items: center; justify-content: center;
@@ -955,11 +960,11 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 
 <script src="/static/menu-user.js?v=2"></script>
 <script src="/music/static/lyrics-parser.js?v=1"></script>
-<script src="/music/static/player-queue.js?v=2"></script>
+<script src="/music/static/player-queue.js?v=3"></script>
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=13"></script>
-<script src="/music/static/music-player.js?v=17"></script>
-<script src="/music/static/music.js?v=21"></script>
+<script src="/music/static/music-player.js?v=18"></script>
+<script src="/music/static/music.js?v=22"></script>
 </body>
 </html>

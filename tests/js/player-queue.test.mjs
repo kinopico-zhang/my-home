@@ -9,8 +9,9 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../app/music/static");
-const { createPlayQueue, queueCurrent, queueSetShuffle, queueCycleRepeat,
-        queueAdvance, queueGoBack, queueJump, queueUpcoming, queueReorder } =
+const { createPlayQueue, queueCurrent, queueSetShuffle, queueShuffleAll,
+        queueCycleRepeat, queueAdvance, queueGoBack, queueJump, queueUpcoming,
+        queueReorder } =
   require(path.join(dir, "player-queue.js"));
 
 const titles = ["A", "B", "C", "D"].map((title, index) => ({ track_id: index + 1, title }));
@@ -76,8 +77,32 @@ test("queueSetShuffle: 开 = 当前曲领头其余洗牌, 关 = 回原顺序", (
   assert.equal(queueCurrent(queue).title, "C");       // 曲目不因开关换掉
 });
 
-test("queueCycleRepeat: off → all → one → off", () => {
-  const queue = createPlayQueue(titles, 0);
+test("queueShuffleAll: 开播即随机 = 整队洗牌, 不把起播曲钉在队首", () => {
+  const queue = createPlayQueue(titles, 0);           // 随机键场景: 起播下标 0
+  queueShuffleAll(queue);
+  assert.equal(queue.position, 0);
+  assert.equal(queue.shuffle, true);
+  assert.deepEqual([...queue.order].sort((a, b) => a - b), [0, 1, 2, 3]);  // 是排列
+  // 洗出来不总是原顺序 (4 首全排列 24 种, 洗 20 次回回撞上原样的概率 ~1e-27)
+  const seenShuffled = Array.from({ length: 20 }, () => {
+    queueShuffleAll(queue);
+    return queue.order.some((value, index) => value !== index);
+  });
+  assert.ok(seenShuffled.some(Boolean));
+});
+
+test("queueShuffleAll: 单曲/空队列不炸", () => {
+  const single = createPlayQueue([titles[0]], 0);
+  queueShuffleAll(single);
+  assert.deepEqual(single.order, [0]);
+  assert.equal(queueCurrent(single).title, "A");
+  const empty = createPlayQueue([], 0);
+  queueShuffleAll(empty);
+  assert.deepEqual(empty.order, []);
+  assert.equal(queueCurrent(empty), null);
+});
+
+test("queueCycleRepeat: off → all → one → off", () => {  const queue = createPlayQueue(titles, 0);
   assert.equal(queueCycleRepeat(queue), "all");
   assert.equal(queueCycleRepeat(queue), "one");
   assert.equal(queueCycleRepeat(queue), "off");
