@@ -41,6 +41,13 @@ VERSIONS: Final[list[ChangelogVersion]] = [
                                        " 上下滚列表、看歌词的时候它们也纹丝不动"
                                        " (页面改成自己在原地滚, 手机浏览器那两条工具栏"
                                        " 再也不会跟着滚一滚就缩下去、顶一下又弹出来)"),
+        ChangelogItem(kind="改进", text="底部的播放气泡换成磨砂玻璃材质:"
+                                       " 底下的歌单、封面划过去时, 能看见糊成影子的内容透上来,"
+                                       " 和顶栏一个质感 (原来是一块实心灰板)"),
+        ChangelogItem(kind="改进", text="气泡上的播放/暂停键放大了一号 ——"
+                                       " 原来比两边的上一首/下一首看着还小"),
+        ChangelogItem(kind="改进", text="电脑浏览器里看歌词不再显示旁边的滚动条"
+                                       " (和手机上一样干净)"),
         ChangelogItem(kind="改进", text="随机/循环的开关状态和拖过的播放顺序, 关页面再进来还记得"),
     ]),
     ChangelogVersion(version="1.6.0", date="2026-09-15", items=[

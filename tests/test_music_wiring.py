@@ -33,6 +33,20 @@ def test_music_controls_apple_style_wiring():
         and 'id="mini-next"' in html
     # 音量条整个撤了 (1.5.1, 用户点名): 音量交给设备音量键/系统音量
     assert "#fp-volume" not in html and ".fp-volume" not in html
+    # 气泡磨砂玻璃 (用户点名): 六成底色配 blur(20), 底下划过的内容糊成
+    # 影子透上来 —— 不是一块实心灰板 (88% 那种看不出磨砂)
+    mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
+    assert "rgba(44,44,46,.6);" in mini_css
+    assert "backdrop-filter: blur(20px) saturate(180%);" in mini_css
+    # 气泡播放/暂停键大一号 (用户点名 "比上一首下一首还小"): 三角/双杠是
+    # 紧凑实心形, 跟宽箭头同尺寸显得小 —— 28 对 24 才齐平; 撤掉旧补偿边距
+    assert 'width="28" height="28"' in common
+    assert "margin: 0 2px" not in html
+    # 歌词容器不画滚动条 (用户点名, 电脑浏览器才有): iOS 本来就没有,
+    # 桌面 Chrome/Safari 走伪元素, Firefox 走 scrollbar-width
+    lyrics_css = html[html.index("#fp-lyrics {"):html.index("#lyrics-resume")]
+    assert "scrollbar-width: none;" in lyrics_css
+    assert "#fp-lyrics::-webkit-scrollbar { display: none; }" in html
 
 
 def test_music_queue_cover_view_wiring():
@@ -114,6 +128,9 @@ def test_music_share_link_wiring():
                  "fmtDateTime", "playQueue", "togglePlay"]:
         assert frag in share, f"share.html 缺 {frag}"
     assert "music.js?v=" not in share      # 自包含, 不引应用脚本
+    # 歌词容器不画滚动条 (电脑浏览器, 与应用内同款)
+    assert "scrollbar-width: none;" in share
+    assert "#fp-lyrics::-webkit-scrollbar { display: none; }" in share
     # 全屏播放页 (用户点名"和 app 自己的播放界面大致一样"): 点迷你条掀开,
     # 封面点一下 ↔ 歌词 (近邻模糊同款), 传输三键 + 进度 + 毛玻璃底 +
     # 下拉收起; 歌词解析借公开的 lyrics-parser.js (纯模块, 不带会话)
