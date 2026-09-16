@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+     <!-- ↑ 状态栏黑底 (原 black-translucent 页面伸进刘海区): 竖屏独立模式里
+        磨砂顶栏叠在刘海底下会被 iOS 栅成低清 (用户实测横屏清晰/竖屏糊),
+        页面退到状态栏下面以后顶栏天然离开那个雷区, 黑底应用看不出区别 -->
 <meta name="apple-mobile-web-app-title" content="My Music">
 <link rel="icon" type="image/png" sizes="32x32" href="/music/static/favicon-32.png?v=4">
 <link rel="icon" type="image/svg+xml" href="/music/static/favicon.svg?v=3">
@@ -62,6 +65,17 @@ header {
     不隔离的话 iOS 会把顶栏连同它的字栅格进邻居层的光栅, 清晰度跟着邻居
     的分辨率走, 看着就像盖了一层很模糊的涂层; 气泡有这层护甲所以没事 */
 }
+/* 独立 app (主屏图标) 模式: 顶栏 (连带吊在下沿的扫描条) 撤磨砂换近实底 ——
+   竖屏独立模式里那块磨砂顶栏被 iOS 栅成低清 (用户实测: 横屏清晰/竖屏糊,
+   浏览器里好了/独立模式还糊, 气泡一直清晰), 护甲也救不动; 撤了
+   backdrop-filter 无从栅错。黑底上磨砂本来就看不出, 不亏。
+   JS 开局打 body.standalone 标 (display-mode 查询 + navigator.standalone)。 */
+body.standalone header, body.standalone #scan-strip {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body.standalone header { background: rgba(10,10,12,.97); }
+body.standalone #scan-strip { background: rgba(58,58,60,.97); }
 /* 顶栏单行: 左边主页/资料库/搜索页签, 右边菜单钮 (统计/设置/重扫/日志/退出)。
    品牌行和放大镜撤了 —— 应用自己叫什么用户知道, 搜索进了页签。 */
 .nav-row { display: flex; align-items: center; gap: 12px; max-width: 860px; margin: 0 auto; }
@@ -997,6 +1011,6 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=13"></script>
 <script src="/music/static/music-player.js?v=19"></script>
-<script src="/music/static/music.js?v=26"></script>
+<script src="/music/static/music.js?v=27"></script>
 </body>
 </html>
