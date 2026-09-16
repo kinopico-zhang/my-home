@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-     <!-- ↑ 全出血 (页面伸进刘海区): 顶栏撤了以后 env(safe-area-inset-top) 只剩
-        二级页顶上的让位在用, 要拿真实值 —— black 会让独立模式报 0, 页签内容
-        会钻进状态栏底下 -->
+     <!-- ↑ 全出血 (页面伸进刘海区): 顶部雷区 (主屏图标竖屏里被系统栅糊的那条
+        带) 靠 main 的 margin-top 让出去; env(safe-area-inset-top) 在 main 让位
+        和二级页顶衬两处用, 要拿真实值 —— black 会让独立模式报 0 -->
 <meta name="apple-mobile-web-app-title" content="My Music">
 <link rel="icon" type="image/png" sizes="32x32" href="/music/static/favicon-32.png?v=4">
 <link rel="icon" type="image/svg+xml" href="/music/static/favicon.svg?v=3">
@@ -105,12 +105,19 @@ img { display: block; }
 /* ---------- 主区 ---------- */
 main {
   flex: 1; width: 100%; min-height: 0;   /* min-height:0: flex 子不缩就滚不动 */
+  /* 顶部雷区让位 (顶栏发糊同源: 独立模式竖屏里屏幕最上那条带子被系统栅成
+     低清, 什么进去都糊) —— main 整个下移, 滚动内容永远进不了那条带子,
+     带子里只剩 body 黑底。只给内容加 padding 不行: 一滚字就又钻进带子里 */
+  margin-top: env(safe-area-inset-top);
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
 }
-/* 一级页内容列: 限宽居中 (页签栏/气泡都是 fixed, 内容得自己让开底下的高度) */
+/* 一级页内容列: 限宽居中 (页签栏/气泡都是 fixed, 内容得自己让开底下的高度);
+   横屏时左右让开侧刘海 (env 取 max, 没侧刘海的场合保底 16px) */
 #root-view {
   max-width: 860px; margin: 0 auto;
-  padding: 14px 16px calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom));
+  padding: 14px max(16px, env(safe-area-inset-right))
+           calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))
+           max(16px, env(safe-area-inset-left));
 }
 
 /* ---------- 二级页推入层 (专辑/艺人/播放列表, iOS 设置式滑入) ---------- */
