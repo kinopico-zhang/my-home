@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-     <!-- ↑ 状态栏黑底 (原 black-translucent 页面伸进刘海区): 竖屏独立模式里
-        磨砂顶栏叠在刘海底下会被 iOS 栅成低清 (用户实测横屏清晰/竖屏糊),
-        页面退到状态栏下面以后顶栏天然离开那个雷区, 黑底应用看不出区别 -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+     <!-- ↑ 全出血 (页面伸进刘海区): 顶栏撤了以后 env(safe-area-inset-top) 只剩
+        二级页顶上的让位在用, 要拿真实值 —— black 会让独立模式报 0, 页签内容
+        会钻进状态栏底下 -->
 <meta name="apple-mobile-web-app-title" content="My Music">
 <link rel="icon" type="image/png" sizes="32x32" href="/music/static/favicon-32.png?v=4">
 <link rel="icon" type="image/svg+xml" href="/music/static/favicon.svg?v=3">
@@ -52,82 +52,43 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 button, a, summary { touch-action: manipulation; }
 img { display: block; }
 
-/* ---------- 顶部导航 (毛玻璃, 与全站一致) ---------- */
-header {
-  padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
-  background: var(--nav-bg);
+/* ---------- 底部页签栏 (磨砂, 与气泡同配方) ----------
+   原来的顶部页签栏在独立 app (主屏图标) 竖屏里整条被 iOS 栅成低清
+   (用户实测: 钉自家合成层/撤磨砂/换状态栏样式三招全试过救不动;
+   横屏和浏览器里都好, 屏底的气泡一直清晰) —— 索性把导航整个搬到底部,
+   顶上那块雷区让出去。主页/资料库/搜索/设置四个图标页签, 设置页签 =
+   原品牌菜单的职能搬进设置页 (统计/重扫/更新日志/退出登录都在那)。 */
+:root { --tabbar-h: 52px; }   /* 页签栏自高: 气泡让位和内容下衬垫都按它算 */
+#tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; justify-content: center;
+  padding: 5px max(8px, env(safe-area-inset-left))
+           calc(5px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  background: rgba(44,44,46,.6);   /* 磨砂玻璃, 气泡同款半透明 */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--hairline);
-  z-index: 50; position: sticky; top: 0;
-  transform: translateZ(0);   /* 自家合成层 (气泡同款护甲, 用户反馈顶栏糊成涂层):
-    sticky 顶栏住在滚动的 main 里, 底下还垫着 will-change 的全高推入层 ——
-    不隔离的话 iOS 会把顶栏连同它的字栅格进邻居层的光栅, 清晰度跟着邻居
-    的分辨率走, 看着就像盖了一层很模糊的涂层; 气泡有这层护甲所以没事 */
+  border-top: 1px solid var(--hairline);
+  transform: translateZ(0);   /* 自家合成层: 推入层从它底下扫过时复印不进 */
 }
-/* 独立 app (主屏图标) 模式: 顶栏 (连带吊在下沿的扫描条) 撤磨砂换近实底 ——
-   竖屏独立模式里那块磨砂顶栏被 iOS 栅成低清 (用户实测: 横屏清晰/竖屏糊,
-   浏览器里好了/独立模式还糊, 气泡一直清晰), 护甲也救不动; 撤了
-   backdrop-filter 无从栅错。黑底上磨砂本来就看不出, 不亏。
-   JS 开局打 body.standalone 标 (display-mode 查询 + navigator.standalone)。 */
-body.standalone header, body.standalone #scan-strip {
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+#tabbar .tab-row { display: flex; gap: 2px; width: 100%; max-width: 860px; }
+#tabbar button {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 3px 0; border-radius: 10px; line-height: 1;
+  font-size: 10px; font-weight: 500; color: var(--ink-3);
 }
-body.standalone header { background: rgba(10,10,12,.97); }
-body.standalone #scan-strip { background: rgba(58,58,60,.97); }
-/* 顶栏单行: 左边主页/资料库/搜索页签, 右边菜单钮 (统计/设置/重扫/日志/退出)。
-   品牌行和放大镜撤了 —— 应用自己叫什么用户知道, 搜索进了页签。 */
-.nav-row { display: flex; align-items: center; gap: 12px; max-width: 860px; margin: 0 auto; }
-.nav-row > * { flex-shrink: 0; }
-.brand-menu { position: relative; margin-left: auto; }
-.brand-menu summary {
-  display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 999px;
-  color: var(--ink-1); background: var(--surface-2);
-  list-style: none; -webkit-user-select: none; user-select: none;
-}
-.brand-menu summary::-webkit-details-marker { display: none; }
-.brand-menu summary:active { background: var(--surface-3); }
-.brand-menu .menu {
-  position: absolute; top: calc(100% + 8px); right: 0; min-width: 148px; z-index: 60;
-  display: flex; flex-direction: column; padding: 5px;
-  background: rgba(44,44,46,.92);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid var(--hairline); border-radius: 14px;
-  box-shadow: 0 12px 32px rgba(0,0,0,.5);
-}
-.brand-menu .menu button, .brand-menu .menu a {
-  font-size: 14px; color: var(--ink-1); text-align: left;
-  padding: 9px 12px; border-radius: 10px; white-space: nowrap;
-}
-.brand-menu .menu button:active, .brand-menu .menu a:active { background: var(--surface-3); }
-.brand-menu .menu a { text-decoration: none; }
-.brand-menu .menu .logout-row {
-  color: #e5484d; border-top: 1px solid var(--hairline); margin-top: 5px;
-  border-radius: 0 0 10px 10px;
-}
+#tabbar button.on { color: var(--accent); font-weight: 600; }
+#tabbar svg { display: block; }
 
-/* ---------- 页签 (顶栏唯一一行里靠左) ---------- */
-#view-tabs { display: flex; }
-.vt-track { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 2px; }
-.vt-track button {
-  padding: 5px 18px; border-radius: 7px;
-  font-size: 13px; font-weight: 500; color: var(--ink-2);
-}
-.vt-track button.on { background: var(--surface-3); color: var(--ink-1); font-weight: 600; }
-
-/* ---------- 扫描进度条 (吊在 header 下沿的浮层, 不挤布局) ---------- */
+/* ---------- 扫描进度条 (吊在页签栏上沿的浮层, 不挤布局) ---------- */
 #scan-strip {
-  position: absolute; left: 0; right: 0; bottom: 0; transform: translateY(100%);
+  position: absolute; left: 0; right: 0; top: 0; transform: translateY(-100%);
   display: flex; align-items: center; gap: 8px;
   padding: 7px 16px; font-size: 12px; color: var(--ink-2);
   background: rgba(58,58,60,.85);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--hairline);
-  box-shadow: 0 10px 20px rgba(0,0,0,.35);
+  border-top: 1px solid var(--hairline);
+  box-shadow: 0 -10px 20px rgba(0,0,0,.35);
 }
 #scan-strip .dot {
   width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
@@ -140,21 +101,20 @@ main {
   flex: 1; width: 100%; min-height: 0;   /* min-height:0: flex 子不缩就滚不动 */
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
 }
-/* 一级页内容列: 限宽居中让 main 自己全宽 (sticky 顶栏住在 main 里,
-   磨砂条得铺满屏幕); 触摸落在顶栏上也是滚这层 (和原来滚文档同手感) */
+/* 一级页内容列: 限宽居中 (页签栏/气泡都是 fixed, 内容得自己让开底下的高度) */
 #root-view {
   max-width: 860px; margin: 0 auto;
-  padding: 14px 16px calc(90px + env(safe-area-inset-bottom));
+  padding: 14px 16px calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom));
 }
 
 /* ---------- 二级页推入层 (专辑/艺人/播放列表, iOS 设置式滑入) ---------- */
 #push-stack { position: fixed; inset: 0; z-index: 44; pointer-events: none; }
 /* 设计一致 (用户点名): 推入层铺满全高, 内容照主页那样从磨砂气泡底下扫过
    (原来气泡下面是一条空带)。代价: 层动起来时变换层会从 fixed+磨砂的
-   气泡底下扫过 —— 这是 WebKit 吐重影的配方 (用户截图过第二个气泡),
+   气泡和页签栏底下扫过 —— 这是 WebKit 吐重影的配方 (用户截图过第二个气泡),
    对策 = 运动期暂撤磨砂换实底 (body.pane-anim, JS 的 paneMotion() 管),
    歇下来再恢复磨砂。 */
-body.pane-anim #mini-player {
+body.pane-anim #mini-player, body.pane-anim #tabbar {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   background: rgba(44,44,46,.92);
@@ -178,7 +138,8 @@ body.pane-anim #mini-player {
 .push-pane .pane-scroll {
   width: 100%; max-width: 860px; height: 100%;
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
-  padding: calc(var(--pane-top, 64px) + 14px) 16px calc(90px + env(safe-area-inset-bottom));
+  padding: calc(env(safe-area-inset-top) + 14px) 16px
+           calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom));
 }
 .seg {
   display: flex; background: var(--surface-2); border-radius: 9px;
@@ -510,6 +471,27 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 .month-row b { font-variant-numeric: tabular-nums; }
 .month-row small { color: var(--ink-3); font-size: 12px; }
 .settings-note { display: block; font-size: 11px; color: var(--ink-3); padding: 10px 0 12px; }
+/* 入口行 (原品牌菜单搬进设置页的职能: 统计/更新日志/重扫/退出登录) */
+.settings-row {
+  display: flex; align-items: center; width: 100%;
+  padding: 11px 0; text-align: left; font-size: 14px; color: var(--ink-1);
+  border-bottom: 1px solid var(--hairline);
+}
+.settings-block .settings-row:last-child { border-bottom: 0; }
+.settings-row:active { opacity: .6; }
+.settings-row.logout { color: #e5484d; }
+.settings-user {
+  display: flex; align-items: center; gap: 8px; padding: 11px 0;
+  border-bottom: 1px solid var(--hairline); font-size: 14px;
+  color: var(--ink-2); -webkit-user-select: none; user-select: none;
+}
+.settings-user svg { flex-shrink: 0; opacity: .7; }
+.settings-user span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-user em {
+  font-style: normal; font-size: 10px; color: #7db3f0;
+  border: 1px solid rgba(125,179,240,.5); border-radius: 4px;
+  padding: 0 4px; margin-left: auto; flex-shrink: 0;
+}
 
 /* ---------- 更新日志 (应用内视图, 听歌不中断) ----------
    版本卡片样式与独立日志页 /music/changelog 同款 */
@@ -566,7 +548,7 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 /* ---------- 迷你播放条 ---------- */
 #mini-player {
   position: fixed; left: 8px; right: 8px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);   /* 叠在页签栏上 */
   z-index: 45; height: 58px; overflow: hidden;
   display: flex; align-items: center; gap: 10px;
   background: rgba(44,44,46,.6);   /* 磨砂玻璃 (用户点名): 六成底色,
@@ -885,38 +867,27 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 
 <audio id="audio" preload="none"></audio>
 
-<!-- 固定壳: 文档不滚, main 是唯一一级滚动器; 顶栏 (sticky top:0) 住在
-     main 里 —— 钉在滚动器口上, 视口怎么变都不挪窝, z 50 仍压着推入层 44,
-     二级页从它底下扫过; 磨砂条全宽 (main 全宽, 860 限宽在 #root-view) -->
+<!-- 固定壳: 文档不滚, main 是唯一一级滚动器; 页签栏 (fixed bottom) 和气泡
+     都钉在视口上, 推入层 (z44) 从它们底下扫过 -->
 <main id="main">
-<header>
-  <div class="nav-row">
-    <div id="view-tabs">
-      <div class="vt-track">
-        <button data-view-tab="home">主页</button>
-        <button data-view-tab="library">资料库</button>
-        <button data-view-tab="search">搜索</button>
-      </div>
-    </div>
-    <details class="nav-menu brand-menu" id="brand-menu">
-      <summary aria-label="菜单"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></summary>
-      <div class="menu">
-        <button id="stats-link">统计</button>
-        <button id="settings-link">设置</button>
-        <button id="rescan" title="增量重扫曲库 (没变的文件只 stat 不读标签)">重新扫描曲库</button>
-        <button id="changelog-link">更新日志</button>
-        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
-      </div>
-    </details>
-  </div>
-  <!-- 扫描条常驻 header 内 (absolute 吊在下面): 出现/消失不挤布局, 顶栏纹丝不动 -->
-  <div id="scan-strip" hidden><span class="dot"></span><span id="scan-text">曲库扫描中</span></div>
-</header>
 <div id="root-view"><div class="list-empty">加载中…</div></div>
 </main>
 
 <!-- 二级页推入层: 专辑/艺人/播放列表从右滑入盖住一级, 右划 (左缘起手) 滑回 -->
 <div id="push-stack"></div>
+
+<!-- 底部页签栏: 主页/资料库/搜索/设置四键全带图标 (素材取自 iconfont 收藏库,
+     currentColor 吃页签点亮色)。扫描条吊在栏的上沿 (absolute 往上翻):
+     出现/消失不挤布局, 页签栏纹丝不动 -->
+<nav id="tabbar">
+  <div id="scan-strip" hidden><span class="dot"></span><span id="scan-text">曲库扫描中</span></div>
+  <div class="tab-row">
+    <button data-view-tab="home"><svg viewBox="0 0 1024 1024" width="23" height="23" aria-hidden="true"><path d="M886.976 387.904l-362.666667-256a21.354667 21.354667 0 0 0-24.618666 0l-362.666667 256A21.376 21.376 0 0 0 128 405.333333v469.333334a21.333333 21.333333 0 0 0 21.333333 21.333333h234.666667a21.333333 21.333333 0 0 0 21.333333-21.333333V618.666667h213.333334v256a21.333333 21.333333 0 0 0 21.333333 21.333333h234.666667a21.333333 21.333333 0 0 0 21.333333-21.333333V405.333333a21.376 21.376 0 0 0-9.024-17.429333z" fill="currentColor"/></svg><span>主页</span></button>
+    <button data-view-tab="library"><svg viewBox="0 0 1024 1024" width="23" height="23" aria-hidden="true"><path d="M653.994667 321.792H370.005333c-143.957333 0-215.978667 0-256.426666 42.112-40.448 42.112-30.933333 107.136-11.861334 237.226667l18.005334 123.392c14.933333 102.016 22.4 153.045333 60.672 183.594666 38.314667 30.549333 94.72 30.549333 207.658666 30.549334h247.893334c112.896 0 169.386667 0 207.658666-30.549334 38.272-30.549333 45.738667-81.578667 60.672-183.594666l18.005334-123.392c19.072-130.090667 28.586667-195.114667-11.861334-237.226667-40.448-42.112-112.469333-42.112-256.426666-42.112z m-31.573334 111.914667c-52.522667-22.442667-112.853333 11.306667-116.352 65.152-0.170667 2.389333-0.170667 5.290667-0.170666 8.832V662.272a115.242667 115.242667 0 0 0-54.869334-13.696C390.442667 648.533333 341.333333 694.4 341.333333 750.933333 341.333333 807.466667 390.442667 853.333333 451.029333 853.333333c60.586667 0 109.738667-45.824 109.738667-102.4v-167.210666l39.594667 19.712c3.370667 1.706667 6.144 3.072 8.448 4.053333 52.522667 22.442667 112.853333-11.349333 116.394666-65.194667 0.128-2.346667 0.128-5.290667 0.128-8.832v-1.109333l-0.042666-3.968c-0.896-26.581333-16.512-50.858667-41.216-64.128l-3.712-1.877333-49.493334-24.661334a173.098667 173.098667 0 0 0-8.405333-4.010666z" fill="currentColor"/><path d="M599.594667 480.256c-17.493333-7.466667-37.632 3.797333-38.784 21.76a169.258667 169.258667 0 0 0 0 9.130667 25.386667 25.386667 0 0 0 13.696 21.376l2.474666 1.28 48.426667 24.064c4.565333 2.304 5.674667 2.816 6.229333 3.072 17.493333 7.466667 37.632-3.797333 38.826667-21.76a152.746667 152.746667 0 0 0 0-9.173334 25.429333 25.429333 0 0 0-13.738667-21.333333l-57.130666-28.416z" fill="currentColor"/><path d="M363.093333 85.333333h297.813334c9.941333 0 17.493333 0 24.192 0.64 47.274667 4.650667 85.930667 33.066667 102.357333 71.338667H236.544c16.426667-38.272 55.125333-66.688 102.4-71.338667C345.194667 85.333333 353.194667 85.333333 363.093333 85.333333z" fill="currentColor" opacity=".4"/><path d="M269.226667 201.514667c-59.306667 0-107.946667 35.84-124.16 83.328a111.914667 111.914667 0 0 0-1.024 2.986666c17.024-5.12 34.688-8.490667 52.565333-10.794666 46.08-5.888 104.362667-5.888 172.032-5.888h294.058667c67.669333 0 125.952 0 172.032 5.888 17.92 2.304 35.584 5.674667 52.565333 10.794666a120.192 120.192 0 0 0-0.981333-2.986666c-16.213333-47.530667-64.853333-83.328-124.202667-83.328z" fill="currentColor" opacity=".7"/></svg><span>资料库</span></button>
+    <button data-view-tab="search"><svg viewBox="0 0 1024 1024" width="23" height="23" aria-hidden="true"><path d="M782.165333 701.724444a369.777778 369.777778 0 1 0-80.440889 80.440889l111.388445 111.388445a56.888889 56.888889 0 0 0 80.440889-80.440889l-111.388445-111.388445z m-117.589333-399.189333Q739.555556 377.514667 739.555556 483.555556q0 106.040889-74.979556 181.020444Q589.596444 739.555556 483.555556 739.555556q-106.040889 0-181.020445-74.979556Q227.555556 589.596444 227.555556 483.555556q0-106.040889 74.979555-181.020445Q377.514667 227.555556 483.555556 227.555556q106.040889 0 181.020444 74.979555z" fill="currentColor"/></svg><span>搜索</span></button>
+    <button data-view-tab="settings"><svg viewBox="0 0 1024 1024" width="23" height="23" aria-hidden="true"><path d="M890.53893 559.569946c2.114575-16.294021 3.482653-32.587042 3.482653-49.999309 0-17.288351-1.61691-33.582371-3.482653-49.999309l107.461589-84.078346c9.701463-7.587887 12.313703-21.393584 6.094893-32.588041l-101.864361-176.241244c-6.094893-11.192458-19.90059-15.297692-31.094048-11.192458l-126.864515 50.993639c-26.492149-20.397256-55.098873-37.187942-86.068005-49.999309L638.801558 21.392585C637.185646 9.079882 626.612771 0 613.802403 0H409.948765c-12.686452 0-23.384243 9.203798-25.000154 21.392585l-19.402926 135.072984c-31.094048 12.686452-59.575856 30.099718-86.068005 49.999309l-126.864515-50.994638c-11.815039-4.601899-24.999155 0-31.094048 11.194457L19.655755 342.90594c-6.715475 11.193458-3.481654 24.999155 6.094893 32.587042l107.46159 84.078346c-2.114575 16.293021-3.482653 33.083707-3.482653 49.999309 0 16.914602 1.61691 33.581372 3.482653 49.999309L25.626732 643.648292C15.92427 651.235179 13.313029 665.040877 19.531839 676.234334l101.864361 176.241244c6.093894 11.194457 19.90059 15.298691 31.094048 11.194457l126.864515-50.995638c26.492149 20.398255 55.097874 37.18994 86.068005 50.000309l19.401926 135.072984c1.61691 12.188787 12.189786 21.392585 25.000154 21.392585h203.852639c12.686452 0 23.383244-9.203798 25.000154-21.392585l19.401926-135.072984c31.094048-12.686452 59.576855-30.099718 86.069005-49.99931l126.864515 50.994639c11.815039 4.601899 24.999155 0 31.093049-11.194457L1003.970496 676.234334c6.094893-11.193458 3.482653-24.999155-6.093893-32.586042l-107.337673-84.078346zM511.938042 688.050372c-98.381708 0-178.355819-79.974111-178.355819-178.355819s79.974111-178.355819 178.355819-178.355818S690.293861 411.312846 690.293861 509.694553s-79.974111 178.355819-178.355819 178.355819z m0 0" fill="currentColor"/></svg><span>设置</span></button>
+  </div>
+</nav>
 
 <div id="mini-player" hidden>
   <div id="mini-progress"></div>
@@ -1004,13 +975,12 @@ span.t-art { display: flex; align-items: center; justify-content: center;
 <!-- 播放列表换封面: 选中文件后 JS 直接把字节 PUT 上去 (不用表单) -->
 <input type="file" id="cover-file" accept="image/png,image/jpeg,image/webp" hidden>
 
-<script src="/static/menu-user.js?v=2"></script>
 <script src="/music/static/lyrics-parser.js?v=1"></script>
 <script src="/music/static/player-queue.js?v=3"></script>
 <script src="/music/static/downloads.js?v=2"></script>
 <script src="/music/static/cellular-usage.js?v=1"></script>
 <script src="/music/static/music-common.js?v=13"></script>
 <script src="/music/static/music-player.js?v=19"></script>
-<script src="/music/static/music.js?v=28"></script>
+<script src="/music/static/music.js?v=30"></script>
 </body>
 </html>
