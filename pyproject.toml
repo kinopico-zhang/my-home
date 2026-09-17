@@ -1,13 +1,15 @@
 [project]
-name = "mytesla"
+name = "my-home"
 version = "1.0.0"
-description = "My Tesla — TeslaMate 数据展示 (充电 / 足迹 / 行程)"
+description = "My Home — 组合仓: 共享账号层 + 三个子仓应用 (My Tesla / My Money / My Music, git submodule)"
 requires-python = ">=3.13"
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
 # 全库严格模式: DB 行 → SQLAlchemy 实体 → Pydantic 模型 → JSON 端到端有类型。
-# app 严格 / tests 非严格 (见 overrides); SQLAlchemy 2.0 / Pydantic v2 自带类型标注。
+# 只查本仓的 app/tests —— 三个子仓 (apps/) 以合成包名动态装载, 不进静态
+# 图, 各自仓里有自己的 mypy 门禁。app 严格 / tests 非严格 (见 overrides);
+# SQLAlchemy 2.0 / Pydantic v2 自带类型标注。
 python_version = "3.13"   # 服务固定跑本 venv 的 3.13 (Path.walk 等 3.12+ API)
 strict = true
 files = ["app", "tests"]
@@ -21,23 +23,6 @@ strict = false
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
-# mutagen 有 py.typed 但 __init__ 不列 __all__ (File/MutagenError 是再导出),
-# 公开文档就这么 import —— 别让 no-implicit-reexport 揪它
-module = "mutagen.*"
-implicit_reexport = true
-
-[[tool.mypy.overrides]]
-# zhconv 是无类型标注的纯字典转换库 (搜索键简繁归一用), 接口面极小
-module = "zhconv"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# repository 按域拆模块后 __init__ 是集中重导出的门面 (调用方免于关心
-# 名字住在哪个域), mutagen 同理: 关掉再导出的显式性检查
-module = ["app.tesla.repository", "app.tesla.repository.*"]
-implicit_reexport = true
 
 # ---------------------------------------------------------------- pylint
 [tool.pylint.main]
