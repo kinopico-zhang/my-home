@@ -1,6 +1,6 @@
 """账号库表 (data/users.db): 账号 + 注册邀请 (My Home 全家共享)。
 
-业务表 (TeslaMate 映射 + My Tesla 自有表) 在 app/tesla/models.py,
+业务表 (TeslaMate 映射 + My Tesla 自有表) 在 app/tesla/models/,
 记账/曲库各自包内。
 """
 
