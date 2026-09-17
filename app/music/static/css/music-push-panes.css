@@ -12,7 +12,11 @@ body.pane-anim #dock-menu,
 body.pane-anim #dock-search {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  background: rgba(44,44,46,.92);
+  /* 磨砂等效实底: rgba(44,44,46,.78) 盖在纯黑 (var(--bg)) 上 ≈
+     (34.3,34.3,35.9) —— 运动期底下扫过的推入层是实色黑, 换算过来
+     视觉不变 (1.8.1 立的规矩: 动画前后三件套深浅一致;
+     1.8.3 底色调实一档, 等效实底跟着重算) */
+  background: rgb(34,34,36);
 }
 .push-pane {
   position: absolute; left: 0; right: 0; top: 0; bottom: 0;
@@ -25,7 +29,10 @@ body.pane-anim #dock-search {
   will-change: transform;   /* 层终身常驻: 滑出结束不降级合并 (合并瞬间
     WebKit 会把旁边的固定元素复印进来 = 收层时气泡跟着页面跑的元凶) */
   pointer-events: auto;
-  touch-action: pan-y;                         /* 横拖留给右划返回手势 */
+  touch-action: pan-x pan-y;      /* 横拖默认没有原生滚动器, 全留给右划返回
+    手势; 搜索结果四子页 (1.8.3) 自己是横向 snap 滚动器 —— touch-action
+    是链式约束 (祖辈 pan-y 会掐死子孙的 pan-x), 链上放行 pan-x 它才滑得动,
+    其余层没有横向滚动器, 放行不改变任何行为 */
   user-select: none; -webkit-user-select: none;
 }
 .push-pane img { -webkit-user-drag: none; }    /* 右划别拖出图片幽灵 */
@@ -37,14 +44,9 @@ body.pane-anim #dock-search {
            16px
            var(--dock-clear);
 }
-/* 常驻顶端的栏 (搜索框): sticky 钉在层顶 (内容上缘), 底衬不透明,
-   列表往上滚时从它底下扫过去 —— 栏不跟着列表滚走
-   (1.8.0: 资料库段选择条随拆页撤掉, sticky 只剩搜索页一处) */
-.sticky-head {
-  position: sticky; top: 0; z-index: 5;
-  background: var(--bg);
-  padding: 2px 0 12px;
-}
+/* 搜索页 1.8.3 重排: 输入框钉页底船坞上方, 顶端不再有钉死的内容
+   (原来 sticky 钉顶的搜索框那套撤了, 样式搬去 music-views.css 的
+   .search-shell 一族) */
 
 /* ---------- 详情页头 ---------- */
 .album-hero, .artist-hero { display: flex; flex-direction: column; align-items: center;

@@ -12,7 +12,8 @@ from .playlist_schemas import (PlaylistBrief, PlaylistCreateRequest,
                                PlaylistTrackRequest)
 from .scan_schemas import (ScanStatus, ScanSummary, ScannedTrack, TagFields)
 from .search_schemas import (LyricHit, LyricsResponse, PlayRecordRequest,
-                             RecentPlaysResponse, SearchResult, TrackCredits)
+                             RecentPlaysResponse, RecentTrackBrief,
+                             SearchResult, TrackCredits)
 from .settings_schemas import (CellularMonth, CellularUsageReport,
                                MusicSettingsState, MusicSettingsUpdate)
 from .share_schemas import ShareCreated, ShareCreateRequest, SharePageData
@@ -24,7 +25,7 @@ __all__ = [
     "MusicSettingsUpdate", "MusicStatusResponse", "PlayRecordRequest",
     "PlaylistBrief", "PlaylistCreateRequest", "PlaylistPage",
     "PlaylistPageList", "PlaylistTrackRequest", "RecentPlaysResponse",
-    "RescanResponse", "ScanStatus", "ScanSummary", "ScannedTrack",
-    "SearchResult", "ShareCreated", "ShareCreateRequest", "SharePageData",
-    "TagFields", "TrackBrief", "TrackCredits", "TrackPageList",
+    "RecentTrackBrief", "RescanResponse", "ScanStatus", "ScanSummary",
+    "ScannedTrack", "SearchResult", "ShareCreated", "ShareCreateRequest",
+    "SharePageData", "TagFields", "TrackBrief", "TrackCredits", "TrackPageList",
 ]

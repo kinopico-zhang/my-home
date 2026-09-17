@@ -1,15 +1,17 @@
 // music-navigation — My Music 全局状态 (pageState/pushStack) + 应用内导航: 地址不动的路由, 同页刷新。
 // 拆自 music.js (结构化重构), 1.8.0 重排: 页签栏撤掉, 主页独占根层,
-// 其余视图 (播放列表/专辑/艺人/已下载/搜索/设置/统计/更新日志) 全是推入层。
+// 其余视图 (播放列表/专辑/艺人/最近播放/已下载/搜索/设置/统计/更新日志) 全是推入层。
 "use strict";
 /* global checkScanStatus, routePushed, routeRoot, stopScanPolling, syncDownloadIcons,
           syncPlayerIndicators */
-/* exported coverUploadPlaylistId, currentRoute, navigate, pageState, parseRoute,
-            pushStack, route, userRescanPending */
+/* exported clearLastRoute, coverUploadPlaylistId, currentRoute, navigate, pageState,
+            parseRoute, pushStack, readLastRoute, route, routeKey, saveLastRoute,
+            userRescanPending */
 
 const pageState = {
   lists: {},        // segment → {items, total, offset, done, loading}
   homeRecent: null,      // 主页最近播放段曲目 (队列用)
+  recentPane: null,      // 最近播放页曲目 (1.8.1, 队列用)
   searchAbort: null,
   scanPollTimer: 0,
   lastScanSignature: "", // 已消化的一轮扫描 (finished_at+changed): 重复的不再响应
@@ -37,9 +39,9 @@ const pushStack = [];   // [{view, id, pane}]
 // 跑) 的毛病连根拔掉。旧深链 (#playlist/5) 只在开局消化一次, URL 随即
 // 洗成光杆 /music。
 
-// 无参推入层 (菜单「播放列表/专辑/艺人/已下载」+ 搜索键 + 设置页里的
-// 统计/更新日志): 布局与详情层 (专辑/艺人/播放列表) 一模一样, 从右滑入。
-const PANE_VIEWS = ["playlists", "albums", "artists", "downloads",
+// 无参推入层 (菜单「播放列表/专辑/艺人/最近播放/已下载」+ 搜索键 + 设置页
+// 里的统计/更新日志): 布局与详情层 (专辑/艺人/播放列表) 一模一样, 从右滑入。
+const PANE_VIEWS = ["playlists", "albums", "artists", "recent", "downloads",
                     "search", "settings", "stats", "changelog"];
 
 function parseRoute(target) {
@@ -67,13 +69,42 @@ function currentRoute() {
 function navigate(target) {
   const parsed = parseRoute(target);
   if (!parsed) return;
-  const current = currentRoute();
-  const currentKey = current.view === "album" ? `album/${current.albumId}`
-    : current.view === "artist" ? `artist/${current.artistId}`
-    : current.view === "playlist" ? `playlist/${current.playlistId}`
-    : current.view;
-  if (String(target) === currentKey) { route(true); return; }   // 同页再点 = 刷新
+  if (String(target) === routeKey(currentRoute())) {
+    route(true);                     // 同页再点 = 刷新
+    return;
+  }
   routeTo(parsed);
+}
+
+// ------------------------------------------------------------ 上次停的页 (1.8.3)
+// 用户点名「打开 app 自动回最后一个页面」: 导航/收层后各存一次, 开局读档
+// 回去 (没记过 = 头一回, 回主页播放列表); 退出登录清档, 下个人别落进
+// 我上次停的页。隐私模式 localStorage 会抛, 存读都兜住。
+
+const LAST_ROUTE_KEY = "music.lastRoute";
+
+/** 路由 → 档案键 (与 parseRoute 认的目标同一个写法)。 */
+function routeKey(route) {
+  if (route.view === "album") return `album/${route.albumId}`;
+  if (route.view === "artist") return `artist/${route.artistId}`;
+  if (route.view === "playlist") return `playlist/${route.playlistId}`;
+  return route.view;
+}
+
+function saveLastRoute() {
+  try { localStorage.setItem(LAST_ROUTE_KEY, routeKey(currentRoute())); }
+  catch (_error) { /* 隐私模式存不进就算了 */ }
+}
+
+/** 开局回跳用: 上次停的页 (没有/读不了回空串, 调用方自己兜 "home")。 */
+function readLastRoute() {
+  try { return localStorage.getItem(LAST_ROUTE_KEY) || ""; }
+  catch (_error) { return ""; }
+}
+
+/** 退出登录清档 (设置页调)。 */
+function clearLastRoute() {
+  try { localStorage.removeItem(LAST_ROUTE_KEY); } catch (_error) { /* 没档可清 */ }
 }
 
 /** 按目标渲染: 除主页外全部进层栈 (菜单/搜索键进的就是这些层),
@@ -88,6 +119,7 @@ function routeTo(parsed, force) {
   if (!pushed) checkScanStatus();
   syncPlayerIndicators();
   syncDownloadIcons();
+  saveLastRoute();   // 停在哪页记下来 (开局回跳用)
 }
 
 /** 重铺当前状态 (扫描收尾/同页刷新用): 目标从状态里派生。 */

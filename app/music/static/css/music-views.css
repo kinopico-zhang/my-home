@@ -58,6 +58,8 @@
 .search-box input::placeholder { color: var(--ink-3); }
 .search-box input::-webkit-search-cancel-button { display: none; }
 #search-clear { color: var(--ink-3); font-size: 14px; padding: 4px; }
+/* 搜索页的壳布局 (1.8.3 重排: 输入框钉页底船坞上方 + 四子页横滑) 在
+   music-search.css —— 这页自成一块, views 里只留搜索框本体 */
 
 /* ---------- 设置页 ---------- */
 .settings-block {
@@ -161,7 +163,8 @@
 .dl-row:active { background: rgba(255,255,255,.04); }
 .dl-row.busy { opacity: .6; }
 .dl-state { font-size: 12px; color: var(--ink-3); flex-shrink: 0;
-            font-variant-numeric: tabular-nums; }
+            font-variant-numeric: tabular-nums;
+            display: flex; align-items: center; }   /* 下载中的圆环进度 (1.8.2) 居中住这里 */
 .dl-remove {
   font-size: 13px; color: var(--accent); padding: 6px 8px; flex-shrink: 0;
 }

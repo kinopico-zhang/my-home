@@ -2,7 +2,7 @@
 // 拆自 music.js (结构化重构), 原资料库页签分段 (segment) 撤掉,
 // 专辑/艺人/已下载各自成推入层, 缓存仍按段名住 pageState.lists。
 "use strict";
-/* global $, appendListPage, downloadAllCancelled: writable, downloads,
+/* global $, appendListPage, downloadAllCancelled: writable, downloadRingHTML, downloads,
           downloadsEnabled, escapeHTML, formatBytes, listPlaceholderHTML, loadListPage,
           navigate, pageState, playerStart, toast */
 /* exported downloadAllCancelled, playDownloadedRow, renderAlbumsPane,
@@ -132,7 +132,7 @@ async function renderDownloadsBody(body) {
         <small>${escapeHTML(entry.artist || "下载中…")}</small>
       </span>
       ${entry.state
-        ? `<span class="dl-state">${Math.round(entry.state.progress * 100)}%</span>`
+        ? downloadRingHTML(entry.state.progress, 18)
         : `<span class="dl-state" data-dl-size="${entry.track_id}">…</span>`}
       <button class="dl-remove" data-dl-remove="${entry.track_id}"
               aria-label="${entry.state ? "取消下载" : "删除下载"}">${entry.state ? "取消" : "删除"}</button>

@@ -9,8 +9,9 @@
 
 // ------------------------------------------------------------ 曲目长按菜单
 // 任何界面的曲目行 (含「已下载」栏) 长按 500ms / 桌面右键, 弹出菜单:
-// 播放 (在所在列表的语境里开播) / 进入艺人主页 / 添加到播放列表 / 分享。
-// 全屏页 ⋯ 也走这个菜单 (对着当前曲目直接开, 没有「播放」项)。
+// 播放 (在所在列表的语境里开播) / 进入艺人主页 / 进入专辑主页 (1.8.2) /
+// 添加到播放列表 / 分享。全屏页 ⋯ 也走这个菜单 (对着当前曲目直接开,
+// 没有「播放」项)。
 let pickerTrack = null;                   // 正在挑列表往里加的曲目
 let menuTrackDirect = null;               // 全屏页 ⋯ 直接对着曲目开时用这个
 
@@ -117,6 +118,7 @@ function openTrackMenu(row, point) {
   $("#menu-track-title").textContent = track.title;
   $("#menu-track-artist").textContent = track.artist;
   $("#track-menu-artist").hidden = !track.artist_id;   // 老下载索引没存艺人号
+  $("#track-menu-album").hidden = !track.album_id;     // 同理 (1.8.2 加的键)
   $("#track-menu").querySelector('[data-track-action="play"]').hidden = false;
   const menu = $("#track-menu");
   menu.hidden = false;
@@ -131,6 +133,7 @@ function openTrackMenuForTrack(track, point) {
   $("#menu-track-title").textContent = track.title;
   $("#menu-track-artist").textContent = track.artist;
   $("#track-menu-artist").hidden = !track.artist_id;
+  $("#track-menu-album").hidden = !track.album_id;
   $("#track-menu").querySelector('[data-track-action="play"]').hidden = true;
   const menu = $("#track-menu");
   menu.hidden = false;

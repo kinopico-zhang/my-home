@@ -1,11 +1,11 @@
 // music-push-panes — My Music 二级页推入层: 专辑/艺人/播放列表/资料库各页从右滑入, 层栈/滚动存档/右划滑回。
-// 拆自 music.js (结构化重构), 1.8.0 重排: 无参页 (播放列表/专辑/艺人/已下载/
-// 搜索/设置/统计/更新日志) 也走同一套层, 与详情页布局一致 (用户点名)。
+// 拆自 music.js (结构化重构), 1.8.0 重排: 无参页 (播放列表/专辑/艺人/最近播放/
+// 已下载/搜索/设置/统计/更新日志) 也走同一套层, 与详情页布局一致 (用户点名)。
 "use strict";
 /* global $, pageState, pushStack, renderAlbumView, renderAlbumsPane, renderArtistView,
           renderArtistsPane, renderChangelogView, renderDownloadsPane, renderHomeView,
-          renderPlaylistsPane, renderPlaylistView, renderSearchView, renderSettingsView,
-          renderStatsView */
+          renderPlaylistsPane, renderPlaylistView, renderRecentPane, renderSearchView,
+          renderSettingsView, renderStatsView, saveLastRoute */
 /* exported closePushStack, pushPaneTarget, renderRootView, routePushed, routeRoot */
 
 // ------------------------------------------------------------ 二级页推入层
@@ -64,6 +64,7 @@ function renderPushedView(view, ids, target) {
   else if (view === "playlists") renderPlaylistsPane(target);
   else if (view === "albums") renderAlbumsPane(target);
   else if (view === "artists") renderArtistsPane(target);
+  else if (view === "recent") renderRecentPane(target);
   else if (view === "downloads") renderDownloadsPane(target);
   else if (view === "search") renderSearchView(target);
   else if (view === "settings") renderSettingsView(target);
@@ -114,6 +115,7 @@ function closePushStack(keep = 0) {
   if (!pushStack.length) {
     unlockRootScroll();
   }
+  saveLastRoute();                  // 收层后停在哪页也记下 (开局回跳)
 }
 
 /** 右划返回: 面板任意位置起手, 横竖先分家 (竖向交还滚动); 拖过三分之一
@@ -126,6 +128,9 @@ function closePushStack(keep = 0) {
 function bindPaneSwipe(pane) {
   pane.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    // 搜索结果四子页 (1.8.3) 自己是横向 snap 滚动器: 起手在页里的横拖
+    // 归切页, 不归右划返回 (两条横手势分家)
+    if (event.target.closest("#search-body.paged")) return;
     const startX = event.clientX;
     const startY = event.clientY;
     let horizontal = false;
@@ -167,6 +172,7 @@ function bindPaneSwipe(pane) {
       pushStack.pop();
       setTimeout(() => pane.remove(), 420);
       if (!pushStack.length) unlockRootScroll();
+      saveLastRoute();              // 手势收层也记停在哪页 (开局回跳)
     };
     const cancel = () => {
       cleanup();
