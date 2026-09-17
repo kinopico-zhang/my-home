@@ -20,7 +20,7 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sel-info b { color: var(--ink-1); font-weight: 650; }
-.sel-info #sel-cap { color: #e08a2e; }   // 划选超上限: 提示为什么按钮置灰
+.sel-info #sel-cap { color: #e08a2e; }   /* 划选超上限: 提示为什么按钮置灰 */
 .sel-go {
   flex: none; background: var(--blue); color: #fff; font-size: 13.5px; font-weight: 600;
   padding: 9px 16px; border-radius: 999px;

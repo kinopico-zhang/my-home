@@ -31,10 +31,10 @@
         <a href="/tesla/live">当前驾驶</a>
         <a href="/tesla/settings">软件设置</a>
         <a class="on" href="/tesla/changelog">更新日志</a>
-        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
+        <button type="button" class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-    <button id="refresh-btn" aria-label="刷新日志"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button type="button" id="refresh-btn" aria-label="刷新日志"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </header>
 
@@ -44,7 +44,7 @@
     <div class="state" id="loading"><div class="spin"></div>正在读取版本历史…</div>
     <div class="state" id="error" hidden>
       <div id="error-text">加载失败</div>
-      <button class="retry-btn" id="retry">重试</button>
+      <button type="button" class="retry-btn" id="retry">重试</button>
     </div>
   </div>
 </main>

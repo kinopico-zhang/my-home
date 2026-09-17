@@ -24,10 +24,10 @@
         <a href="/tesla/charging">My Tesla</a>
         <a href="/bookkeeping">My Money</a>
         <a class="on" href="/accounts">账号管理</a>
-        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
+        <button type="button" class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-    <button id="refresh-btn" aria-label="刷新账号"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button type="button" id="refresh-btn" aria-label="刷新账号"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </header>
 
@@ -44,11 +44,11 @@
     <h2>发注册邀请</h2>
     <p class="hint">生成一次性邀请链接发给家人; 注册后自动登录, 无需再发密码。</p>
     <div class="days-row" id="days-row">
-      <button data-days="1" class="on">1 天</button>
-      <button data-days="7">7 天</button>
-      <button data-days="30">30 天</button>
+      <button type="button" data-days="1" class="on">1 天</button>
+      <button type="button" data-days="7">7 天</button>
+      <button type="button" data-days="30">30 天</button>
     </div>
-    <button class="primary" id="invite-make">生成邀请链接</button>
+    <button type="button" class="primary" id="invite-make">生成邀请链接</button>
   </section>
 
   <section class="card" id="list-card" hidden>

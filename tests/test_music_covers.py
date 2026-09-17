@@ -6,8 +6,9 @@ from mutagen.id3 import APIC, ID3
 
 from app.music.library_media import playlist_cover_file
 from app.music.library_tags import extract_album_artwork
-from tests.test_music import (PICTURE_BYTES, PNG_BYTES, _wait_scan_done,
-                              _write_audio, _write_plain_track)
+from tests.music_audio_seed import (PICTURE_BYTES, PNG_BYTES,
+                                    _write_audio, _write_plain_track)
+from tests.music_library_helpers import _wait_scan_done
 
 
 def test_track_artwork_extraction_formats(tmp_path):

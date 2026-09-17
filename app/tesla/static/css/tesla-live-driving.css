@@ -44,7 +44,7 @@
   content: ""; position: absolute; right: -5px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 9px; background: var(--ink-3); border-radius: 0 2px 2px 0;
 }
-.batt i { display: block; height: 100%; border-radius: 3px; background: #32d74b;
+.batt i { display: block; width: 0; height: 100%; border-radius: 3px; background: #32d74b;
   transition: width .5s, background .5s; }
 .batt-card b { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .batt-card .batt-range { font-size: 13px; color: var(--ink-2); }

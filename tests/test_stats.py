@@ -5,7 +5,7 @@
 """
 from datetime import datetime
 
-from tests.conftest import seed_addresses, seed_charge, seed_charging
+from tests.seed_factories import seed_addresses, seed_charge, seed_charging
 
 
 # 充电记录/统计页共用格式化拆去了 format.js: 页面片段断言把先加载的
@@ -129,7 +129,7 @@ def test_stats_page_skeleton(auth):
 
 def test_charging_page_records_only(auth):
     """充电页只留记录列表: 统计卡/图表卡搬去统计页, 详情弹层的曲线图表保留。"""
-    from tests.test_charging import CHARGING_ASSETS
+    from tests.charging_page_scripts import CHARGING_ASSETS
     html = auth.get("/tesla/charging").text
     html += _page_scripts(auth, *CHARGING_ASSETS)
     for frag in ['id="masonry"',                             # 记录列表

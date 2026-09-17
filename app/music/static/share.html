@@ -26,9 +26,10 @@
 
   <section id="share-card" hidden>
     <div class="hero-art" id="hero-art" aria-hidden="true"></div>
+    <!-- [html-validate-disable-next empty-heading -- 标题由分享元数据在运行时填充] -->
     <h1 id="share-title"></h1>
     <p id="share-subtitle"></p>
-    <button id="hero-play" aria-label="播放">
+    <button type="button" id="hero-play" aria-label="播放">
       <svg id="ic-play" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M8.2 5.1c0-1.2 1.3-1.9 2.3-1.3l10.1 6.4c1 .6 1 2 0 2.6L10.5 19.2c-1 .6-2.3-.1-2.3-1.3V5.1z" fill="currentColor"/>
       </svg>
@@ -53,7 +54,7 @@
   <div class="p-main">
     <div class="p-art" id="p-art" aria-hidden="true"></div>
     <div class="p-text" id="p-text"><b id="p-title"></b><span id="p-artist"></span></div>
-    <button id="p-toggle" aria-label="播放/暂停">
+    <button type="button" id="p-toggle" aria-label="播放/暂停">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path class="use-play" d="M8.2 5.1c0-1.2 1.3-1.9 2.3-1.3l10.1 6.4c1 .6 1 2 0 2.6L10.5 19.2c-1 .6-2.3-.1-2.3-1.3V5.1z" fill="currentColor"/>
         <g class="use-pause">
@@ -68,16 +69,16 @@
 <div id="fp" hidden>
   <div class="fp-bg ph" id="fp-bg" aria-hidden="true"><img id="fp-bg-img" alt=""></div>
   <div class="fp-sheet">
-    <button id="fp-grab" aria-label="收起播放页"><div></div></button>
+    <button type="button" id="fp-grab" aria-label="收起播放页"><span></span></button>
     <div class="fp-body">
       <div id="fp-art-wrap"><img id="fp-art" alt=""></div>
       <div id="fp-lyrics" hidden></div>
     </div>
     <div class="fp-meta"><b id="fp-title"></b><small id="fp-artist"></small></div>
     <div class="fp-controls">
-      <button id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M21.981 6.098L14.6 10.949Q13 12 14.6 13.051L21.981 17.902Q23.5 18.9 23.5 17.082L23.5 6.918Q23.5 5.1 21.981 6.098M9.481 6.098L2.1 10.949Q0.5 12 2.1 13.051L9.481 17.902Q11 18.9 11 17.082L11 6.918Q11 5.1 9.481 6.098" fill="currentColor"/></svg></button>
-      <button id="fp-play" aria-label="播放/暂停"></button>
-      <button id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M2.019 6.098L9.4 10.949Q11 12 9.4 13.051L2.019 17.902Q0.5 18.9 0.5 17.082L0.5 6.918Q0.5 5.1 2.019 6.098zM14.519 6.098L21.9 10.949Q23.5 12 21.9 13.051L14.519 17.902Q13 18.9 13 17.082L13 6.918Q13 5.1 14.519 6.098z" fill="currentColor"/></svg></button>
+      <button type="button" id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M21.981 6.098L14.6 10.949Q13 12 14.6 13.051L21.981 17.902Q23.5 18.9 23.5 17.082L23.5 6.918Q23.5 5.1 21.981 6.098M9.481 6.098L2.1 10.949Q0.5 12 2.1 13.051L9.481 17.902Q11 18.9 11 17.082L11 6.918Q11 5.1 9.481 6.098" fill="currentColor"/></svg></button>
+      <button type="button" id="fp-play" aria-label="播放/暂停"></button>
+      <button type="button" id="fp-next" aria-label="下一首"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M2.019 6.098L9.4 10.949Q11 12 9.4 13.051L2.019 17.902Q0.5 18.9 0.5 17.082L0.5 6.918Q0.5 5.1 2.019 6.098zM14.519 6.098L21.9 10.949Q23.5 12 21.9 13.051L14.519 17.902Q13 18.9 13 17.082L13 6.918Q13 5.1 14.519 6.098z" fill="currentColor"/></svg></button>
     </div>
     <div class="fp-transport">
       <span class="fp-time" id="fp-time-cur">-0:00</span>
