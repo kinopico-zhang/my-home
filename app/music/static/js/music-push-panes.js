@@ -1,9 +1,11 @@
-// music-push-panes — My Music 二级页推入层: 专辑/艺人/播放列表从右滑入, 层栈/滚动存档/右划滑回。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// music-push-panes — My Music 二级页推入层: 专辑/艺人/播放列表/资料库各页从右滑入, 层栈/滚动存档/右划滑回。
+// 拆自 music.js (结构化重构), 1.8.0 重排: 无参页 (播放列表/专辑/艺人/已下载/
+// 搜索/设置/统计/更新日志) 也走同一套层, 与详情页布局一致 (用户点名)。
 "use strict";
-/* global $, pageState, pushStack, renderAlbumView, renderArtistView, renderChangelogView,
-          renderHomeView, renderLibraryView, renderPlaylistView, renderSearchView,
-          renderSettingsView, renderStatsView, syncViewTabs */
+/* global $, pageState, pushStack, renderAlbumView, renderAlbumsPane, renderArtistView,
+          renderArtistsPane, renderChangelogView, renderDownloadsPane, renderHomeView,
+          renderPlaylistsPane, renderPlaylistView, renderSearchView, renderSettingsView,
+          renderStatsView */
 /* exported closePushStack, pushPaneTarget, renderRootView, routePushed, routeRoot */
 
 // ------------------------------------------------------------ 二级页推入层
@@ -22,11 +24,11 @@ function unlockRootScroll() {
   $("#main").scrollTop = pageState.rootScroll;
 }
 
-/** 一级页路由: 主页/资料库/搜索/统计/设置都铺在 #root-view 根层。 */
+/** 一级页路由: 主页独占根层 (1.8.0 页签栏撤后其余视图全是推入层)。 */
 function routeRoot(view, force) {
   const mounted = pageState.rootView === view;
   if (pushStack.length) {
-    // 二级层还盖着: 点页签换根就趁盖着先铺好; 回到原根就只把层滑走
+    // 二级层还盖着: 菜单/回主页就趁盖着先铺好; 回到原根就只把层滑走
     if (!mounted) renderRootView(view);
     closePushStack();
     return;
@@ -40,12 +42,7 @@ function routeRoot(view, force) {
 
 function renderRootView(view) {
   pageState.rootView = view;
-  if (view === "search") renderSearchView();
-  else if (view === "stats") renderStatsView();
-  else if (view === "settings") renderSettingsView();
-  else if (view === "changelog") renderChangelogView();
-  else if (view === "library") renderLibraryView();
-  else renderHomeView();
+  renderHomeView();
 }
 
 /** 二级页路由: 新目标推一层; 回退到栈里已有的层只滑走压它的; 同层同页不重开。 */
@@ -63,7 +60,15 @@ function routePushed(view, id, ids, force) {
 function renderPushedView(view, ids, target) {
   if (view === "album") renderAlbumView(ids.albumId, target);
   else if (view === "artist") renderArtistView(ids.artistId, target);
-  else renderPlaylistView(ids.playlistId, target);
+  else if (view === "playlist") renderPlaylistView(ids.playlistId, target);
+  else if (view === "playlists") renderPlaylistsPane(target);
+  else if (view === "albums") renderAlbumsPane(target);
+  else if (view === "artists") renderArtistsPane(target);
+  else if (view === "downloads") renderDownloadsPane(target);
+  else if (view === "search") renderSearchView(target);
+  else if (view === "settings") renderSettingsView(target);
+  else if (view === "stats") renderStatsView(target);
+  else renderChangelogView(target);
 }
 
 /** 二级层薄层当前该写内容的地方 (换封面等就地重铺用; 没层时兜底 #main)。 */
@@ -108,7 +113,6 @@ function closePushStack(keep = 0) {
   }
   if (!pushStack.length) {
     unlockRootScroll();
-    syncViewTabs(pageState.rootView);   // 层收尽: 页签回到根视图 (开层时全灭过)
   }
 }
 
@@ -162,10 +166,7 @@ function bindPaneSwipe(pane) {
       pane.classList.remove("open");              // 从当前位置滑出
       pushStack.pop();
       setTimeout(() => pane.remove(), 420);
-      if (!pushStack.length) {
-        unlockRootScroll();
-        syncViewTabs(pageState.rootView);         // 页签回到根视图
-      }
+      if (!pushStack.length) unlockRootScroll();
     };
     const cancel = () => {
       cleanup();

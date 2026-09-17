@@ -1,23 +1,22 @@
 // music-library-pagination — My Music 资料库分页拉取链: 首页拉取/翻页/铺页/哨兵观察 (串台守卫在这)。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// 拆自 music.js (结构化重构), 1.8.0 起容器由调用方传入 (专辑/艺人各开各的层)。
 "use strict";
-/* global $, albumCardHTML, artistRowHTML, fetchJSON, listPlaceholderHTML, pageState,
+/* global albumCardHTML, artistRowHTML, fetchJSON, listPlaceholderHTML, pageState,
           syncPlayerIndicators, toast */
 /* exported appendListPage, loadListPage */
 
-async function loadListPage(segment) {
+async function loadListPage(segment, body) {
   if (pageState.lists[segment]) return;
   const list = { items: [], total: 0, offset: 0, renderedCount: 0,
                  done: false, loading: true };
   pageState.lists[segment] = list;
   await fetchListPage(segment, list);
-  const body = $("#lib-body");
-  // 段守卫: 等待期间用户已换页签, 这页内容不能铺进新页签 (换台串味)
-  if (!body || body.dataset.segment !== segment) return;
+  // 段守卫: 等待期间层已被收走/换掉, 这页内容不能铺 (换台串味)
+  if (!body || !body.isConnected || body.dataset.segment !== segment) return;
   if (!list.items.length) {
     // 首页没拉到 (弱网/服务器打盹): 空单不缓存, 切回来还会重试
     delete pageState.lists[segment];
-    body.innerHTML = listPlaceholderHTML("列表没拉到, 切个页签再试");
+    body.innerHTML = listPlaceholderHTML("列表没拉到, 退出去再进来试试");
     return;
   }
   body.innerHTML = "";

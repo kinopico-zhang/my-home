@@ -1,5 +1,6 @@
-// music-player-chrome — My Music 播放器界面渲染: 迷你条/全屏页文案, 播放键同步, 底部来源行。
-// 拆自 music-player.js (结构化重构: 代码逐字节未动, 按 music.html 里的顺序加载, 跨模块引用走全局)。
+// music-player-chrome — My Music 播放器界面渲染: 迷你条 (含跑马灯)/全屏页文案, 播放键同步, 底部来源行。
+// 拆自 music-player.js (结构化重构), 1.8.0 气泡变窄: 上下曲撤走,
+// 歌名/作者太长改跑马灯来回滚 (用户点名), 不再截断省略号。
 "use strict";
 /* global $, ICON_PAUSE, ICON_PAUSE_BIG, ICON_PLAY, ICON_PLAY_BIG, PLACEHOLDER_ARTWORK,
           currentTrack, fetchJSON, playQueue, playerCurrentTrackId, playerIsPlaying */
@@ -9,11 +10,11 @@
 
 function renderPlayerChrome() {
   const track = currentTrack;
-  $("#mini-player").hidden = !track;
+  $("#mini-player").hidden = !track;   // 先显形再量跑马灯 (display:none 量不出宽)
   if (!track) return;
   $("#mini-art").src = PLACEHOLDER_ARTWORK;
-  $("#mini-title").textContent = track.title;
-  $("#mini-artist").textContent = track.artist;
+  setMarqueeLine($("#mini-title"), track.title);
+  setMarqueeLine($("#mini-artist"), track.artist);
   $("#fp-title").textContent = track.title;
   $("#fp-artist").textContent = track.artist;
   updateSourceLine(track);
@@ -25,6 +26,31 @@ function renderPlayerChrome() {
   updatePlayButtons();
   updateShuffleRepeatButtons();
 }
+
+/** 迷你条一行文字: 放得下静止, 放不下挂 .marquee 来回滚
+    (距离/时长写 CSS 变量, 两端各停一拍 —— 见 music-bottom-bar.css)。 */
+function setMarqueeLine(line, text) {
+  const run = line.querySelector(".mq-run");
+  run.textContent = text;
+  run.classList.remove("marquee");
+  if (!text) return;
+  const overflow = run.scrollWidth - line.clientWidth;
+  if (overflow <= 2) return;               // 放得下: 不滚
+  run.style.setProperty("--mq-dx", `${-overflow}px`);
+  run.style.setProperty("--mq-dur", `${Math.max(8, overflow / 18)}s`);
+  run.classList.add("marquee");
+}
+
+// 转屏/改窗口后行宽变了, 静止/滚动的判定要重量一遍 (防抖一下, 别跟每帧 resize 跑)
+let marqueeResizeTimer = 0;
+addEventListener("resize", () => {
+  clearTimeout(marqueeResizeTimer);
+  marqueeResizeTimer = setTimeout(() => {
+    if (!currentTrack) return;
+    setMarqueeLine($("#mini-title"), currentTrack.title);
+    setMarqueeLine($("#mini-artist"), currentTrack.artist);
+  }, 200);
+});
 
 function updatePlayButtons() {
   const playing = playerIsPlaying();

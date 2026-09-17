@@ -1,7 +1,7 @@
 // music-downloads-integration — My Music 离线下载接线: 能力探测/浏览器适配器/下载实例, 行内下载标, 全部下载。
 // 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
 "use strict";
-/* global $, ICON_DOWNLOAD, createDownloads, currentRoute, downloadsSupported, pageState,
+/* global $, ICON_DOWNLOAD, createDownloads, currentRoute, downloadsSupported,
           renderDownloadsBody, toast */
 /* exported downloadAllCancelled, downloadAllFromUI, downloadMarkHTML, downloadTrackFromUI,
             downloads, downloadsEnabled, syncDownloadIcons */
@@ -94,7 +94,7 @@ function downloadMarkHTML(trackId) {
   return ICON_DOWNLOAD;
 }
 
-/** 下载状态变了 → 全站行图标刷新 (含已下载栏里的进度)。 */
+/** 下载状态变了 → 全站行图标刷新 (含已下载页里的进度)。 */
 function syncDownloadIcons() {
   if (!downloads) return;
   for (const mark of document.querySelectorAll("[data-download-track]")) {
@@ -102,9 +102,9 @@ function syncDownloadIcons() {
     mark.classList.toggle("done",
       downloads.isDownloaded(Number(mark.dataset.downloadTrack)));
   }
-  if (currentRoute().view === "library"
-      && pageState.segment === "downloads") {
-    renderDownloadsBody($("#lib-body"));       // 进度/删除即时反映
+  if (currentRoute().view === "downloads") {
+    const body = $("#dl-pane-body");
+    if (body) renderDownloadsBody(body);       // 进度/删除即时反映
   }
 }
 

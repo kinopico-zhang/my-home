@@ -47,17 +47,17 @@ main {
   /* 顶部雷区让位 (顶栏发糊同源: 独立模式竖屏里屏幕最上那条带子被系统栅成
      低清, 什么进去都糊) —— main 整个下移, 滚动内容永远进不了那条带子,
      带子里只剩 body 黑底。只给内容加 padding 不行: 一滚字就又钻进带子里。
-     max(env, 兜底): iOS 26.1+ 的系统 bug (WebKit 301994) 把 env 误报成 0,
-     music.js 按机型屏幕尺寸表给 --sys-top-inset 兜一个近似刘海高度 */
-  margin-top: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));
+     1.8.0 起不再兜 iOS 26.1+ env 谎报的 bug (用户点名「任凭模糊, 不做
+     处理」): 纯 env, 谎报 0 的系统里让位失效, 带子照糊, 认了 */
+  margin-top: env(safe-area-inset-top);
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
 }
-/* 一级页内容列: 限宽居中 (页签栏/气泡都是 fixed, 内容得自己让开底下的高度);
+/* 一级页内容列: 限宽居中 (船坞/气泡都是 fixed, 内容得自己让开底下的高度);
    横屏时左右让开侧刘海 (env 取 max, 没侧刘海的场合保底 16px) */
 #root-view {
   max-width: 860px; margin: 0 auto;
   padding: 14px max(16px, env(safe-area-inset-right))
-           calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))
+           var(--dock-clear)
            max(16px, env(safe-area-inset-left));
 }
 
@@ -67,7 +67,7 @@ main {
 
 /* ---------- 提示 ---------- */
 #toast {
-  position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom));
+  position: fixed; left: 50%; bottom: calc(var(--dock-h) + 22px + env(safe-area-inset-bottom));
   transform: translateX(-50%) translateY(8px); z-index: 120;
   max-width: 82vw; padding: 9px 18px; border-radius: 999px;
   background: rgba(58,58,60,.95); color: var(--ink-1); font-size: 13px;

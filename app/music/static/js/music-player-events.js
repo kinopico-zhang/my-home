@@ -15,10 +15,9 @@
 function bindPlayerEvents() {
   const audio = audioElement();
 
-  // 按钮点击不冒泡到 #mini-open (点了上一首/暂停/下一首不该弹全屏页)
+  // 按钮点击不冒泡到 #mini-open (点了暂停不该弹全屏页);
+  // 上一首/下一首 1.8.0 撤掉 (气泡变窄, 用户点名 —— 全屏页里都有)
   $("#mini-play").addEventListener("click", (event) => { event.stopPropagation(); playerToggle(); });
-  $("#mini-next").addEventListener("click", (event) => { event.stopPropagation(); playerNext(); });
-  $("#mini-prev").addEventListener("click", (event) => { event.stopPropagation(); playerPrevious(); });
   $("#mini-open").addEventListener("click", openFullPlayer);
   $("#fp-grab").addEventListener("click", () => {
     if (fpDismissDragged) {            // 刚拖过: 抬手补发的 click 不算
