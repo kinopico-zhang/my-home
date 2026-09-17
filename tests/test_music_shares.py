@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 import app.main as m
 from app.music.library_database import (ShareLink, Track, music_directory,
                                         session_factory)
-from tests.test_music import PICTURE_BYTES, _seed_library, _write_audio
+from tests.music_audio_seed import PICTURE_BYTES, _write_audio
+from tests.music_library_helpers import _seed_library
 
 
 def _seed_with_files() -> None:

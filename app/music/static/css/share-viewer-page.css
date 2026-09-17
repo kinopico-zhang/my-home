@@ -1,6 +1,7 @@
 /* share-viewer-page — 分享页样式: 变量/骨架/失效态/卡片/曲目清单。 */
 /* 拆自 share.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
-     从公开的 /music/static 借用), 深色基调与应用一致 */
+/* 公开分享页: 自包含 (不引应用 JS —— 访客没有会话; 歌词解析是纯模块,
+   从公开的 /music/static 借用), 深色基调与应用一致 */
   :root {
     color-scheme: dark;
     --bg: #000;
@@ -74,7 +75,7 @@
                font-size: 12px; color: var(--ink-3); }
   .row {
     display: flex; align-items: center; gap: 12px;
-    padding: 10px 0; border-bottom: 1px solid var(--hairline);
+    padding: 10px 0;
     cursor: pointer; text-align: left; width: 100%; background: none; border: 0;
     border-bottom: 1px solid var(--hairline); color: inherit; font: inherit;
   }

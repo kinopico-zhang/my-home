@@ -6,7 +6,7 @@
 from datetime import datetime
 
 from app.tesla.models import Address, Geofence
-from tests.conftest import seed_charge, seed_charging
+from tests.seed_factories import seed_charge, seed_charging
 
 PAGES = ["/tesla/charging", "/tesla/stats", "/tesla/chargemap", "/tesla/map",
          "/tesla/trips", "/tesla/groups", "/tesla/live", "/tesla/settings"]
@@ -102,9 +102,9 @@ def test_chargemap_page_skeleton(auth):
         '<a class="on" href="/tesla/chargemap">充电地图</a>',
         'id="map"',
         'id="view-seg"',
-        '<button data-v="energy" class="on">充电电量</button>',
-        '<button data-v="sessions">充电次数</button>',
-        '<button data-v="cost">充电费用</button>',
+        '<button type="button" data-v="energy" class="on">充电电量</button>',
+        '<button type="button" data-v="sessions">充电次数</button>',
+        '<button type="button" data-v="cost">充电费用</button>',
         'id="st-places"', 'id="st-sessions"', 'id="st-energy"',   # 汇总行
         'id="legend"', 'id="lg-mode"', 'id="lg-ramp"', 'id="lg-row"',   # 热力图例
         'id="sh-name"', 'id="sh-sessions"', 'id="sh-fast"',

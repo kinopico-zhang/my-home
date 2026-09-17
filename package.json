@@ -1,0 +1,16 @@
+{
+  "name": "myteslamate-toolchain",
+  "private": true,
+  "description": "前端工具链锁版 (eslint/tsc/stylelint/html-validate/单测覆盖率): npm install 不带包名时以此为准重排 node_modules, 防止把没列进命令行的工具当无主包修剪掉",
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "c8": "11.0.0",
+    "eslint": "9.39.5",
+    "globals": "16.4.0",
+    "html-validate": "10.0.0",
+    "puppeteer": "23.11.1",
+    "stylelint": "17.15.0",
+    "stylelint-config-standard": "40.0.0",
+    "typescript": "5.7.3"
+  }
+}

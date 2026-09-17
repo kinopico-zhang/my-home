@@ -31,10 +31,10 @@
         <a class="on" href="/tesla/live">当前驾驶</a>
         <a href="/tesla/settings">软件设置</a>
         <a href="/tesla/changelog">更新日志</a>
-        <button class="logout-row" id="logout" title="退出登录">退出登录</button>
+        <button type="button" class="logout-row" id="logout" title="退出登录">退出登录</button>
       </div>
     </details>
-    <button id="refresh-btn" aria-label="刷新状态"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button type="button" id="refresh-btn" aria-label="刷新状态"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.46-3.54" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.6v2.4H9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
 </header>
 
@@ -58,7 +58,7 @@
       </div>
     </div>
     <div class="batt-card">
-      <span class="batt"><i id="batt-fill" style="width:0%"></i></span>
+      <span class="batt"><i id="batt-fill"></i></span>
       <b id="lv-soc">–%</b>
       <span class="batt-range">额定续航 <b id="lv-range">–</b> km</span>
     </div>
