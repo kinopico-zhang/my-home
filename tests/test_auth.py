@@ -107,14 +107,14 @@ def test_all_pages_have_refresh_button(auth):
     """
     # 页面路径 -> (该页 JS 文件, 点击后接的重载调用)
     wiring = {
-        "/tesla/charging": ("index.js", "await refetch();"),
-        "/tesla/stats": ("stats.js", "await refetch();"),
-        "/tesla/chargemap": ("chargemap.js", "await refresh(false);"),
-        "/tesla/map": ("map.js", "await refresh(false);"),
-        "/tesla/trips": ("trips-list.js", "await refreshList();"),
-        "/tesla/groups": ("groups.js", "await load();"),
-        "/tesla/live": ("live.js", "await poll();"),
-        "/tesla/settings": ("settings.js", "await loadSettings();"),
+        "/tesla/charging": ("js/charging-cards.js", "await refetch();"),
+        "/tesla/stats": ("js/stats-time-filters.js", "await refetch();"),
+        "/tesla/chargemap": ("js/chargemap-time-filters.js", "await refresh(false);"),
+        "/tesla/map": ("js/map-filters.js", "await refresh(false);"),
+        "/tesla/trips": ("js/trips-list-page.js", "await refreshList();"),
+        "/tesla/groups": ("js/groups.js", "await load();"),
+        "/tesla/live": ("js/live-driving.js", "await poll();"),
+        "/tesla/settings": ("js/settings-account.js", "await loadSettings();"),
         "/tesla/changelog": ("/static/changelog-page.js", "await load();"),
         "/music/changelog": ("/static/changelog-page.js", "await load();"),
         "/bookkeeping/changelog": ("/static/changelog-page.js", "await load();"),
@@ -152,7 +152,7 @@ def test_pages_remember_last_page(auth):
     home_layer = ("/", "/login", "/register", "/accounts", "/bookkeeping", "/music")
     for path in [p for p in ALL_PAGES if p not in home_layer]:
         html = auth.get(path).text
-        tag = '<script src="/tesla/static/lastpage.js?v=1"></script>'
+        tag = '<script src="/tesla/static/js/lastpage.js?v=1"></script>'
         assert tag in html, path
         assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
     assert "lastpage.js" not in auth.get("/login").text
@@ -168,7 +168,7 @@ def test_pages_remember_last_page(auth):
     assert 'function pickNext()' in login_html
     assert 'const APP_TITLES = { "/tesla": "My Tesla", "/music": "My Music",' in login_html
 
-    r = auth.get("/tesla/static/lastpage.js")
+    r = auth.get("/tesla/static/js/lastpage.js")
     assert r.status_code == 200
     js = r.text
     for frag in [
@@ -370,8 +370,8 @@ def test_unauthed_apis_return_401_json(client):
 def test_public_paths_accessible_without_login(client):
     assert client.get("/login").status_code == 200
     assert client.get("/register").status_code == 200    # 注册页公开
-    for asset in ("/tesla/static/echarts.min.js", "/tesla/static/gcj02.js",
-                  "/tesla/static/trackutil.js", "/tesla/static/favicon.svg",
+    for asset in ("/tesla/static/echarts.min.js", "/tesla/static/js/gcj02.js",
+                  "/tesla/static/js/trackutil.js", "/tesla/static/favicon.svg",
                   "/static/login.js", "/static/register.js", "/static/home.js",
                   "/static/favicon.svg",               # 门厅层静态放行
                   "/bookkeeping/static/bookkeeping.js",
@@ -558,7 +558,7 @@ def test_pages_served_after_login(auth):
 
 def test_static_js_must_revalidate(client):
     """JS 工具文件必须 no-cache 重新校验, 否则浏览器启发式缓存用旧版 (动画曾因此冻住)。"""
-    r = client.get("/tesla/static/trackutil.js")
+    r = client.get("/tesla/static/js/trackutil.js")
     assert r.status_code == 200
     assert r.headers["cache-control"] == "no-cache"
 
