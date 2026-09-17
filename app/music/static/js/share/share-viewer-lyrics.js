@@ -1,5 +1,6 @@
 // share-viewer-lyrics — My Music 分享页歌词: 取词铺词/当前句高亮/手动滚词暂停跟唱。
-// 拆自 share.html 的内联 <script> (结构化重构: 代码逐字节未动, 按 share.html 里的顺序加载, 跨模块引用走全局)。
+// 拆自 share.html 的内联 <script> (结构化重构)。1.8.2 起有词的曲子歌词
+// 常驻封面下面跟着滚 (不再点封面切换): 没词整块收掉, 封面独占。
 "use strict";
 /* global $, activeLyricIndex, audio, esc, lyricIndex: writable, lyrics: writable,
           lyricsAutoUntil: writable, lyricsCache, lyricsFollowPaused: writable,
@@ -35,10 +36,9 @@ async function loadLyrics(track) {
 function renderLyricsView() {
   const box = $("#fp-lyrics");
   box.classList.toggle("static", !lyrics || !lyrics.synced);
-  if (!lyrics) {
-    box.innerHTML = '<div class="lyrics-empty">没有歌词</div>';
-    return;
-  }
+  box.hidden = !lyrics;                          // 没词: 封面独占
+  box.closest(".fp-body").classList.toggle("with-lyrics", Boolean(lyrics));
+  if (!lyrics) return;
   box.innerHTML = lyrics.lines.map(
     (line) => `<p class="lyrics-line">${esc(line.text)}</p>`).join("");
   syncLyricHighlight(true);

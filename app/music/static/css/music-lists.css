@@ -73,7 +73,8 @@
 }
 .t-dl:active { color: var(--ink-1); background: var(--surface-2); }
 .t-dl.done { color: var(--ink-1); }
-.dl-pct { font-size: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* 下载中: 圆环进度替掉百分比文字 (1.8.2 用户点名), 颜色跟簇走 */
+.dl-ring { display: block; }
 
 /* 播放中的动条 (替掉序号) */
 .bars { display: none; align-items: flex-end; gap: 2px; height: 14px; }

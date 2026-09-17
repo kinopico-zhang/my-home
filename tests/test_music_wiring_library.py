@@ -32,16 +32,20 @@ def test_music_share_link_wiring():
     assert "scrollbar-width: none;" in share
     assert "::-webkit-scrollbar { display: none; }" in share
     # 全屏播放页 (用户点名"和 app 自己的播放界面大致一样"): 点迷你条掀开,
-    # 封面点一下 ↔ 歌词 (近邻模糊同款), 传输三键 + 进度 + 毛玻璃底 +
-    # 下拉收起; 歌词解析借公开的 lyrics-parser.js (纯模块, 不带会话)
+    # 传输三键 + 进度 + 毛玻璃底 + 下拉收起; 有词的歌 1.8.2 起歌词常驻
+    # 封面下面跟着唱句滚 (点封面切换那套撤了), 歌词解析借公开的
+    # lyrics-parser.js (纯模块, 不带会话)
     for frag in ['id="fp"', 'id="fp-play"', 'id="fp-prev"', 'id="fp-next"',
                  'id="fp-lyrics"', 'id="fp-scrub"', 'id="fp-grab"',
-                 'id="fp-bg"', "toggleLyricsView", "openFullPlayer",
+                 'id="fp-bg"', "openFullPlayer",
                  "closeFullPlayer", "bindPullClose", "updateMediaSession",
                  "/music/share/${token}/lyrics/${track.track_id}",
                  'src="/music/static/js/lyrics-parser.js',
                  ".lyrics-line.near-1", ".lyrics-line.active"]:
         assert frag in share_all, f"share.html 缺 {frag}"
+    # 歌词常驻封面下 (1.8.2): with-lyrics 类挂容器收缩封面, 没词整块收掉
+    assert "with-lyrics" in share_all and "box.hidden = !lyrics;" in share_all
+    assert "toggleLyricsView" not in share_all     # 点封面切换视图那套撤了
     # 微信卡片: <head> 留 og 占位注释, 服务端换掉 (占位符漏替换卡片就漏空)
     assert "<!--og-->" in share
     share_routes = (Path(__file__).parent.parent / "app" / "music"

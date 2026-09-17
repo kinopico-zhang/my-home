@@ -1,8 +1,8 @@
 // music-settings-view — My Music 设置视图: 曲库路径/歌词源/蜂窝账单/重新扫描等。
 // 拆自 music.js (结构化重构), 1.8.0 起住推入层 (菜单「设置」进来), 渲染目标由调用方给。
 "use strict";
-/* global $, checkScanStatus, escapeHTML, fetchJSON, formatBytes, navigate, toast,
-          userRescanPending: writable */
+/* global $, checkScanStatus, clearLastRoute, escapeHTML, fetchJSON, formatBytes,
+          navigate, toast, userRescanPending: writable */
 /* exported renderSettingsView, userRescanPending */
 
 // ------------------------------------------------------------ 设置页
@@ -91,6 +91,11 @@ async function renderSettingsView(target) {
     }
   });
   $("#set-logout").addEventListener("click", async () => {
+    clearLastRoute();         // 上次停的页清档: 下个人别落进我的页面 (1.8.3)
+    if (window.caches) {
+      // 离线列表数据档也带走 (1.8.4): 换账号不能看着上个人的播放列表
+      await caches.delete("music-data-v1").catch(() => {});
+    }
     try { await fetch("/music/api/logout", { method: "POST" }); }
     catch (_error) { /* 清 cookie 失败也照样走 */ }
     location.href = "/music/login";

@@ -1,11 +1,20 @@
 """My Home 门厅的 HTML 页面: 门厅 + 登录 (全站一张, Tesla scope 内复用)
-+ 注册 + 账号管理 (静态文件在 app/home/static)。"""
-from fastapi import APIRouter
++ 注册 + 账号管理 + 平台域名验证文件 (静态文件在 app/home/static)。"""
+import re
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from . import STATIC_DIR
 
 router = APIRouter()
+
+# 平台域名验证文件 (微信等): 名字带 hash 的 TXT 丢进 verify/ 目录,
+# 根路径原样吐回。验证方不带 cookie 来抓, 中间件对非保护路径本来就放行
+# (未登录不 302); 文件名只认字母数字连字符, 顺带堵目录穿越。
+_VERIFY_DIR = Path(__file__).resolve().parent / "verify"
+_VERIFY_NAME = re.compile(r"[0-9A-Za-z-]{1,64}")
 
 
 def _page(fname: str) -> FileResponse:
@@ -43,3 +52,13 @@ def register_page() -> FileResponse:
 def accounts_page() -> FileResponse:
     """账号管理页 (My Home 共享层, 仅管理员; 非管理员进来只见提示)。"""
     return _page("accounts.html")
+
+
+@router.api_route("/{name}.txt", methods=["GET", "HEAD"])
+def platform_verify_file(name: str) -> FileResponse:
+    """根路径的平台验证 TXT (微信域名验证等): 文件在 verify/ 目录里才吐,
+    没有 (或名字不合规) 404 —— 与门厅其余路由一样按需部署。"""
+    path = _VERIFY_DIR / f"{name}.txt"
+    if not _VERIFY_NAME.fullmatch(name) or not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path)

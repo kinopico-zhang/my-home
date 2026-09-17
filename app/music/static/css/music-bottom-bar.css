@@ -3,9 +3,10 @@
    用户点名「整个底栏从左到右: 菜单按钮, 气泡, 搜索」)。 */
 /* ---------- 布局变量 ----------
    --dock-h: 船坞行自高 (三件套统一 46); 一级页下衬垫 (.pane-scroll/#root-view
-   都用 --dock-clear) 按它算 —— 气泡不再叠在页签栏上, 让位只剩一层的账 */
+   都用 --dock-clear) 按它算 —— 内容一路铺到三件套底下 (船坞本体透明,
+   只有 14px 呼吸缝, 1.8.1 撤掉了页签栏时代多记的那层 46px 空带) */
 :root { --dock-h: 46px; }
-:root { --dock-clear: calc(var(--dock-h) + 46px + env(safe-area-inset-bottom)); }
+:root { --dock-clear: calc(var(--dock-h) + 14px + env(safe-area-inset-bottom)); }
 
 /* ---------- 底部船坞 ----------
    本体透明 (无底无磨砂): 只管把一行三件钉在屏底, 点击穿到内容上;
@@ -14,8 +15,10 @@
 #dock {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
   display: flex; justify-content: center;
+  /* 1.8.1 再往下贴 (用户点名: 与 iPhone 屏底圆角对上) —— 底衬只留
+     4px, 剩下全交给安全区 (小白条那 34px 本来就是系统的) */
   padding: 0 max(8px, env(safe-area-inset-left))
-           calc(10px + env(safe-area-inset-bottom))
+           calc(4px + env(safe-area-inset-bottom))
            max(8px, env(safe-area-inset-right));
   pointer-events: none;   /* 子件单独放行 (见 .dock-row), 透明区域不挡内容 */
 }
@@ -28,7 +31,8 @@
   width: var(--dock-h); height: var(--dock-h); border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: var(--ink-1); flex-shrink: 0;
-  background: rgba(44,44,46,.6);   /* 磨砂玻璃, 气泡同款半透明 */
+  background: rgba(44,44,46,.78);  /* 磨砂玻璃, 气泡同款 (1.8.3 调实一档:
+    六成底太透, 底下内容一深一浅时三件套跟着忽明忽暗) */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hairline);
@@ -63,8 +67,9 @@
   height: var(--dock-h);
   display: flex; align-items: center; gap: 8px;
   overflow: hidden;
-  background: rgba(44,44,46,.6);   /* 磨砂玻璃 (用户点名): 六成底色,
-    blur(20) 把底下划过的内容糊成影子透上来 —— 和圆键一个质感 */
+  background: rgba(44,44,46,.78);   /* 磨砂玻璃 (用户点名): 八成底色,
+    blur(20) 把底下划过的内容糊成影子透上来 —— 和圆键一个质感
+    (1.8.3 从六成调实: 太透时底下内容深浅直接透进三件套) */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hairline); border-radius: 23px;

@@ -43,10 +43,16 @@ function closeFullPlayer(direction) {
 // 封面朝划的方向滑出, 新封面从另一侧滑入。抓手条还有横拖收起: 往右拖整页
 // 跟手走, 松手拖过三分之一 (或带甩劲) 就向右甩出收起。拖动后的尾随 click
 // 不算 (不然小拖一下也收起)。
+// 1.8.2 整页化 (用户点名「任何一点都能拖」): .fp-sheet/.fp-bg 也绑一份
+// (ignoreInteractive), 起手点落在自带手势的东西上就让路 —— 歌词/队列自带
+// 滚动, 抓手/封面自带拖动, 按钮/滑杆各有点击与拖拽语义。
 let fpDismissDragged = false;
 
 // horizontalClose: 抓手条上的横划改成拖整页收起 (true), 而不是放掉。
-function bindDismissDrag(target, swipeTracks = false, horizontalClose = false) {
+// ignoreInteractive: 起手点命中按钮/输入/滑杆/歌词/队列 (或已绑拖动的
+// 抓手/封面) 时整个手势放掉, 让位给它们自己的行为。
+function bindDismissDrag(target, swipeTracks = false, horizontalClose = false,
+                         ignoreInteractive = false) {
   const player = $("#full-player");
   const art = $("#fp-art-wrap");
   let dragging = false;
@@ -62,6 +68,9 @@ function bindDismissDrag(target, swipeTracks = false, horizontalClose = false) {
                                      //   / "across" 抓手横拖收起
   target.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (ignoreInteractive && event.target.closest(
+          "#fp-grab, #fp-art-wrap, #fp-lyrics, #fp-queue, .fp-scrub,"
+          + " button, input")) return;
     dragging = true;
     pointerId = event.pointerId;
     startX = lastX = event.clientX;
