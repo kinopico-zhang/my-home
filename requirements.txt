@@ -5,3 +5,4 @@ sqlalchemy>=2.0
 tzdata
 mutagen
 zhconv
+pypinyin
