@@ -1,13 +1,15 @@
 /* music-push-panes — My Music 前端样式 (二级页推入层 (专辑/艺人/播放列表): 滑入滑出 / 层内滚动 / 详情页头)。
    拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
-/* ---------- 二级页推入层 (专辑/艺人/播放列表, iOS 设置式滑入) ---------- */
+/* ---------- 二级页推入层 (专辑/艺人/播放列表/资料库各页, iOS 设置式滑入) ---------- */
 #push-stack { position: fixed; inset: 0; z-index: 44; pointer-events: none; }
-/* 设计一致 (用户点名): 推入层铺满全高, 内容照主页那样从磨砂气泡底下扫过
-   (原来气泡下面是一条空带)。代价: 层动起来时变换层会从 fixed+磨砂的
-   气泡和页签栏底下扫过 —— 这是 WebKit 吐重影的配方 (用户截图过第二个气泡),
+/* 设计一致 (用户点名): 推入层铺满全高, 内容照主页那样从磨砂气泡/船坞键底下
+   扫过 (原来气泡下面是一条空带)。代价: 层动起来时变换层会从 fixed+磨砂的
+   气泡和船坞键底下扫过 —— 这是 WebKit 吐重影的配方 (用户截图过第二个气泡),
    对策 = 运动期暂撤磨砂换实底 (body.pane-anim, JS 的 paneMotion() 管),
    歇下来再恢复磨砂。 */
-body.pane-anim #mini-player, body.pane-anim #tabbar {
+body.pane-anim #mini-player,
+body.pane-anim #dock-menu,
+body.pane-anim #dock-search {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   background: rgba(44,44,46,.92);
@@ -31,36 +33,18 @@ body.pane-anim #mini-player, body.pane-anim #tabbar {
 .push-pane .pane-scroll {
   width: 100%; max-width: 860px; height: 100%;
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: none;
-  padding: calc(max(env(safe-area-inset-top), var(--sys-top-inset, 0px)) + 14px)
+  padding: calc(env(safe-area-inset-top) + 14px)
            16px
-           calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom));
+           var(--dock-clear);
 }
-/* 常驻顶端的栏 (资料库页签条 / 搜索框): sticky 钉在 main 顶 (护罩下缘),
-   底衬不透明, 列表往上滚时从它底下扫过去 —— 栏不跟着列表滚走 */
+/* 常驻顶端的栏 (搜索框): sticky 钉在层顶 (内容上缘), 底衬不透明,
+   列表往上滚时从它底下扫过去 —— 栏不跟着列表滚走
+   (1.8.0: 资料库段选择条随拆页撤掉, sticky 只剩搜索页一处) */
 .sticky-head {
   position: sticky; top: 0; z-index: 5;
   background: var(--bg);
   padding: 2px 0 12px;
 }
-.seg {
-  display: flex; background: var(--surface-2); border-radius: 9px;
-  padding: 2px;
-}
-.seg button {
-  flex: 1; padding: 6px 0; border-radius: 7px; font-size: 13px; font-weight: 500;
-  color: var(--ink-2);
-}
-.seg button.on { background: var(--surface-3); color: var(--ink-1); font-weight: 600; }
-
-.chips {
-  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px;
-}
-.chip {
-  flex-shrink: 0; font-size: 12px; color: var(--ink-2);
-  background: var(--surface-2); padding: 5px 13px; border-radius: 999px;
-}
-.chip.on { background: var(--ink-1); color: #000; font-weight: 600; }
-.chip:active { opacity: .7; }
 
 /* ---------- 详情页头 ---------- */
 .album-hero, .artist-hero { display: flex; flex-direction: column; align-items: center;

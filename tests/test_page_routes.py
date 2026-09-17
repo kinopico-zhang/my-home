@@ -97,19 +97,20 @@ def test_bookkeeping_topbar_is_own_app(auth):
 
 
 def test_mymusic_topbar_is_own_app(auth):
-    """音乐应用的导航 (1.7.0 起在底部): 主页/资料库/搜索/设置四个图标页签
-    钉死视口底 (磨砂, 播放气泡叠上面), 顶栏和 ☰ 菜单整个撤了 —— 统计/重扫/
-    更新日志/退出登录全进设置页 (music.js 渲染)。与 My Tesla 只共享账号 ——
-    页面里不出现任何 tesla 链接/脚本, 图标样式全自己的。"""
+    """音乐应用的导航 (1.8.0: 底部船坞三件套): 菜单键/播放气泡/搜索键钉死
+    视口底 (磨砂), 页签栏和 ☰ 菜单整个撤了 —— 播放列表/专辑/艺人/已下载/
+    设置在上弹菜单, 统计/重扫/更新日志/退出登录全进设置页 (music.js 渲染)。
+    与 My Tesla 只共享账号 —— 页面里不出现任何 tesla 链接/脚本,
+    图标样式全自己的。"""
     html = auth.get("/music").text
     js = auth.get("/music/static/js/music-settings-view.js").text
     assert 'class="nav-menu brand-menu" id="brand-menu"' not in html  # 菜单撤了
     assert 'id="logout"' not in html and 'id="stats-link"' not in html
     assert "重新扫描曲库" not in html          # 职能进设置页 (JS 渲染)
     assert 'id="set-logout"' in js and 'id="set-rescan"' in js
-    assert '<nav id="tabbar">' in html                 # 底部页签栏
-    assert 'data-view-tab="settings"' in html          # 设置是第四个页签
-    assert 'data-view-tab="search"' in html            # 搜索是第三个页签
+    assert '<div id="dock">' in html                    # 底部船坞三件套
+    assert 'id="dock-menu"' in html and 'id="dock-search"' in html
+    assert 'data-pop-nav="settings"' in html            # 设置在上弹菜单里
     assert 'id="search-btn"' not in html               # 放大镜按钮已撤
     assert 'id="sync-playlists"' not in html           # Plex 同步入口已撤 (2026-09-15)
     assert 'id="refresh-btn"' not in html

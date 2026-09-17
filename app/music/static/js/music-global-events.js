@@ -1,25 +1,22 @@
-// music-global-events — My Music 全局事件绑定 (页签栏/封面文件/Esc) + 蜂窝流量浏览器适配器。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// music-global-events — My Music 全局事件绑定 (船坞键/封面文件/Esc) + 蜂窝流量浏览器适配器。
+// 拆自 music.js (结构化重构), 1.8.0 页签栏撤掉: 搜索键/菜单键在这里接线。
 "use strict";
-/* global $, SCAN_POLL_INTERVAL_MS, checkScanStatus, closeFullPlayer, closePushStack,
-          coverUploadPlaylistId, createCellularMonitor, navigate, playerOpen, pushStack,
-          uploadPlaylistCover */
+/* global $, SCAN_POLL_INTERVAL_MS, bindDockMenu, checkScanStatus, closeDockMenu,
+          closeFullPlayer, closePushStack, coverUploadPlaylistId, createCellularMonitor,
+          navigate, playerOpen, pushStack, uploadPlaylistCover */
 /* exported bindGlobalEvents */
 
 // ------------------------------------------------------------ 启动
 
 function bindGlobalEvents() {
-  // 底部页签栏: 主页/资料库/搜索/设置 (设置 = 原品牌菜单的职能进设置页)
-  $("#tabbar").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-view-tab]");
-    if (!button) return;
-    navigate(button.dataset.viewTab);
-    if (button.dataset.viewTab !== "search") return;
-    // 进搜索页签顺手聚焦输入框 (老放大镜按钮的手感); 导航是同步渲染,
-    // 走到这儿输入框已经在页面上了
+  // 底部船坞: 搜索键进搜索层 (顺手聚焦输入框 —— 老放大镜按钮的手感;
+  // 导航是同步渲染, 走到这儿输入框已经在页面上了); 菜单键的上弹菜单自成一模块
+  $("#dock-search").addEventListener("click", () => {
+    navigate("search");
     const input = $("#search-input");
     if (input) input.focus();
   });
+  bindDockMenu();
   $("#cover-file").addEventListener("change", () => {
     if (coverUploadPlaylistId) uploadPlaylistCover(coverUploadPlaylistId);
   });
@@ -27,11 +24,12 @@ function bindGlobalEvents() {
   setInterval(() => {
     if (!document.hidden) checkScanStatus();
   }, SCAN_POLL_INTERVAL_MS);
-  // 电脑上的"返回": Esc 收播放页, 没开播放页就收顶层二级页 (手机上有右划,
+  // 电脑上的"返回": Esc 依序收上弹菜单 → 播放页 → 顶层二级页 (手机上有右划,
   // 电脑总不能指望鼠标拖页面; 浏览器返回键在应用里已没有可退的条目)
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || event.repeat) return;
-    if (playerOpen) closeFullPlayer();
+    if (!$("#pop-menu").hidden) closeDockMenu();
+    else if (playerOpen) closeFullPlayer();
     else if (pushStack.length) closePushStack(pushStack.length - 1);
   });
 }

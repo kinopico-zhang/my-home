@@ -10,7 +10,8 @@ def test_music_controls_apple_style_wiring():
     """传输区最终形 (用户两连点名): 三键站在进度条**正上方**居中成一行,
     不是挤在进度条旁边; 三键一般大 (44×44, 播放键不再大一号);
     进度条 range 住在 flex 行里要 flex:1+min-width:0 才肯让位收缩。
-    迷你气泡三键齐全 (上一首/播放/下一首)。图标包围盒中心对准按键中心的
+    迷你气泡 1.8.0 起只留播放/暂停 (上下曲撤了, 全屏页里都有,
+    气泡收窄让位给歌名跑马灯)。图标包围盒中心对准按键中心的
     不变量在 player-icons.test.mjs。"""
     html = music_page_shell()
     common = (MUSIC_STATIC / "js" / "music-common.js").read_text(encoding="utf-8")
@@ -28,9 +29,10 @@ def test_music_controls_apple_style_wiring():
     assert ".fp-times" not in html                                # 旧三行布局撤了
     assert ".fp-controls > button:active { transform: scale(.86)" in html  # 按压反馈
     assert "#fp-grab" in html                                 # 收起抓手
-    # 迷你气泡三键: 上一首/播放/下一首 (用户点名"三个按键都需要")
-    assert 'id="mini-prev"' in html and 'id="mini-play"' in html \
-        and 'id="mini-next"' in html
+    # 迷你气泡 1.8.0 只留播放/暂停 (上下曲撤了); 歌名/作者改跑马灯
+    assert 'id="mini-play"' in html
+    assert 'id="mini-prev"' not in html and 'id="mini-next"' not in html
+    assert 'class="mq-line"' in html and 'class="mq-run"' in html
     # 音量条整个撤了 (1.5.1, 用户点名): 音量交给设备音量键/系统音量
     assert "#fp-volume" not in html and ".fp-volume" not in html
     # 气泡磨砂玻璃 (用户点名): 六成底色配 blur(20), 底下划过的内容糊成
@@ -150,17 +152,18 @@ def test_music_single_url_navigation_wiring():
     assert "hashchange" not in js
     assert "pushState(" not in js and "history.back(" not in js
     assert "pushState(" not in player and "history.back(" not in player
-    # 目标从状态派生: 有层看顶层, 没层看根视图
+    # 目标从状态派生: 有层看顶层, 没层看根视图 (1.8.0: 主页独占根层,
+    # 播放列表/专辑/艺人/已下载/搜索/设置/统计/更新日志全是推入层)
     assert "function parseRoute" in js and "function currentRoute" in js
-    assert "function syncViewTabs" in js
+    assert 'const PANE_VIEWS = ["playlists", "albums", "artists", "downloads",' in js
+    assert '"search", "settings", "stats", "changelog"];' in js
+    assert "PANE_VIEWS.includes(name)" in js
+    assert 'const pushed = view !== "home";' in js
+    assert "function routeRoot" in js and "function routePushed" in js
     # 开局: 旧深链消化一次 → replaceState 洗 URL (不加条目) → 状态开局
     assert 'const legacyHash = location.hash.replace(/^#\\/?/, "");' in js
     assert 'history.replaceState(null, "", location.pathname + location.search);' \
         in js
     assert "navigate(legacyTarget);" in js
-    # 页签点亮同步: 进层全灭; 层收尽 (按钮收/右划收都要) 回到根视图
-    assert "syncViewTabs(pageState.rootView);" in js
-    downloads_header = "// ------------------------------------------------------------ 下载 (离线)"
-    close_stack = js[js.index("function closePushStack"):js.index(downloads_header)]
-    assert "syncViewTabs(pageState.rootView);" in close_stack
-    assert "syncViewTabs(view);" in js[js.index("function routeTo"):]
+    # 层收尽 (按钮收/右划收) 回到根视图 = 主页; 页签点亮同步那套随页签栏撤了
+    assert "syncViewTabs" not in js

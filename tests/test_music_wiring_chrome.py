@@ -6,14 +6,14 @@ from tests.music_static_files import MUSIC_STATIC, music_browser_js, music_page_
 
 
 def test_music_pane_fixed_chrome_wiring():
-    """页签栏/气泡在滚动和切页全程钉死 (用户点名两轮: 切页时不在一个图层 +
+    """船坞三件套/气泡在滚动和切页全程钉死 (用户点名两轮: 切页时不在一个图层 +
     滑动过程中也保持不动)。两层手段: ① 固定壳 —— html/body 锁高锁滚,
     文档永不滚 (iPhone 工具栏只跟文档滚动收放, 文档不滚视口恒定,
-    钉视口的页签栏/气泡物理上无从移动), main 变内部滚动器; ② 全高推入层
-    (z44) 从毛玻璃页签栏 (z50)/气泡 (z45) 底下扫过, 内容顶上用
+    钉视口的船坞/气泡物理上无从移动), main 变内部滚动器; ② 全高推入层
+    (z44) 从毛玻璃船坞 (z50)/气泡底下扫过, 内容顶上用
     env(safe-area-inset-top) 让位 (顶栏撤了, 不再要 JS 量高度)。
     层铺满全高 (设计一致, 用户点名: 气泡底下要有内容, 和主页
-    一样) —— 重影对策挪到运动期: body.pane-anim 暂撤气泡/页签栏磨砂换实底
+    一样) —— 重影对策挪到运动期: body.pane-anim 暂撤船坞三件磨砂换实底
     (fixed+backdrop-filter 底下有扫动的变换层是 WebKit 的重影配方)。
     根视图渲染目标 #root-view (main 是滚动器, 直写会抹掉内容)。"""
     html = music_page_shell()
@@ -24,20 +24,17 @@ def test_music_pane_fixed_chrome_wiring():
     main_css = html[html.index("main {"):html.index("#root-view {")]
     assert "min-height: 0;" in main_css and "overflow-y: auto;" in main_css
     assert "-webkit-overflow-scrolling: touch;" in main_css
-    # 顶部雷区让位 (顶栏发糊同源): main 整个下移, 滚动内容永远进不了那条带子
-    # —— 只给内容加 padding 的话, 一滚字就又钻进去 (2026-09-16 用户复测四个
-    # 一级页页顶全被栅糊+切出屏幕, 就是因为 root-view 顶衬是写死的 14px)。
-    # max(env, 兜底): iOS 26.1+ 系统 bug (WebKit 301994, 用户已升 iOS 27)
-    # 把 env 误报 0, music.js 的 --sys-top-inset 按机型兜底
-    assert "margin-top: max(env(safe-area-inset-top), var(--sys-top-inset, 0px));" \
-        in main_css
+    # 顶部雷区让位: main 整个下移, 滚动内容永远进不了那条带子 —— 只给内容
+    # 加 padding 的话, 一滚字就又钻进去。1.8.0 起纯 env (用户点名「任凭
+    # 模糊, 不做处理」: iOS 26.1+ env 谎报 0 的系统里让位失效, 认了)
+    assert "margin-top: env(safe-area-inset-top);" in main_css
     root_css = html[html.index("#root-view {"):html.index(".push-pane {")]
     assert "max-width: 860px; margin: 0 auto;" in root_css
-    assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in root_css
+    assert "var(--dock-clear)" in root_css                # 底部让位一套账
     assert "max(16px, env(safe-area-inset-right))" in root_css  # 横屏让开侧刘海
     assert "max(16px, env(safe-area-inset-left))" in root_css
     assert html.index('<main id="main">') < html.index('<div id="root-view">') \
-        < html.index("</main>") < html.index('<nav id="tabbar">')
+        < html.index("</main>") < html.index('<div id="dock">')
     # 一级页滚动/渲染都走 main/#root-view, 文档滚动彻底退出
     assert '$("#main").scrollTop = pageState.rootScroll;' in js
     assert 'pageState.rootScroll = $("#main").scrollTop;' in js
@@ -45,7 +42,7 @@ def test_music_pane_fixed_chrome_wiring():
     assert '$("#root-view").innerHTML' in js
     assert "window.scrollTo" not in js
     # 推入层铺满全高: 顶上一直铺到屏顶 (顶栏撤了, env 让开刘海), 底下从磨砂
-    # 气泡/页签栏底下过 (设计一致, 用户点名"气泡下面要有内容")
+    # 船坞/气泡底下过 (设计一致, 用户点名"气泡下面要有内容")
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
     assert "top: 0;" in pane_css
     assert "bottom: 0;" in pane_css
@@ -58,14 +55,16 @@ def test_music_pane_fixed_chrome_wiring():
     # ③ 气泡自家合成层: 任何邻居的变换/合并都复印不到它
     mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
     assert "transform: translateZ(0);" in mini_css
-    # 页签栏同款护甲 (和气泡一样是 fixed 常驻件, 邻居层动起来时防复印)
-    tabbar_css = html[html.index("#tabbar {"):html.index("#tabbar .tab-row")]
-    assert "transform: translateZ(0);" in tabbar_css
+    # 船坞两颗圆键同款护甲 (和气泡一样是 fixed 常驻件, 邻居层动起来时防复印)
+    keys_css = html[html.index("#dock-menu, #dock-search {"):html.index("#dock-menu:active")]
+    assert "transform: translateZ(0);" in keys_css
     # 泳道撤了 (层铺满全高, 没有夹缝可露); 重影对策 = 运动期暂撤磨砂:
-    # CSS 挂 body.pane-anim 实底 (气泡和页签栏两条一起), JS 的 paneMotion()
+    # CSS 挂 body.pane-anim 实底 (船坞三件一起), JS 的 paneMotion()
     # 在每段层运动前打标 (拖动中每下续期), 停稳 500ms 恢复
     assert "#push-stack::after" not in html
-    assert "body.pane-anim #mini-player, body.pane-anim #tabbar" in html
+    assert "body.pane-anim #mini-player," in html
+    assert "body.pane-anim #dock-menu," in html
+    assert "body.pane-anim #dock-search {" in html
     assert "backdrop-filter: none;" in html
     assert "function paneMotion" in js
     open_pane = js[js.index("function openPushPane"):js.index("function closePushStack")]
@@ -78,14 +77,12 @@ def test_music_pane_fixed_chrome_wiring():
                js.index("// ------------------------------------------------------------ 下载 (离线)")]
     assert swipe.count("paneMotion();") >= 4   # 拖动续期/滑出/弹回/取消
     scroll_css = html[html.index(".push-pane .pane-scroll"):
-                      html.index(".seg {")]
+                      html.index(".sticky-head")]
     # 顶上让位纯 CSS (顶栏撤了, env 直读; 独立模式 black-translucent 下拿
-    # 得到真实刘海高度), 底下让开气泡+页签栏 —— JS 量高度那套 (syncPaneTop/
-    # --pane-top/headerBottom) 整个退役。env 被 iOS 26.1+/27 系统 bug 报 0 的
-    # 场合由 --sys-top-inset 兜底 (见 test_music_sys_top_fallback)
-    assert "calc(max(env(safe-area-inset-top), var(--sys-top-inset, 0px)) + 14px)" \
-        in scroll_css
-    assert "calc(var(--tabbar-h) + 90px + env(safe-area-inset-bottom))" in scroll_css
+    # 得到真实刘海高度), 底下让开船坞 —— JS 量高度那套 (syncPaneTop/
+    # --pane-top/headerBottom) 整个退役
+    assert "calc(env(safe-area-inset-top) + 14px)" in scroll_css
+    assert "var(--dock-clear)" in scroll_css
     assert "function syncPaneTop" not in js
     assert '"--pane-top"' not in js
     assert "headerBottom" not in js
@@ -118,16 +115,15 @@ def test_music_171_polish_batch():
 
 
 def test_music_172_fix_batch():
-    """1.7.2 修复批接线 (2026-09-16, 用户手机实测反馈):
+    """1.7.2 修复批接线 (2026-09-16, 用户手机实测反馈; 1.8.0 相关的随界面
+    重构更新):
     - 资料库分页串台/空列表竞态: 换页签后在途旧分页回来灌进新页签
       (顺序看着随机), 切回来时 renderedCount 没归零只渲染「下一页」
       (艺人 218 首全加载完的段直接空白) —— 段守卫 + 缓存重铺归零;
       首页没拉到不再缓存空单 (切回来会重试);
-    - 段选择条/搜索框 sticky 钉在顶端, 不随列表滚走;
-    - 歌曲页签撤掉 (找歌用搜索), 旧存的段名自动回落专辑;
-    - 页签栏图标 23px, 图标+文字整体在 38px 键高里上下居中;
-    - 顶罩兜底加高 (磨砂带实测会浮动, 刘海+88), 独立竖屏首帧 CSS
-      先垫 147px —— JS 启动前系统抓拍条拍到的也是黑罩不是内容。"""
+    - 搜索框 sticky 钉在顶端, 不随列表滚走 (1.8.0: 段选择条随资料库
+      拆页撤掉, sticky 只剩搜索页一处);
+    - 歌曲页签撤掉 (找歌用搜索), 旧存的段名自动回落专辑。"""
     html = music_page_shell()
     js = music_browser_js()
     # 段守卫三件套: 装配时打标 / 追加对不上就丢 / 缓存重铺归零
@@ -135,26 +131,20 @@ def test_music_172_fix_batch():
     assert js.count("body.dataset.segment !== segment") == 2   # 追加 + 装载
     assert "list.renderedCount = 0;" in js
     assert "delete pageState.lists[segment];" in js        # 空单不缓存
-    # 歌曲页签撤掉: 段表只剩三段, fetchListPage 不再有 songs 分支
+    # 歌曲段撤掉: 分页链只剩 albums/artists, fetchListPage 不再有 songs 分支
     assert '["songs", "歌曲"]' not in js
     assert 'segment === "songs"' not in js
     # 资料库体里没有 bindTrackLists 了 (曲目行没了, 专辑/艺人/下载各有各的)
     library_bind = js[js.index("function bindLibraryBody")
                       :js.index("function playDownloadedRow")]
     assert "bindTrackLists" not in library_bind
-    # 段选择条/搜索框: sticky 包裹 + 不透明底衬, 钉 main 顶端
-    sticky_css = html[html.index(".sticky-head {"):html.index(".seg {")]
+    # 搜索框: sticky 包裹 + 不透明底衬, 钉层顶 (1.8.0: 只剩搜索页一处)
+    sticky_css = html[html.index(".sticky-head {"):html.index(".album-hero")]
     assert "position: sticky; top: 0; z-index: 5;" in sticky_css
     assert "background: var(--bg);" in sticky_css
-    assert js.count('<div class="sticky-head">') == 2      # 资料库 + 搜索
-    seg_css = html[html.index(".seg {"):html.index(".seg button")]
-    assert "margin-bottom: 12px;" not in seg_css   # 间距挪进包裹层
-    # 页签栏: 行高定死 38, 键内纵向居中, 图标回到 23
-    tabbar_css = html[html.index("#tabbar .tab-row"):html.index("#tabbar button.on")]
-    assert "height: var(--tabbar-h); align-items: stretch;" in tabbar_css
-    button_css = html[html.index("#tabbar button {"):html.index("#tabbar button.on")]
-    assert "justify-content: center; gap: 1px;" in button_css
-    assert html.count('width="23" height="23"') == 4
-    # 首帧兜底: 独立竖屏先垫最深带子的高度, JS 再按机型覆写
-    assert "@media (display-mode: standalone) and (orientation: portrait)" in html
-    assert "--sys-top-inset: 147px;" in html
+    assert js.count('<div class="sticky-head">') == 1      # 搜索页
+    # 资料库段选择条 (.seg) 与语种 chips 随拆页撤掉: markup 不再产出, 样式一并清场
+    assert 'class="seg"' not in js and ".seg {" not in html
+    assert ".chip {" not in html and "chipsHTML" not in js
+    # 1.8.0 界面重构的「全撤」: 顶罩首帧兜底 (独立竖屏 147px) 不在了
+    assert "--sys-top-inset: 147px;" not in html

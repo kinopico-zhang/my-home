@@ -118,18 +118,18 @@ def test_music_download_all_wiring():
 
 def test_music_changelog_in_app_wiring():
     """更新日志改应用内视图 (用户点名"看日志别断歌"): 原来是整页跳转
-    /music/changelog, 卸载 SPA 音频就停; 改 hash 路由铺在 #main,
-    播放气泡常驻。入口在设置页「更多」段 (顶栏菜单撤了)。独立日志页
-    保留 (直达链接仍可用)。"""
+    /music/changelog, 卸载 SPA 音频就停; 改应用内推入层铺开,
+    播放气泡常驻。入口在设置页「更多」段 (1.8.0 起设置从上弹菜单进)。
+    独立日志页保留 (直达链接仍可用)。"""
     html = music_page_shell()
     js = music_browser_js()
     assert 'data-set-nav="changelog"' in js          # 设置页「更多」段的入口
     assert 'href="/music/changelog"' not in html    # 不再整页跳走
-    assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
-            '.includes(name)) {') in js
-    assert "function renderChangelogView()" in js
+    # 1.8.0: 更新日志是推入层之一 (PANE_VIEWS 名单里), 与主页/专辑同款滑入
+    assert '"search", "settings", "stats", "changelog"];' in js
+    assert "async function renderChangelogView(" in js
     assert 'fetchJSON("/music/changelog/api/entries")' in js
-    assert "#changelog-entries" in html and ".v-badge" in html  # 版本卡片样式
+    assert 'id="changelog-entries"' in js and ".v-badge" in html  # 版本卡片样式
     assert 'navigate(row.dataset.setNav)' in js     # 更多段的行都是导航入口
 
 

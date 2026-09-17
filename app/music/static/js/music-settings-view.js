@@ -1,5 +1,5 @@
 // music-settings-view — My Music 设置视图: 曲库路径/歌词源/蜂窝账单/重新扫描等。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// 拆自 music.js (结构化重构), 1.8.0 起住推入层 (菜单「设置」进来), 渲染目标由调用方给。
 "use strict";
 /* global $, checkScanStatus, escapeHTML, fetchJSON, formatBytes, navigate, toast,
           userRescanPending: writable */
@@ -7,13 +7,13 @@
 
 // ------------------------------------------------------------ 设置页
 // 账号 (谁登录/退出) + 曲库路径 / 联网补歌词开关与地址 / 蜂窝流量月账 +
-// 统计和更新日志入口 + 重新扫描曲库 —— 原品牌菜单的职能全搬进了这页
-// (导航挪去底部页签栏以后菜单没地方挂了)。谁登录都能看;
+// 统计和更新日志入口 + 重新扫描曲库 —— 1.7.0 起品牌菜单的职能全在这页,
+// 1.8.0 起从页签改由菜单键进。谁登录都能看;
 // 改 (路径/开关/地址/保存) 只有管理员 —— 普通账号进来是只读的。
 // 曲库路径改了服务器会立刻重新扫描整个曲库。
 
-async function renderSettingsView() {
-  $("#root-view").innerHTML = '<div id="settings-body">'
+async function renderSettingsView(target) {
+  target.innerHTML = '<div class="pane-title">设置</div><div id="settings-body">'
     + '<p class="stat-empty">加载中…</p></div>';
   const body = $("#settings-body");
   let settings;

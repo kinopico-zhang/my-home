@@ -7,25 +7,23 @@ from tests.music_static_files import MUSIC_STATIC, music_browser_js, music_page_
 
 
 def test_music_stats_page_wiring():
-    """统计页接线: 设置页「更多」段入口 + hash 路由 + 渲染函数 (E2E 再验真数据)。"""
+    """统计页接线: 设置页「更多」段入口 + 推入层路由 + 渲染函数 (E2E 再验真数据)。"""
     html = music_page_shell()
     assert "stat-grid" in html and "format-bar" in html   # 统计卡片 + 比例条
     js = music_browser_js()
-    assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
-            '.includes(name)) {') in js
-    assert "function renderStatsView()" in js
+    assert '"search", "settings", "stats", "changelog"];' in js
+    assert "async function renderStatsView(" in js
     assert '"/music/api/stats"' in js
     assert 'data-set-nav="stats"' in js                  # 设置页入口直通统计页
 
 
 def test_music_home_page_wiring():
-    """主页接线: 底部页签栏主页/资料库/搜索/设置 + 播放列表/最近播放两段 +
-    播放列表详情路由 (E2E 再验真数据)。"""
+    """主页接线 (1.8.0: 主页是唯一根视图, 其余全是推入层): 上弹菜单五项 +
+    播放列表/最近播放两段 + 播放列表详情路由 (E2E 再验真数据)。"""
     html = music_page_shell()
-    assert '<nav id="tabbar">' in html
-    assert ('data-view-tab="home"' in html and 'data-view-tab="library"' in html
-            and 'data-view-tab="search"' in html
-            and 'data-view-tab="settings"' in html)   # 搜索/设置都收进页签
+    assert '<div id="dock">' in html                     # 船坞三件套在场
+    assert 'data-pop-nav="playlists"' in html           # 菜单进播放列表
+    assert 'id="dock-search"' in html                   # 搜索键直进搜索页
     assert 'id="search-btn"' not in html    # 放大镜按钮已撤
     assert 'id="sync-playlists"' not in html     # Plex 同步入口已撤
     assert "playlist-row" in html                  # 行样式在
@@ -36,19 +34,21 @@ def test_music_home_page_wiring():
     assert 'if (name === "playlist" && argument)' in js
     assert "function renderPlaylistView(" in js
     assert "playlistRowHTML" in js
+    # 播放列表独立成层 (原主页列表段上头的入口, 1.8.0 进上弹菜单)
+    assert "function renderPlaylistsPane(" in js
     # 默认进主页 (单地址批: 旧深链开局消化一次, URL 洗成光杆 /music)
     assert 'history.replaceState(null, "", location.pathname + location.search);' in js
     assert 'navigate(legacyTarget);' in js
-    assert '["albums", "专辑"], ["artists", "艺人"], ["downloads", "已下载"]' in js
 
 
 def test_music_downloads_wiring():
-    """下载接线: 纯逻辑模块 (node 直测) + SW 拦流 + 已下载段 + 能力门控 + 下载管理。"""
+    """下载接线: 纯逻辑模块 (node 直测) + SW 拦流 + 已下载独立页 + 能力门控 + 下载管理。"""
     js = music_browser_js()
     assert "downloadsSupported" in js and "createDownloads" in js
     assert '"/music/sw.js"' in js                  # SW 注册
     assert "isSecureContext" in js                 # 明文 HTTP 整个功能收起
-    assert 'segment === "downloads"' in js         # 已下载段不走接口分页
+    assert "function renderDownloadsPane(" in js   # 已下载独立页 (1.8.0)
+    assert "$(\"#dl-pane-body\")" in js            # 页容器独占 id, 进度刷新认得准
     assert "data-download-track" in js             # 曲目行下载标
     assert "storageUsage" in js and "formatBytes" in js    # 下载管理: 量大小并显示
     assert "dl-clear-all" in js and "removeAll" in js      # 一键清空 (confirm 后)
@@ -61,13 +61,14 @@ def test_music_downloads_wiring():
     html = music_page_shell()
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
     scripts = re.findall(r'<script src="([^"]+)"', html)
-    # 结构化重构后 39 个独立脚本, 引用一律带版本参数 (改哪个 bump 哪个)
-    assert len(scripts) == 39 and all("?v=" in src for src in scripts)
+    # 结构化重构后 40 个独立脚本 (1.8.0: +dock-menu/+playlists-pane/-system-top-fallback),
+    # 引用一律带版本参数 (改哪个 bump 哪个)
+    assert len(scripts) == 40 and all("?v=" in src for src in scripts)
     assert "js/downloads.js?v=" in html and "js/music-app-boot.js?v=" in html
     sw = (MUSIC_STATIC / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
-    assert "music-shell" in sw                     # 应用壳也进缓存 (断网打得开)
+    assert "music-shell-v3" in sw                  # 应用壳也进缓存 (断网打得开)
     assert "clients.claim" in sw                   # 装完立刻接管已开的页面
 
 
@@ -113,16 +114,15 @@ def test_music_track_context_menu_wiring():
 
 
 def test_music_settings_view_wiring():
-    """设置页接线: 底部页签栏「设置」入口 + 表单三件 (曲库路径/歌词开关/
-    API 地址) + 流量月账 + 原菜单职能 (账号/退出/重扫/统计/更新日志入口);
-    普通账号只读 (开关/输入框锁着, 保存钮不出)。"""
+    """设置页接线 (1.8.0: 上弹菜单「设置」进, 推入层铺开) + 表单三件
+    (曲库路径/歌词开关/API 地址) + 流量月账 + 原菜单职能 (账号/退出/重扫/
+    统计/更新日志入口); 普通账号只读 (开关/输入框锁着, 保存钮不出)。"""
     html = music_page_shell()
     js = music_browser_js()
-    assert 'data-view-tab="settings"' in html            # 页签直通设置页
+    assert 'data-pop-nav="settings"' in html             # 菜单直通设置页
     assert ".settings-block" in html and ".switch" in html and ".month-row" in html
-    assert ('if (["home", "library", "search", "stats", "settings", "changelog"]'
-            '.includes(name)) {') in js
-    assert "function renderSettingsView()" in js
+    assert '"search", "settings", "stats", "changelog"];' in js
+    assert "async function renderSettingsView(" in js
     assert 'fetchJSON("/music/api/settings")' in js
     assert 'fetchJSON("/api/me")' in js and "editable" in js   # 按管理员分叉
     assert "music_directory" in js and "lyrics_api_enabled" in js \
@@ -137,7 +137,7 @@ def test_music_cellular_wiring():
     keepalive 上报 + onHide 兜底 (切后台/离页都报)。"""
     html = music_page_shell()
     js = music_browser_js()
-    assert "cellular-usage.js?v=1" in html                     # 模块加载
+    assert "cellular-usage.js?v=2" in html                     # 模块加载
     assert "createCellularMonitor" in js
     assert 'connection.type === "cellular"' in js              # 只有认得出的才记
     assert '"/music/api/cellular-usage"' in js and "keepalive: true" in js

@@ -1,5 +1,12 @@
-/* music-views — My Music 前端样式 (一级视图: 统计页 / 搜索框 / 设置页 / 更新日志 / 已下载管理栏)。
+/* music-views — My Music 前端样式 (二级页大标题 / 统计页 / 搜索框 / 设置页 / 更新日志 / 已下载管理栏)。
    拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 二级页大标题 (1.8.0: 专辑/艺人/已下载/设置等独占推入层) ----------
+   iOS 设置式: 页顶大标题, 随内容一起滚走 (详情页的 hero 头同款角色) */
+.pane-title {
+  font-size: 26px; font-weight: 700; letter-spacing: -.5px;
+  padding: 2px 0 12px;
+}
+
 /* ---------- 统计页 ---------- */
 .stat-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
