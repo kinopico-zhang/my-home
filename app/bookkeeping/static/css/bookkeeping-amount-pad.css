@@ -1,0 +1,26 @@
+/* bookkeeping-amount-pad — bookkeeping 页样式。拆自 bookkeeping.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 金额键盘 (紧凑) -----------
+   三列数字 + 运算符列, 右列上下两枚大键: ⌫(浅) / 完成(蓝)。
+   ⌫ 按住半秒清空; 吸底常驻 (弹层开着就在, 类别区在上面滚动)。 */
+.amt-pad {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
+  position: sticky; bottom: 0; z-index: 5;
+  max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .22s ease, opacity .16s ease, margin-top .22s ease;
+}
+.amt-pad.on {
+  max-height: 216px; opacity: 1;
+  background: var(--surface); border-top: 1px solid var(--hairline);
+  margin: 10px -18px 0; padding: 8px 18px calc(env(safe-area-inset-bottom) + 8px);
+}
+.amt-pad .k {
+  height: 38px; border-radius: 10px; font-size: 18px; color: var(--ink-1);
+  background: var(--surface-3); font-variant-numeric: tabular-nums;
+}
+.amt-pad .k:active { filter: brightness(.72); }       /* 按下变暗 (iOS 键感) */
+.amt-pad .k.op { background: #ff9f0a; }               /* 运算符 = 计算器橙 */
+.amt-pad .k.util { grid-column: 5; grid-row: 1 / span 2; height: auto;
+  background: #a5a5a5; color: #141416; font-size: 18px; }
+.amt-pad .k.done { grid-column: 5; grid-row: 3 / span 2; height: auto;
+  background: var(--blue); color: #fff; font-size: 15px; font-weight: 600; }
+.amt-pad .k.zero { grid-column: span 2; }

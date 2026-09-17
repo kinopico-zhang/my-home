@@ -1,5 +1,10 @@
-// accounts.js — 管理员账号管理: 用户列表 + 邀请签发/复制/撤销 (非管理员只看到提示)
+// accounts.js — 管理员账号管理: 用户列表 + 邀请签发/复制/撤销 (非管理员只看到提示)。
+// 结构化重构: 链接送达 (copyText/deliverLink) 拆去了 link-delivery.js
+// (先于本脚本加载, 全局可用)。
 "use strict";
+/* global deliverLink */
+/* exported loadAll */
+
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -49,59 +54,6 @@ function invState(inv) {
 
 function inviteLink(token) {
   return `${location.origin}/register?invite=${encodeURIComponent(token)}`;
-}
-
-/* HTTP 环境没有异步剪贴板 API (isSecureContext=false), 退化用 execCommand。
-   iOS Safari 要求: 同一手势内先 focus 再选中再拷贝, 元素还得留在视口里
-   (完全透明/移出屏幕会被拒绝建立选区)。旧版三处全踩 —— 对 textarea 用
-   Range 选 (它没有 DOM 子节点, 选不中), 没 focus, 还 opacity:0 移出屏幕,
-   iOS Safari 一直复制落空 (2026-09-13 用户抓到)。 */
-async function copyText(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    try { await navigator.clipboard.writeText(text); return true; } catch (_e) { /* 落回 */ }
-  }
-  let ok = false;
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.readOnly = true;   // 只读: 聚焦不弹 iOS 键盘
-  ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;"
-    + "opacity:.01;pointer-events:none";
-  document.body.appendChild(ta);
-  ta.focus({ preventScroll: true });          // 必须先聚焦, 选区才建立
-  ta.setSelectionRange(0, text.length);
-  try { ok = document.execCommand("copy"); } catch (_e) { ok = false; }
-  ta.blur();
-  ta.remove();
-  if (ok) return true;
-  // 再试老路: contenteditable + Range 选区 (更老的 iOS 只认这种)
-  const div = document.createElement("div");
-  div.contentEditable = "true";
-  div.textContent = text;
-  div.style.cssText = "position:fixed;top:0;left:0;opacity:.01;pointer-events:none";
-  document.body.appendChild(div);
-  const range = document.createRange();
-  range.selectNodeContents(div);
-  const sel = getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-  try { ok = document.execCommand("copy"); } catch (_e) { ok = false; }
-  sel.removeAllRanges();
-  div.remove();
-  return ok;
-}
-
-/* 链接送出去: 复制优先; iOS Safari 在 HTTP 下拷贝这条路可能整个被拒,
-   拉起系统分享面板兜底 (面板里就有「拷贝」, 还能直接发给家人)。
-   返回 copied / shared / cancelled / failed。 */
-async function deliverLink(link) {
-  if (await copyText(link)) return "copied";
-  if (typeof navigator.share === "function") {
-    try {
-      await navigator.share({ text: "My Home 注册邀请:", url: link });
-      return "shared";
-    } catch (_e) { return "cancelled"; }   // 用户自己关了面板
-  }
-  return "failed";
 }
 
 /* ---------- 载入 ---------- */
