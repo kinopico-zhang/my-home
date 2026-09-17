@@ -118,7 +118,7 @@ def test_all_pages_have_refresh_button(auth):
         "/tesla/changelog": ("/static/changelog-page.js", "await load();"),
         "/music/changelog": ("/static/changelog-page.js", "await load();"),
         "/bookkeeping/changelog": ("/static/changelog-page.js", "await load();"),
-        "/bookkeeping": ("bookkeeping.js", "await syncNow();"),
+        "/bookkeeping": ("bookkeeping-sync.js", "await syncNow();"),
         "/accounts": ("accounts.js", "await loadAll();"),
     }
     for path, (js_file, call) in wiring.items():
@@ -374,7 +374,7 @@ def test_public_paths_accessible_without_login(client):
                   "/tesla/static/js/trackutil.js", "/tesla/static/favicon.svg",
                   "/static/login.js", "/static/register.js", "/static/home.js",
                   "/static/favicon.svg",               # 门厅层静态放行
-                  "/bookkeeping/static/bookkeeping.js",
+                  "/bookkeeping/static/bookkeeping-state.js",
                   "/bookkeeping/static/bookkeeping-merge.js"):
         assert client.get(asset).status_code == 200, asset
     # Safari 不支持 SVG favicon, 需要 PNG 版 + iOS 主屏 apple-touch-icon
@@ -572,7 +572,7 @@ def test_cache_control_headers(auth):
     for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
                  "/", "/accounts", "/bookkeeping"):
         assert auth.get(path).headers["cache-control"] == "no-cache", path
-    assert auth.get("/bookkeeping/static/bookkeeping.js").headers["cache-control"] \
+    assert auth.get("/bookkeeping/static/bookkeeping-state.js").headers["cache-control"] \
         == "no-cache"
     assert auth.get("/static/home.js").headers["cache-control"] == "no-cache"
 
@@ -685,7 +685,7 @@ def test_accounts_page_is_home_layer(auth):
 def test_bookkeeping_topbar_is_own_app(auth):
     """记账应用自己的顶栏: 品牌下拉 + 退出登录收菜单里, 刷新按钮最右;
     与 My Tesla 只共享账号 —— 页面里不出现任何 tesla 链接/脚本。"""
-    html = auth.get("/bookkeeping").text
+    html = _page_with_css(auth, "/bookkeeping")    # refresh-btn 样式在 css 文件里
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
     assert 'class="logout-row" id="logout"' in html
     assert '<button id="refresh-btn"' in html
@@ -723,7 +723,7 @@ def test_accounts_entry_only_in_home(auth):
     assert 'fetch("/api/me"' in home_js
     assert "is_admin" in home_js
     assert "admin-show" in home_js           # is_admin 才放行
-    html = auth.get("/").text
+    html = _page_with_css(auth, "/")         # .admin-only 样式在 css 文件里
     assert ".admin-only" in html             # CSS 默认 display:none
     assert ".admin-only.admin-show" in html  # 放行态
     for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",

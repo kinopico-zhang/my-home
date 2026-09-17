@@ -56,31 +56,18 @@ export default [
     rules: { ...pageScript.rules, "no-loss-of-precision": "off" },
   },
 
-  // 记账应用 (app/bookkeeping/static): 独立应用的页面脚本
+  // 记账应用 (app/bookkeeping/static): 纯逻辑 (bookkeeping-merge /
+  // amount-calculator, 带 UMD 尾巴供 node 测试) 先加载; 页面脚本按逻辑
+  // 拆成小文件 (bookkeeping-*.js), 经典脚本按 bookkeeping.html 里的顺序
+  // 加载。跨模块引用走全局, 每个文件头部自带 /* global */ (用到别处定义的)
+  // 与 /* exported */ (本文件定义、别处用的) 注释。
   {
-    files: ["app/bookkeeping/static/amount-calculator.js",
-            "app/bookkeeping/static/bookkeeping-merge.js"],
+    files: ["app/bookkeeping/static/*.js"],
     ...pageScript,
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
       globals: { ...globals.browser, module: "readonly" },
-    },
-  },
-  {
-    files: ["app/bookkeeping/static/bookkeeping.js"],
-    ...pageScript,
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: "script",
-      globals: {
-        ...globals.browser,
-        // bookkeeping-merge.js / amount-calculator.js 先于 bookkeeping.js
-        // 以经典脚本加载 (函数声明进全局)
-        mergeEntries: "readonly", entriesToUpload: "readonly",
-        remoteWins: "readonly", visibleEntries: "readonly", monthTotals: "readonly",
-        evaluateAmount: "readonly", applyAmountKey: "readonly",
-      },
     },
   },
 

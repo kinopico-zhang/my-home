@@ -47,7 +47,8 @@ def test_resolve_db_host_env_inspect_and_failure(monkeypatch):
                         lambda *_a, **_k: "172.17.0.2\n")
     assert database.resolve_db_host() == "172.17.0.2"
     monkeypatch.setattr(subprocess_module, "check_output", lambda *_a, **_k: "")
-    monkeypatch.setattr(database, "DOCKER_BIN_CANDIDATES", ["/bin/false"])
+    monkeypatch.setattr(database.teslamate_engine, "DOCKER_BIN_CANDIDATES",
+                        ["/bin/false"])
     with pytest.raises(RuntimeError, match="TMDB_HOST"):
         database.resolve_db_host()
 

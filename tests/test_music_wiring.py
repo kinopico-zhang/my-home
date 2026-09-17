@@ -151,10 +151,11 @@ def test_music_share_link_wiring():
                     / "webapp" / "share_routes.py").read_text(encoding="utf-8")
     assert '_OG_MARK = "<!--og-->"' in share_routes
     assert '"/share/{token}/lyrics/{track_id}"' in share_routes
-    # 分享页对整站是公开前缀 (中间件只认这个面, 过期由路由自己验)
-    main_py = (Path(__file__).parent.parent / "app" / "main.py").read_text(
-        encoding="utf-8")
-    assert '_PUBLIC_PREFIXES = ("/music/share/",)' in main_py
+    # 分享页对整站是公开前缀 (中间件只认这个面, 过期由路由自己验);
+    # 结构化重构后中间件拆去了 app/home/middleware.py
+    middleware = (Path(__file__).parent.parent / "app" / "home"
+                  / "middleware.py").read_text(encoding="utf-8")
+    assert '_PUBLIC_PREFIXES = ("/music/share/",)' in middleware
 
 
 def test_music_swipe_delete_wiring():

@@ -1,0 +1,78 @@
+/* bookkeeping-entry-sheet — bookkeeping 页样式。拆自 bookkeeping.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+/* ---------- 记/改一笔 (底部弹层) ---------- */
+#sheet-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 70;
+  opacity: 0; transition: opacity .2s;
+}
+#sheet-mask.on { opacity: 1; }
+#sheet {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(env(safe-area-inset-bottom) * -1);
+  padding-bottom: 6px;
+  background: var(--surface); border-radius: 20px 20px 0 0;
+  border-top: 1px solid var(--hairline);
+  z-index: 71; transform: translateY(102%); transition: transform .25s;
+  max-width: 560px; margin: 0 auto; padding-left: 18px; padding-right: 18px; padding-top: 8px;
+  max-height: calc(100dvh - 24px); overflow-y: auto;   /* 键盘展开后小屏可滚 */
+  overflow-x: hidden;                 /* overflow-y:auto 会把另一轴隐式变 auto, */
+  overscroll-behavior-y: contain;     /* 日期/备注行超宽 7px 就能整层左右拖 */
+}
+#sheet.on { transform: translateY(0); }
+.grab-zone { padding: 7px 0 3px; margin: 0 0 8px; touch-action: none; cursor: pointer; }
+.grab { width: 36px; height: 4px; border-radius: 2px; background: var(--hairline); margin: 0 auto; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sheet-head h2 { flex: 1; text-align: center; font-size: 16px; font-weight: 650; }
+.head-btn { font-size: 13.5px; color: var(--ink-2); padding: 5px 2px; min-width: 42px; }
+#sheet-del { color: var(--red); text-align: right; }
+.seg { display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+.seg button { flex: 1; padding: 8px 0; border-radius: 8px; font-size: 14px; color: var(--ink-2); }
+.seg button.on.exp { background: #48484a; color: var(--ink-1); }
+.seg button.on.inc { background: rgba(48,209,88,.22); color: var(--green); }
+.amt-line { display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px; }
+.amt-line .amt-eq {           /* 四则表达式的实时结果 (= 20.5) */
+  flex: none; font-size: 14px; font-weight: 600; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.amt-line.shake { animation: amt-shake .3s; }
+@keyframes amt-shake {
+  20% { transform: translateX(-5px); } 40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); } 80% { transform: translateX(2px); }
+}
+.amt-line .cur { font-size: 26px; font-weight: 700; color: var(--ink-2); }
+.amt-line input {
+  flex: 1; border: 0; background: none; outline: 0; color: var(--ink-1);
+  font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums;
+  caret-color: var(--blue); min-width: 0;
+}
+.cat-tiles {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px 4px;
+  margin-bottom: 8px;
+  max-height: 34dvh; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 2px;                     /* 滚动条位不压格子 */
+}
+.cat-tiles .tile { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cat-tiles .ti {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center; font-size: 21px;
+  filter: grayscale(1) brightness(1.25);   /* emoji 单色化: 灰阶去彩, 提亮防暗色图标沉底 */
+}
+.cat-tiles .tile:active .ti { background: var(--surface-3); }
+.cat-tiles .tn { font-size: 11px; color: var(--ink-2); }
+.cat-tiles .tile.on .ti { background: var(--blue); }
+.cat-tiles .tile.on .tn { color: #fff; font-weight: 600; }
+.row2 { display: flex; gap: 10px; margin-bottom: 6px; }
+.field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: var(--surface-2); border-radius: 10px; padding: 9px 11px; }
+.field span { font-size: 12.5px; color: var(--ink-3); flex: none; }
+.field input { flex: 1; min-width: 0; border: 0; background: none; outline: 0;
+  color: var(--ink-1); font: inherit; caret-color: var(--blue); }
+input[type="date"]::-webkit-date-edit { color: var(--ink-1); }
+input[type="time"]::-webkit-date-edit { color: var(--ink-1); }
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .5; }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 8px; }
+.tag-chips button {
+  font-size: 11.5px; padding: 3px 10px; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-3); border: 1px solid transparent;
+}
+.tag-chips button.on { color: #7db3f0; border-color: rgba(57,135,229,.5); }
