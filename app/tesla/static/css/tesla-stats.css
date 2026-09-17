@@ -158,6 +158,7 @@ main { max-width: 920px; margin: 0 auto; padding-bottom: 40px; }
 .mini-seg button { padding: 3px 9px; border-radius: 6px; font-size: 11px; color: var(--ink-2); }
 .mini-seg button.on { background: #636366; color: #fff; }
 .chart-box { height: 232px; }
+#chart-monthly-cost { height: 118px; }  /* 月费用图矮版 (原内联样式) */
 .chart-table { font-size: 12px; max-height: 232px; overflow-y: auto; }
 .chart-table table { width: 100%; border-collapse: collapse; }
 .chart-table th, .chart-table td { text-align: right; padding: 5px 8px; font-variant-numeric: tabular-nums; }

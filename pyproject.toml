@@ -50,8 +50,8 @@ max-positional-arguments = 10
 max-attributes = 10
 # 数据密集的查询/组装函数局部变量多
 max-locals = 18
-# repository 聚合全部查询 (TeslaMate 只读 + 自有库: 补路/分组/设置), 不拆模块
-max-module-lines = 1600
+# 全仓硬上限: 文件按逻辑拆分, 超 200 行就必须再拆 (结构化重构批次 #70-75 起全员达标)
+max-module-lines = 200
 max-statements = 60
 max-branches = 14
 

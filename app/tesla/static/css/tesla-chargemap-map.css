@@ -23,6 +23,7 @@ main { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
   padding: 9px 26px; border-radius: 999px; font-size: 14px; font-weight: 600;
   background: var(--blue); color: #fff;
 }
+.retry-row { text-align: center; margin-top: 16px; }  /* 重新检测按钮居中 (原内联样式) */
 .hint-card {
   max-width: 420px; background: var(--surface); border-radius: 18px;
   border: 1px solid var(--hairline); padding: 22px 20px; text-align: left;

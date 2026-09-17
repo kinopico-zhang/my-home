@@ -24,7 +24,7 @@
            0 0;
   border: 0; background: none; touch-action: none;
 }
-#fp-grab div { width: 60px; height: 5px; border-radius: 2.5px;
+#fp-grab span { width: 60px; height: 5px; border-radius: 2.5px;
                background: rgba(255,255,255,.5); }
 .fp-body {
   position: relative; flex: 1; min-height: 120px;
