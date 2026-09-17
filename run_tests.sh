@@ -56,6 +56,6 @@ node node_modules/c8/bin/c8.js \
   --include 'app/music/static/js/downloads-capability.js' \
   --include 'app/music/static/js/cellular-usage.js' \
   --check-coverage --lines 95 --branches 95 --functions 95 \
-  --reporter text node --test tests/js/ || rc=1
+  --reporter text node --test tests/js/*.test.mjs || rc=1
 
 exit $rc
