@@ -1,6 +1,6 @@
 """页面路由测试: 根路径重定向链, 登录后放行, 静态资源重校验,
-缓存头, 登录页回头客, 账号页归属门厅, 记账/音乐自有顶栏。
-拆自 test_auth.py (结构化重构, 代码逐字节未动)。"""
+缓存头, 登录页回头客, 账号页属共享层, 记账/音乐自有顶栏。
+拆自 test_auth.py (拆仓批次随门厅撤除一并改口径)。"""
 
 from fastapi.testclient import TestClient
 
@@ -9,15 +9,16 @@ import app.main as m
 from tests.page_test_helpers import _page_with_css
 
 def test_root_redirect_chain(auth):
-    """登录后根路径就是 My Home 门厅 (不再转去充电页); /tesla 仍收口到默认页。"""
-    assert auth.get("/", follow_redirects=False).status_code == 200
+    """门厅已撤: 根路径无条件 302 进 My Music (未登录会在音乐 scope 里
+    被再拦一次登录页); /tesla 仍收口到默认页。"""
+    r = auth.get("/", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (302, "/music")
     r = auth.get("/tesla", follow_redirects=False)
     assert (r.status_code, r.headers["location"]) == (302, "/tesla/charging")
 
 
 def test_pages_served_after_login(auth):
-    for path, marker in (("/", "My Home"),                    # 门厅
-                         ("/tesla/charging", "My Tesla"),
+    for path, marker in (("/tesla/charging", "My Tesla"),
                          ("/tesla/stats", "My Tesla"),
                          ("/tesla/chargemap", "My Tesla"),
                          ("/tesla/map", "My Tesla"),
@@ -50,18 +51,18 @@ def test_cache_control_headers(auth):
     anon = TestClient(m.app)
     assert anon.get("/tesla/map/api/config").headers["cache-control"] == "no-store"
     for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
-                 "/", "/accounts", "/bookkeeping"):
+                 "/accounts", "/bookkeeping"):
         assert auth.get(path).headers["cache-control"] == "no-cache", path
     assert auth.get("/bookkeeping/static/bookkeeping-state.js").headers["cache-control"] \
         == "no-cache"
-    assert auth.get("/static/home.js").headers["cache-control"] == "no-cache"
+    assert auth.get("/static/login.js").headers["cache-control"] == "no-cache"
 
 
 def test_login_page_redirects_authed_visitor(auth, client):
-    """已登录的人开 /login: 服务端 302 直接进门厅 (不再显示表单 ——
-    旧版靠页面 JS 探测切换, 现在登录态判断在中间件)。"""
+    """已登录的人开 /login: 服务端 302 直接进默认应用 My Music (不再显示
+    表单 —— 旧版靠页面 JS 探测切换, 现在登录态判断在中间件)。"""
     r = auth.get("/login", follow_redirects=False)
-    assert (r.status_code, r.headers["location"]) == (302, "/")
+    assert (r.status_code, r.headers["location"]) == (302, "/music")
     # 未登录看到的才是登录表单 (My Home 的门, 全站唯一)
     # (client 与 auth 是同一个对象且已登录, 匿名视角要新建)
     html = TestClient(m.app).get("/login").text
@@ -71,12 +72,12 @@ def test_login_page_redirects_authed_visitor(auth, client):
 
 
 def test_accounts_page_is_home_layer(auth):
-    """账号管理页属门厅层: 品牌菜单是 My Home (门厅/两应用/账号管理,
+    """账号管理页属共享层: 品牌菜单是 My Home (三应用 + 账号管理,
     当前项高亮), 退出收在菜单里, 刷新按钮最右。"""
     html = auth.get("/accounts").text
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
     assert "<summary>My Home" in html
-    assert '<a href="/">My Home 门厅</a>' in html
+    assert '<a href="/music">My Music</a>' in html
     assert '<a href="/tesla/charging">My Tesla</a>' in html
     assert '<a href="/bookkeeping">My Money</a>' in html
     assert '<a class="on" href="/accounts">账号管理</a>' in html
@@ -118,16 +119,9 @@ def test_mymusic_topbar_is_own_app(auth):
     assert 'href="/music/static/manifest.json"' in html
 
 
-def test_accounts_entry_only_in_home(auth):
-    """账号管理入口只在门厅且仅管理员可见 (home.js 放行); My Tesla 的页面
-    不再有账号管理 —— 账号体系属于 My Home 共享层, 不属于任何一个应用。"""
-    home_js = auth.get("/static/home.js?v=1").text
-    assert 'fetch("/api/me"' in home_js
-    assert "is_admin" in home_js
-    assert "admin-show" in home_js           # is_admin 才放行
-    html = _page_with_css(auth, "/")         # .admin-only 样式在 css 文件里
-    assert ".admin-only" in html             # CSS 默认 display:none
-    assert ".admin-only.admin-show" in html  # 放行态
+def test_accounts_not_in_app_pages(auth):
+    """账号管理属于共享层, 不属于任何一个应用: My Tesla 的页面不出现
+    账号管理入口, 也不引共享层的 me.js (门厅撤了, 入口只有直达 /accounts)。"""
     for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
                  "/tesla/settings", "/tesla/live"):
         html = auth.get(path).text
