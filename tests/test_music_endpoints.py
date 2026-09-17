@@ -91,6 +91,7 @@ def test_record_play_counts_and_dedups():
         assert stat.play_count == 2
         assert [t.title for t in
                 library_queries.recent_plays(session, "u-1")] == ["曲A"]
+        assert library_queries.recent_plays(session, "u-1")[0].play_count == 2
         assert library_queries.recent_plays(session, "别人") == []
 
 
@@ -112,6 +113,8 @@ def test_play_record_endpoints_per_user(auth, usersdb):
     recent = auth.get("/music/api/plays/recent").json()["tracks"]
     assert [t["title"] for t in recent] == ["曲A", "曲B"]   # 最近那次排前
     assert recent[0]["album_title"] == "甲"
+    assert recent[0]["play_count"] == 2                # 1.8.1: 播过几次跟着行走
+    assert recent[1]["play_count"] == 1
 
     # 另一个账号: 各记各的, 看不见管理员的记录
     account_store.create_user(usersdb, "试听乙", "password123")

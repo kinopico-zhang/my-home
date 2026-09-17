@@ -18,11 +18,13 @@ def test_music_stats_page_wiring():
 
 
 def test_music_home_page_wiring():
-    """主页接线 (1.8.0: 主页是唯一根视图, 其余全是推入层): 上弹菜单五项 +
-    播放列表/最近播放两段 + 播放列表详情路由 (E2E 再验真数据)。"""
+    """主页接线 (1.8.0: 主页是唯一根视图, 其余全是推入层): 上弹菜单六项 +
+    播放列表/最近播放两段 + 播放列表详情路由 + 最近播放独立页 (1.8.1,
+    E2E 再验真数据)。"""
     html = music_page_shell()
     assert '<div id="dock">' in html                     # 船坞三件套在场
     assert 'data-pop-nav="playlists"' in html           # 菜单进播放列表
+    assert 'data-pop-nav="recent"' in html              # 菜单进最近播放页
     assert 'id="dock-search"' in html                   # 搜索键直进搜索页
     assert 'id="search-btn"' not in html    # 放大镜按钮已撤
     assert 'id="sync-playlists"' not in html     # Plex 同步入口已撤
@@ -36,6 +38,13 @@ def test_music_home_page_wiring():
     assert "playlistRowHTML" in js
     # 播放列表独立成层 (原主页列表段上头的入口, 1.8.0 进上弹菜单)
     assert "function renderPlaylistsPane(" in js
+    # 最近播放独立成层 (1.8.1): LRU 整页 + 次数替时长 (词标/下载标照旧)
+    assert "function renderRecentPane(" in js
+    assert '"recent", "downloads",' in js                 # PANE_VIEWS 收录
+    assert 'else if (view === "recent") renderRecentPane(target);' in js
+    assert '"/music/api/plays/recent?limit=100"' in js
+    assert "pageState.recentPane" in js                   # 点行开播的队列语境
+    assert "`×${track.play_count}`" in js                 # 行右缘 = 播过几次
     # 默认进主页 (单地址批: 旧深链开局消化一次, URL 洗成光杆 /music)
     assert 'history.replaceState(null, "", location.pathname + location.search);' in js
     assert 'navigate(legacyTarget);' in js
@@ -53,6 +62,10 @@ def test_music_downloads_wiring():
     assert "storageUsage" in js and "formatBytes" in js    # 下载管理: 量大小并显示
     assert "dl-clear-all" in js and "removeAll" in js      # 一键清空 (confirm 后)
     assert "navigator.storage.estimate" in js      # 手机存储占用
+    # 1.8.2: 下载中的进度从百分比文字换成圆环 (r=8.5 周长切 dashoffset,
+    # 正上方顺时针画满; 已下载照旧是勾)
+    assert "function downloadRingHTML" in js
+    assert "stroke-dasharray" in js and "stroke-dashoffset" in js
     # 已下载行也带封面: 曲目封面接口 + 裂图退音符 (和播放列表行同款)
     assert 'src="/music/media/tracks/${entry.track_id}/artwork"' in js
     downloads_js = (MUSIC_STATIC / "js" / "downloads.js").read_text(encoding="utf-8")
@@ -61,14 +74,14 @@ def test_music_downloads_wiring():
     html = music_page_shell()
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
     scripts = re.findall(r'<script src="([^"]+)"', html)
-    # 结构化重构后 40 个独立脚本 (1.8.0: +dock-menu/+playlists-pane/-system-top-fallback),
+    # 结构化重构后 42 个独立脚本 (1.8.1: +recent-pane; 1.8.3: +search-pages),
     # 引用一律带版本参数 (改哪个 bump 哪个)
-    assert len(scripts) == 40 and all("?v=" in src for src in scripts)
+    assert len(scripts) == 42 and all("?v=" in src for src in scripts)
     assert "js/downloads.js?v=" in html and "js/music-app-boot.js?v=" in html
     sw = (MUSIC_STATIC / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
-    assert "music-shell-v3" in sw                  # 应用壳也进缓存 (断网打得开)
+    assert "music-shell-v6" in sw                  # 应用壳也进缓存 (断网打得开)
     assert "clients.claim" in sw                   # 装完立刻接管已开的页面
 
 
@@ -92,7 +105,10 @@ def test_music_track_context_menu_wiring():
                  'document.addEventListener("contextmenu"',
                  "navigator.share", "execCommand",          # 分享 + 复制回落
                  "suppressTrailingTarget",                 # 长按尾随点击按元素吞
-                 "navigate(`artist/${track.artist_id}`)",
+                 # 1.8.2: 艺人/专辑两项并一路跳转 —— 先收全屏播放页
+                 # (z90 盖着 z44 的推入层, 不收 = 看着没反应), 再按项分目标
+                 "if (playerOpen) closeFullPlayer();",
+                 '? `artist/${track.artist_id}` : `album/${track.album_id}`);',
                  'fetchJSON("/music/api/playlists"',
                  '`/music/api/playlists/${playlistId}/tracks`',
                  "error.status === 409",            # 已在列表里: 直说原因不算失败

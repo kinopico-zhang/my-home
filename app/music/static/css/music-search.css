@@ -1,0 +1,51 @@
+/* music-search — My Music 搜索页布局 (1.8.3 重排, 用户点名): 输入框钉在
+   页底船坞上方 (顶端不再有钉死的内容), 有查询时结果分四子页左右滑切换。
+   拆自 music-views.css 的搜索节 (结构化重构: 文件 ≤200 行按逻辑拆分)。 */
+/* ---------- 页壳: 顶端完全交给滚动内容, 底部一条钉在船坞上方 ---------- */
+.search-shell {
+  /* 抵掉 .pane-scroll 的上/左右衬: 安全区衬进各页内部, 滚动时内容从
+     系统磨砂带底下扫过去; 底部衬保留 —— 输入框正好坐在船坞上方 */
+  display: flex; flex-direction: column; height: 100%;
+  margin: calc(-1 * (env(safe-area-inset-top) + 14px)) -16px 0;
+}
+#search-body {
+  flex: 1; min-height: 0;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px 12px;
+}
+/* 有查询: 变身横向 snap 容器, 竖滚下放进各页 (touch-action 是链式约束,
+   .push-pane 已放行 pan-x, 这里才滑得动; 起手在页里的横拖归切页,
+   不归推入层的右划返回 —— 两条横手势分家) */
+#search-body.paged {
+  display: flex; overflow-x: auto; overflow-y: hidden; padding: 0;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+}
+.search-page {
+  flex: 0 0 100%; min-width: 0; height: 100%;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px 14px;
+  scroll-snap-align: start;
+  touch-action: pan-x pan-y;
+}
+
+/* ---------- 页底一条: 页签指示器 (有查询才出现) + 搜索框 ---------- */
+/* --kb-h 是 iOS 键盘高度 (music-global-events 用 visualViewport 量,
+   键盘盖上来时把整条抬到键盘上沿; 没键盘/别的布局自己缩, 恒 0) */
+.search-foot {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 8px; margin-bottom: var(--kb-h, 0);
+  padding: 0 16px 2px;
+}
+.search-tabs { display: none; justify-content: center; gap: 6px; }
+#search-body.paged + .search-foot .search-tabs { display: flex; }
+.search-tabs button {
+  display: flex; align-items: baseline; gap: 4px;
+  font-size: 13px; font-weight: 600; color: var(--ink-3);
+  padding: 5px 13px; border-radius: 999px; background: var(--surface-2);
+}
+.search-tabs button.on { color: var(--ink-1); background: var(--surface-3); }
+.search-tabs button small {
+  font-size: 11px; font-weight: 500; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}

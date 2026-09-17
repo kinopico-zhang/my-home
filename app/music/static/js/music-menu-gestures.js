@@ -1,10 +1,12 @@
 // music-menu-gestures — My Music 菜单接线与手势: 封面菜单, 菜单遮罩点击, 全屏页 ⋯/♥, 500ms 长按/右键检测。
 // 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// 1.8.2: 菜单加「进入专辑主页」; 艺人/专辑跳转前先收全屏页 (它盖着推入层,
+// 不收的话页面在底下开了也看不见 —— 表现就是「点了没反应」)。
 "use strict";
-/* global $, closeTrackMenu, fetchJSON, menuTrackDirect, navigate, onTrackChange,
-          openPlaylistPicker, openTrackMenu, openTrackMenuForTrack, placeMenuAt,
-          playTrackFromMenu, playerCurrentTrack, renderPlaylistView, rowForTrackMenu,
-          shareTrack, toast, trackFromRow */
+/* global $, closeFullPlayer, closeTrackMenu, fetchJSON, menuTrackDirect, navigate,
+          onTrackChange, openPlaylistPicker, openTrackMenu, openTrackMenuForTrack,
+          placeMenuAt, playTrackFromMenu, playerCurrentTrack, playerOpen,
+          renderPlaylistView, rowForTrackMenu, shareTrack, toast, trackFromRow */
 /* exported bindCoverPress */
 
 // 长按开过菜单的那个元素 (行/封面): 它随后补发的尾随 click 要吞。
@@ -111,7 +113,14 @@ $("#track-menu").addEventListener("click", async (event) => {
   closeTrackMenu();
   if (!track) return;
   if (action.dataset.trackAction === "play") playTrackFromMenu(track, row);
-  else if (action.dataset.trackAction === "artist") navigate(`artist/${track.artist_id}`);
+  else if (action.dataset.trackAction === "artist"
+           || action.dataset.trackAction === "album") {
+    // 1.8.2 修: 全屏页 (z90) 盖着推入层 (z44), 不先收播放页的话
+    // 艺人/专辑页在底下开了也看不见 —— 表现就是「点了没反应」
+    if (playerOpen) closeFullPlayer();
+    navigate(action.dataset.trackAction === "artist"
+             ? `artist/${track.artist_id}` : `album/${track.album_id}`);
+  }
   else if (action.dataset.trackAction === "share") shareTrack(track);
   else if (action.dataset.trackAction === "playlist") openPlaylistPicker(track);
 });

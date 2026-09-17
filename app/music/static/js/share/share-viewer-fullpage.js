@@ -1,8 +1,8 @@
-// share-viewer-fullpage — My Music 分享页全屏播放页: 开合/下拉收起/封面歌词切换与顶部绑定。
-// 拆自 share.html 的内联 <script> (结构化重构: 代码逐字节未动, 按 share.html 里的顺序加载, 跨模块引用走全局)。
+// share-viewer-fullpage — My Music 分享页全屏播放页: 开合/下拉收起/顶部绑定。
+// 拆自 share.html 的内联 <script> (结构化重构)。1.8.2 歌词不再点封面切换,
+// 改为有词的曲子直接住在封面下面跟着滚 (用户点名), 封面点按没有别的含义。
 "use strict";
-/* global $, lyricsViewOpen: writable, nextTrack, prevTrack, pullSuppressClick: writable,
-          syncLyricHighlight, togglePlay */
+/* global $, nextTrack, prevTrack, togglePlay */
 
 // ------------------------------------------------------------ 全屏播放页
 
@@ -19,14 +19,6 @@ function closeFullPlayer() {
   if (fp.hidden) return;
   fp.classList.remove("open");
   setTimeout(() => { fp.hidden = true; }, 340);
-}
-
-// 封面点一下 ↔ 歌词; 拖动 (下拉) 不算点
-function toggleLyricsView() {
-  lyricsViewOpen = !lyricsViewOpen;
-  $("#fp-lyrics").hidden = !lyricsViewOpen;
-  $("#fp-art-wrap").hidden = lyricsViewOpen;
-  if (lyricsViewOpen) syncLyricHighlight(true);
 }
 
 // 下拉收起: 封面区跟手下移, 松手过 90px 或带甩劲就收; 横移/上移撒手
@@ -48,7 +40,6 @@ function toggleLyricsView() {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       drag.decided = true;
       if (!(dy > 0 && dy > Math.abs(dx))) { drag = null; return; }  // 只收下拉
-      pullSuppressClick = true;
       try { art.setPointerCapture(event.pointerId); } catch { /* 照拖 */ }
       fp.style.transition = "none";
     }
@@ -70,16 +61,10 @@ function toggleLyricsView() {
   };
   art.addEventListener("pointerup", (event) => finish(event, false));
   art.addEventListener("pointercancel", () => finish(null, true));
-  art.addEventListener("click", () => {
-    if (pullSuppressClick) { pullSuppressClick = false; return; }
-    toggleLyricsView();
-  });
 })();
 
-$("#fp-lyrics").addEventListener("click", toggleLyricsView);
 $("#fp-grab").addEventListener("click", closeFullPlayer);
 $("#p-text").addEventListener("click", openFullPlayer);
 $("#fp-prev").addEventListener("click", prevTrack);
 $("#fp-next").addEventListener("click", nextTrack);
 $("#fp-play").addEventListener("click", togglePlay);
-

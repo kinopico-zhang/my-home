@@ -3,12 +3,12 @@
 "use strict";
 /* exported $, BARS_SVG, ICON_PAUSE_BIG, ICON_PLAY_BIG, artURL, audio, boot, esc, fmtTime,
             lyricIndex, lyrics, lyricsAutoUntil, lyricsCache, lyricsFollowPaused,
-            lyricsLastScrollAt, lyricsViewOpen, pullSuppressClick, queue, queuePos, seeking,
+            lyricsLastScrollAt, queue, queuePos, seeking,
             setArt, token */
 
 // 分享页逻辑: 拿 uuid 换数据 → 渲染 → 流地址播放; 失效 (410) 走错误态。
-// 迷你条点文字区掀全屏播放页 (与应用同款骨架: 封面点一下切歌词,
-// 传输三键 上一首/播放/下一首 站进度条上方); 歌词解析借应用公开的
+// 迷你条点文字区掀全屏播放页 (与应用同款骨架); 1.8.2 起有词的曲子歌词
+// 直接住封面下面跟着滚, 封面不再点击切换; 歌词解析借应用公开的
 // lyrics-parser.js (纯模块, 不带会话)。一切状态以 <audio> 的
 // play/pause 事件为准, 按钮只改 audio。
 
@@ -29,11 +29,9 @@ let seeking = false;
 let lyrics = null;         // 当前曲的 {synced, lines} | null (没歌词)
 let lyricsCache = new Map();     // track_id → 解析结果 (null = 没歌词)
 let lyricIndex = -1;       // 正在唱的行
-let lyricsViewOpen = false;
 let lyricsFollowPaused = false;  // 手动滚过: 暂停跟唱
 let lyricsLastScrollAt = 0;
 let lyricsAutoUntil = 0;   // 程序滚动宽限期 (这期间的 scroll 不算手动)
-let pullSuppressClick = false;   // 下拉收起拖过了: 松手的尾随 click 不切歌词
 
 const BARS_SVG = '<svg class="bars paused" viewBox="0 0 14 14" aria-hidden="true">'
   + '<rect x="1" y="2" width="2.6" height="10" rx="1.3"/>'

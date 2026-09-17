@@ -13,6 +13,17 @@
   --nav-bg: rgba(10,10,12,.72);
   --accent: #fa2d48;          /* Apple Music 红 */
 }
+/* 顶带下限 (1.8.1): iOS 26+ 主屏独立模式的系统磨砂带比安全区深一截
+   (WebKit 301994 还把 env(safe-area-inset-top) 谎报成 0; 用户 393x852
+   实测 CSS 60-88 仍被栅糊, 116 才全锐)。1.8.0 撤了全页黑罩「任凭系统
+   糊」, 滚动内容照旧认了; 但常驻控件 (搜索页输入框 / 播放页抓手) 用
+   96px 下限躲开强糊带。只在中招形态 (独立模式 + 竖屏 + 触屏) 生效 ——
+   浏览器、横屏、桌面没有那条带子, 下限恒 0。 */
+:root { --top-floor: 0px; }
+@media (display-mode: standalone) and (orientation: portrait)
+       and (pointer: coarse) {
+  :root { --top-floor: 96px; }
+}
 /* app 思路: 全程不画滚动条 (手机本来就不画, 电脑上也干净) —— 能滚, 只是不显示 */
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent;
     scrollbar-width: none; }

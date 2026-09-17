@@ -29,8 +29,9 @@ function albumCardHTML(album) {
 /** 曲目行: 序号/小封面 + 动条 (播放中顶掉序号) + 标题 (不可播标) + 艺人
     + 词标 (❝, 行右侧与下载标平齐) + 下载标 + 时长。下载标不是真按钮
     (行本身是 button, 嵌套非法)。
-    leadClass="art" 时引导位放宽 (44px 封面图替序号, 播放列表用)。 */
-function trackRowHTML(track, leadHTML, leadClass) {
+    leadClass="art" 时引导位放宽 (44px 封面图替序号, 播放列表用)。
+    trailingHTML 可顶掉时长位 (1.8.1 最近播放页: 换成播放次数)。 */
+function trackRowHTML(track, leadHTML, leadClass, trailingHTML) {
   return `
     <button class="track-row${track.playable ? "" : " disabled"}"
             data-track-row="${track.track_id}" data-track-id="${track.track_id}">
@@ -46,7 +47,7 @@ function trackRowHTML(track, leadHTML, leadClass) {
       <span class="t-dl${downloads.isDownloaded(track.track_id) ? " done" : ""}"
             data-download-track="${track.track_id}" role="button" tabindex="-1"
             aria-label="下载">${downloadMarkHTML(track.track_id)}</span>` : ""}
-      <span class="t-time">${formatPlaybackTime(track.duration_seconds)}</span>
+      <span class="t-time">${trailingHTML ?? formatPlaybackTime(track.duration_seconds)}</span>
     </button>`;
 }
 

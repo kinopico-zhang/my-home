@@ -18,14 +18,15 @@ const common = fs.readFileSync(path.join(dir, "music-common.js"), "utf8");
 const page = fs.readFileSync(path.join(dir, "..", "music.html"), "utf8");
 
 /** 算 SVG 路径的几何包围盒 (图标用到的命令都认; M 后隐式 L 同样取点)。
-    素材库图标 (2026-09-15 起) 是 q/t 二次曲线: 曲线必落在控制多边形凸包内,
-    所以控制点 + 终点都标记; t 的反射控制点 = 2×当前点 − 上一控制点。
-    烘焙脚本 (bake-icons.py) 用同一套标记算居中, 两边必须一致。 */
+    素材库图标 (2026-09-15 起) 是 q/t 二次曲线; 1.8.1 回退的旧资料库盒/
+    旧齿轮是 c/s 三次曲线: 曲线必落在控制多边形凸包内, 所以控制点 +
+    终点都标记; t/s 的反射控制点 = 2×当前点 − 上一控制点。 */
 function pathBBox(d) {
   const tokens = d.match(/[A-Za-z]|-?\d*\.?\d+/g) || [];
   let x = 0, y = 0;               // 当前点 (绝对坐标)
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   let lastControl = null;         // 上一条 q/t 的控制点 (t 反射用)
+  let lastCubic = null;           // 上一条 c/s 的第二控制点 (s 反射用)
   const markAt = (px, py) => {
     minX = Math.min(minX, px); maxX = Math.max(maxX, px);
     minY = Math.min(minY, py); maxY = Math.max(maxY, py);
@@ -37,24 +38,57 @@ function pathBBox(d) {
     if (/[A-Za-z]/.test(tokens[i])) { command = tokens[i]; i += 1; continue; }
     const num = () => Number(tokens[i++]);
     switch (command) {
-      case "M": case "L": x = num(); y = num(); mark(); lastControl = null; break;
-      case "m": case "l": x += num(); y += num(); mark(); lastControl = null; break;
-      case "H": x = num(); mark(); lastControl = null; break;
-      case "h": x += num(); mark(); lastControl = null; break;
-      case "V": y = num(); mark(); lastControl = null; break;
-      case "v": y += num(); mark(); lastControl = null; break;
+      case "M": case "L": x = num(); y = num(); mark(); lastControl = null; lastCubic = null; break;
+      case "m": case "l": x += num(); y += num(); mark(); lastControl = null; lastCubic = null; break;
+      case "H": x = num(); mark(); lastControl = null; lastCubic = null; break;
+      case "h": x += num(); mark(); lastControl = null; lastCubic = null; break;
+      case "V": y = num(); mark(); lastControl = null; lastCubic = null; break;
+      case "v": y += num(); mark(); lastControl = null; lastCubic = null; break;
       case "Q": {
         const cx = num(), cy = num();
         x = num(); y = num();
         markAt(cx, cy); mark();
-        lastControl = [cx, cy];
+        lastControl = [cx, cy]; lastCubic = null;
         break;
       }
       case "q": {
         const cx = x + num(), cy = y + num();
         x += num(); y += num();
         markAt(cx, cy); mark();
-        lastControl = [cx, cy];
+        lastControl = [cx, cy]; lastCubic = null;
+        break;
+      }
+      case "C": {
+        const c1x = num(), c1y = num(), c2x = num(), c2y = num();
+        x = num(); y = num();
+        markAt(c1x, c1y); markAt(c2x, c2y); mark();
+        lastControl = null; lastCubic = [c2x, c2y];
+        break;
+      }
+      case "c": {
+        const c1x = x + num(), c1y = y + num();
+        const c2x = x + num(), c2y = y + num();
+        x += num(); y += num();
+        markAt(c1x, c1y); markAt(c2x, c2y); mark();
+        lastControl = null; lastCubic = [c2x, c2y];
+        break;
+      }
+      case "S": {
+        let c1x = x, c1y = y;
+        if (lastCubic) { c1x = 2 * x - lastCubic[0]; c1y = 2 * y - lastCubic[1]; }
+        const c2x = num(), c2y = num();
+        x = num(); y = num();
+        markAt(c1x, c1y); markAt(c2x, c2y); mark();
+        lastControl = null; lastCubic = [c2x, c2y];
+        break;
+      }
+      case "s": {
+        let c1x = x, c1y = y;
+        if (lastCubic) { c1x = 2 * x - lastCubic[0]; c1y = 2 * y - lastCubic[1]; }
+        const c2x = x + num(), c2y = y + num();
+        x += num(); y += num();
+        markAt(c1x, c1y); markAt(c2x, c2y); mark();
+        lastControl = null; lastCubic = [c2x, c2y];
         break;
       }
       case "T": {
@@ -62,7 +96,7 @@ function pathBBox(d) {
         if (lastControl) { cx = 2 * x - lastControl[0]; cy = 2 * y - lastControl[1]; }
         x = num(); y = num();
         markAt(cx, cy); mark();
-        lastControl = [cx, cy];
+        lastControl = [cx, cy]; lastCubic = null;
         break;
       }
       case "t": {
@@ -70,7 +104,7 @@ function pathBBox(d) {
         if (lastControl) { cx = 2 * x - lastControl[0]; cy = 2 * y - lastControl[1]; }
         x += num(); y += num();
         markAt(cx, cy); mark();
-        lastControl = [cx, cy];
+        lastControl = [cx, cy]; lastCubic = null;
         break;
       }
       case "A": case "a": {
@@ -78,7 +112,7 @@ function pathBBox(d) {
         const endX = command === "A" ? num() : x + num();
         const endY = command === "A" ? num() : y + num();
         markArcExtremes(rx, ry, rotDeg, laf, sf, x, y, endX, endY);
-        x = endX; y = endY; lastControl = null;
+        x = endX; y = endY; lastControl = null; lastCubic = null;
         break;
       }
       case "z": case "Z": break;
@@ -154,25 +188,32 @@ test("上一首/下一首 (全屏页): 居中且彼此镜像", () => {
 test("船坞键与上弹菜单图标 (1.8.0): 光心对准各自的视框中心", () => {
   const pick = (selector) => {
     const match = page.match(new RegExp(
-      `${selector}[^>]*>\\s*<svg viewBox="([^"]+)"[^>]*>\\s*<path d="([^"]+)"`));
+      `${selector}[^>]*>\\s*(<svg viewBox="([^"]+)"[^>]*>[\\s\\S]*?</svg>)`));
     assert.ok(match, `music.html 里找不到 ${selector} 的图标`);
-    return { viewBox: match[1].split(/\s+/).map(Number), d: match[2] };
+    // 菜单图标有复合字形 (1.8.1 专辑 = 旧资料库盒, 4 条路径): 光心取
+    // 全部路径包围盒的并集, 只看第一条会把上面的装饰条漏掉 (差 118/1024)
+    const ds = [...match[1].matchAll(/ d="([^"]+)"/g)].map((m) => m[1]);
+    return { viewBox: match[2].split(/\s+/).map(Number), ds };
   };
-  // 素材库的字形不一定在画布正中 (人像 cy=15/24, 云下载 cy=490.6/1024):
-  // 用 viewBox 偏移把光心挪回视框中心, 断言 = 包围盒中心 == 视框中心。
-  // 容差按视框边长取比例 (1024 画布上 0.4% ≈ 4 个单位, 齿轮差 0.09 在内)
+  // 素材库的字形不一定在画布正中 (云下载 cy=490.6/1024): 用 viewBox 偏移
+  // 把光心挪回视框中心, 断言 = 包围盒中心 == 视框中心。
+  // 容差按视框边长取比例 (1024 画布上 0.5% ≈ 5 个单位, 旧齿轮差 2.4 在内)
   for (const [label, selector] of [
     ["dock-menu (汉堡)", 'id="dock-menu"'],
     ["dock-search (放大镜)", 'id="dock-search"'],
     ["pop-playlists (队列)", 'data-pop-nav="playlists"'],
-    ["pop-albums (唱片)", 'data-pop-nav="albums"'],
-    ["pop-artists (人像)", 'data-pop-nav="artists"'],
+    ["pop-albums (资料库盒)", 'data-pop-nav="albums"'],
+    ["pop-artists (三人)", 'data-pop-nav="artists"'],
+    ["pop-recent (时钟)", 'data-pop-nav="recent"'],
     ["pop-downloads (云下载)", 'data-pop-nav="downloads"'],
     ["pop-settings (齿轮)", 'data-pop-nav="settings"'],
   ]) {
-    const { viewBox, d } = pick(selector);
-    const b = pathBBox(d);
-    const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
+    const { viewBox, ds } = pick(selector);
+    const boxes = ds.map(pathBBox);
+    const cx = (Math.min(...boxes.map((b) => b.minX))
+      + Math.max(...boxes.map((b) => b.maxX))) / 2;
+    const cy = (Math.min(...boxes.map((b) => b.minY))
+      + Math.max(...boxes.map((b) => b.maxY))) / 2;
     const [vx, vy, vw, vh] = viewBox;
     const tolX = Math.max(vw * 0.005, 0.02), tolY = Math.max(vh * 0.005, 0.02);
     assert.ok(Math.abs(cx - (vx + vw / 2)) <= tolX,

@@ -28,6 +28,10 @@ function bindPlayerEvents() {
   });
   bindDismissDrag($("#fp-grab"), false, true);   // 抓手条: 下拉收起 + 横拖右甩收起
   bindDismissDrag($("#fp-art-wrap"), true);   // 封面: 下拉收起 + 左右划切歌
+  // 1.8.2 整页下拉收起 (用户点名): 没有自带手势/滚动的点都能拖 —— 歌词、
+  // 队列自带滚动, 抓手/封面自带拖动, 按钮/滑杆各有点击与拖拽语义, 全让路
+  bindDismissDrag($(".fp-sheet"), false, false, true);
+  bindDismissDrag($(".fp-bg"), false, false, true);
   $("#fp-play").addEventListener("click", playerToggle);
   $("#fp-next").addEventListener("click", playerNext);
   $("#fp-prev").addEventListener("click", playerPrevious);

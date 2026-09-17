@@ -77,7 +77,7 @@ def test_music_pane_fixed_chrome_wiring():
                js.index("// ------------------------------------------------------------ 下载 (离线)")]
     assert swipe.count("paneMotion();") >= 4   # 拖动续期/滑出/弹回/取消
     scroll_css = html[html.index(".push-pane .pane-scroll"):
-                      html.index(".sticky-head")]
+                      html.index(".album-hero")]
     # 顶上让位纯 CSS (顶栏撤了, env 直读; 独立模式 black-translucent 下拿
     # 得到真实刘海高度), 底下让开船坞 —— JS 量高度那套 (syncPaneTop/
     # --pane-top/headerBottom) 整个退役
@@ -138,11 +138,12 @@ def test_music_172_fix_batch():
     library_bind = js[js.index("function bindLibraryBody")
                       :js.index("function playDownloadedRow")]
     assert "bindTrackLists" not in library_bind
-    # 搜索框: sticky 包裹 + 不透明底衬, 钉层顶 (1.8.0: 只剩搜索页一处)
-    sticky_css = html[html.index(".sticky-head {"):html.index(".album-hero")]
-    assert "position: sticky; top: 0; z-index: 5;" in sticky_css
-    assert "background: var(--bg);" in sticky_css
-    assert js.count('<div class="sticky-head">') == 1      # 搜索页
+    # 搜索框 1.8.3 重排 (用户点名): 输入框钉页底船坞上方, 顶端不再有
+    # 钉死的内容 —— 1.7.2 立的 sticky 钉顶那套整个退役 (样式与 markup 全撤)
+    assert "sticky-head" not in js and ".sticky-head" not in html
+    assert '<div class="search-foot">' in js        # 页底一条: 页签 + 搜索框
+    assert ".search-shell {" in html                # 页壳 (抵掉层衬, 顶端全给滚动内容)
+    assert "margin-bottom: var(--kb-h, 0);" in html   # iOS 键盘避让
     # 资料库段选择条 (.seg) 与语种 chips 随拆页撤掉: markup 不再产出, 样式一并清场
     assert 'class="seg"' not in js and ".seg {" not in html
     assert ".chip {" not in html and "chipsHTML" not in js

@@ -35,10 +35,11 @@ def test_music_controls_apple_style_wiring():
     assert 'class="mq-line"' in html and 'class="mq-run"' in html
     # 音量条整个撤了 (1.5.1, 用户点名): 音量交给设备音量键/系统音量
     assert "#fp-volume" not in html and ".fp-volume" not in html
-    # 气泡磨砂玻璃 (用户点名): 六成底色配 blur(20), 底下划过的内容糊成
-    # 影子透上来 —— 不是一块实心灰板 (88% 那种看不出磨砂)
+    # 气泡磨砂玻璃 (用户点名): 八成底色配 blur(20), 底下划过的内容糊成
+    # 影子透上来 —— 不是一块实心灰板 (88% 那种看不出磨砂); 1.8.3 从
+    # 六成调实一档 (太透时底下内容深浅透进来, 三件套忽明忽暗)
     mini_css = html[html.index("#mini-player {"):html.index("#mini-progress")]
-    assert "rgba(44,44,46,.6);" in mini_css
+    assert "rgba(44,44,46,.78);" in mini_css
     assert "backdrop-filter: blur(20px) saturate(180%);" in mini_css
     # 气泡播放/暂停键大一号 (用户点名 "比上一首下一首还小"): 三角/双杠是
     # 紧凑实心形, 跟宽箭头同尺寸显得小 —— 28 对 24 才齐平; 撤掉旧补偿边距
@@ -130,6 +131,12 @@ def test_music_player_dismiss_wiring():
         in player
     assert 'bindDismissDrag($("#fp-grab"), false, true);' in player
     assert 'bindDismissDrag($("#fp-art-wrap"), true);' in player   # 封面照旧划切歌
+    # 1.8.2 整页下拉收起 (用户点名「任何一点都能拖」): .fp-sheet/.fp-bg 也绑
+    # 一份, 第四参数让路自带手势/滚动/按钮的起手点 (歌词/队列要滚,
+    # 抓手/封面自带拖动, 按钮滑杆各有语义)
+    assert 'bindDismissDrag($(".fp-sheet"), false, false, true);' in player
+    assert 'bindDismissDrag($(".fp-bg"), false, false, true);' in player
+    assert "#fp-grab, #fp-art-wrap, #fp-lyrics, #fp-queue, .fp-scrub," in player
     # Esc = 电脑上的返回: 先收播放页, 没开收顶层二级页
     esc_handler = js[js.index('event.key !== "Escape"'):
                      js.index("// ------------------------------------------------------------"
@@ -153,9 +160,9 @@ def test_music_single_url_navigation_wiring():
     assert "pushState(" not in js and "history.back(" not in js
     assert "pushState(" not in player and "history.back(" not in player
     # 目标从状态派生: 有层看顶层, 没层看根视图 (1.8.0: 主页独占根层,
-    # 播放列表/专辑/艺人/已下载/搜索/设置/统计/更新日志全是推入层)
+    # 播放列表/专辑/艺人/最近播放/已下载/搜索/设置/统计/更新日志全是推入层)
     assert "function parseRoute" in js and "function currentRoute" in js
-    assert 'const PANE_VIEWS = ["playlists", "albums", "artists", "downloads",' in js
+    assert 'const PANE_VIEWS = ["playlists", "albums", "artists", "recent", "downloads",' in js
     assert '"search", "settings", "stats", "changelog"];' in js
     assert "PANE_VIEWS.includes(name)" in js
     assert 'const pushed = view !== "home";' in js
@@ -167,3 +174,25 @@ def test_music_single_url_navigation_wiring():
     assert "navigate(legacyTarget);" in js
     # 层收尽 (按钮收/右划收) 回到根视图 = 主页; 页签点亮同步那套随页签栏撤了
     assert "syncViewTabs" not in js
+
+
+def test_music_182_player_interaction_batch():
+    """1.8.2 播放页交互批 (用户点名): 专辑名并进艺人行 (来源行只留
+    作词/作曲标签, 没有整行收掉); 弹出菜单加「进入专辑主页」;
+    修「进艺人主页点了没反应」—— 页面其实开了, 但 z90 的全屏播放页
+    盖着 z44 的推入层, 开了也看不见: 跳转前先把播放页收起来。"""
+    html = music_page_shell()
+    player = music_player_js()
+    js = music_browser_js()
+    # 专辑名并到艺人后 (| 隔开), 底下那一行省出来
+    assert "[track.artist, track.album_title]" in player
+    assert '.filter(Boolean).join(" | ");' in player
+    assert "function renderSourceLine" in player     # 来源行只留 词/曲 标签
+    assert 'id="fp-source" hidden' in html           # 没标签时整行收掉
+    # 菜单新条目: 进入专辑主页 (这首歌有专辑才亮)
+    assert 'data-track-action="album" id="track-menu-album"' in html
+    assert '进入专辑主页' in html
+    assert '$("#track-menu-album").hidden = !track.album_id;' in js
+    # 修: 跳艺人/专辑前先收播放页 (盖在底下 = 看着没反应)
+    assert "if (playerOpen) closeFullPlayer();" in js
+    assert "`album/${track.album_id}`" in js

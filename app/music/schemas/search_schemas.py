@@ -28,10 +28,16 @@ class PlayRecordRequest(BaseModel):
     track_id: int
 
 
+class RecentTrackBrief(TrackBrief):
+    """最近播放行 (1.8.1): 曲目信息 + 这首播过几次 (页面上替掉时长)。"""
+
+    play_count: int = 0
+
+
 class RecentPlaysResponse(BaseModel):
     """GET /api/plays/recent 的应答 (本人的最近播放, 每首只一行)。"""
 
-    tracks: list[TrackBrief] = Field(default_factory=list)
+    tracks: list[RecentTrackBrief] = Field(default_factory=list)
 
 
 class LyricsResponse(BaseModel):

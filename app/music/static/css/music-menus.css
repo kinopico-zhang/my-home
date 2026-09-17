@@ -9,7 +9,7 @@
 }
 #pop-menu {
   position: fixed; left: max(8px, env(safe-area-inset-left));
-  bottom: calc(var(--dock-h) + 22px + env(safe-area-inset-bottom));
+  bottom: calc(var(--dock-h) + 16px + env(safe-area-inset-bottom));
   z-index: 96; min-width: 190px; padding: 5px;
   background: rgba(44,44,46,.96);
   -webkit-backdrop-filter: blur(20px) saturate(180%);

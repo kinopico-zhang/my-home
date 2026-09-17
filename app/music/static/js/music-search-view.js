@@ -1,25 +1,35 @@
-// music-search-view — My Music 搜索视图: 搜索框常驻顶端, 防抖搜索/结果铺页。
-// 拆自 music.js (结构化重构), 1.8.0 起住推入层 (搜索键进来), 渲染目标由调用方给。
+// music-search-view — My Music 搜索页 (1.8.3 重排, 用户点名): 输入框钉在
+// 页底船坞上方 (顶端不再有钉死的内容), 回车收起 iOS 键盘; 有查询时结果
+// 分四子页左右滑切换 (骨架/页签/铺页在 music-search-pages.js)。
+// 搜索本身还是边打边搜 (防抖 300ms)。拆自 music.js (结构化重构)。
 "use strict";
-/* global $, ICON_BARS, ICON_LYRICS, albumCardHTML, artistRowHTML, bindTrackLists,
-          escapeHTML, fetchJSON, listPlaceholderHTML, navigate, openFullPlayer,
-          openLyricsView, pageState, playerStart, syncPlayerIndicators, toast, trackRowHTML */
+/* global $, bindSearchTabs, bindTrackLists, buildSearchPages, escapeHTML, fetchJSON,
+          listPlaceholderHTML, navigate, openFullPlayer, openLyricsView, pageState,
+          playerStart, renderSearchResults, toast */
 /* exported renderSearchView */
 
 // ------------------------------------------------------------ 搜索页
 
 function renderSearchView(target) {
   target.innerHTML = `
-    <div class="sticky-head">
-      <div class="search-box">
-        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        <input id="search-input" type="search" enterkeyhint="search" autocomplete="off"
-               placeholder="歌曲、专辑、艺人、歌词 (拼音简繁都行)" maxlength="100"
-               value="${escapeHTML(pageState.searchQuery)}">
-        <button id="search-clear" hidden aria-label="清空">✕</button>
+    <div class="search-shell">
+      <div id="search-body"></div>
+      <div class="search-foot">
+        <div class="search-tabs" id="search-tabs">
+          <button type="button" class="on" data-search-tab="tracks">歌曲<small></small></button>
+          <button type="button" data-search-tab="artists">艺人<small></small></button>
+          <button type="button" data-search-tab="albums">专辑<small></small></button>
+          <button type="button" data-search-tab="lyrics">歌词<small></small></button>
+        </div>
+        <div class="search-box">
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <input id="search-input" type="search" enterkeyhint="search" autocomplete="off"
+                 placeholder="歌曲、专辑、艺人、歌词 (拼音简繁都行)" maxlength="100"
+                 value="${escapeHTML(pageState.searchQuery)}">
+          <button id="search-clear" hidden aria-label="清空">✕</button>
+        </div>
       </div>
-    </div>
-    <div id="search-body"></div>`;
+    </div>`;
   const input = $("#search-input");
   const clearButton = $("#search-clear");
   let debounceTimer = 0;
@@ -29,6 +39,11 @@ function renderSearchView(target) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(runSearch, 300);
   });
+  // 回车 = 收起 iOS 键盘 (搜索是边打边搜的, 回车没有别的活; 键盘一收
+  // 结果区立刻多出一截 —— 用户点名)
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+  });
   clearButton.addEventListener("click", () => {
     input.value = "";
     pageState.searchQuery = "";
@@ -36,9 +51,12 @@ function renderSearchView(target) {
     runSearch();
   });
   bindSearchBody();
+  bindSearchTabs();
   runSearch();
 }
 
+/** 结果区事件 (专辑/艺人跳转 + 行开播 + 歌词命中连播): 绑在容器上 ——
+    容器跨查询常驻, 绑内容会重复累加。 */
 function bindSearchBody() {
   const body = $("#search-body");
   body.addEventListener("click", (event) => {
@@ -74,12 +92,17 @@ async function runSearch() {
   if (pageState.searchAbort) pageState.searchAbort.abort();
   if (!pageState.searchQuery) {
     pageState.searchResults = null;
-    body.innerHTML = listPlaceholderHTML("搜歌名、艺人、专辑或一句歌词, 拼音简繁都行");
+    body.classList.remove("paged");
+    body.innerHTML = '<div class="pane-title">搜索</div>'
+      + listPlaceholderHTML("搜歌名、艺人、专辑或一句歌词, 拼音简繁都行");
     return;
   }
   const controller = new AbortController();
   pageState.searchAbort = controller;
-  body.innerHTML = listPlaceholderHTML("搜索中…");
+  if (!body.classList.contains("paged")) {
+    body.classList.add("paged");
+    buildSearchPages(body);        // 四子页骨架 (music-search-pages.js)
+  }   // 换词不重建容器: 旧结果留到新结果到, 页序与滚动位置不动
   try {
     const results = await fetchJSON(
       `/music/api/search?q=${encodeURIComponent(pageState.searchQuery)}`,
@@ -89,39 +112,8 @@ async function runSearch() {
     renderSearchResults(body, results);
   } catch (error) {
     if (error.name === "AbortError") return;
-    body.innerHTML = listPlaceholderHTML(`搜索失败: ${error.message}`);
+    for (const page of body.children) {
+      page.innerHTML = listPlaceholderHTML(`搜索失败: ${error.message}`);
+    }
   }
 }
-
-function renderSearchResults(body, results) {
-  const hasAny = results.tracks.length || results.albums.length
-    || results.artists.length || results.lyric_hits.length;
-  if (!hasAny) {
-    body.innerHTML = listPlaceholderHTML("没有找到相关内容");
-    return;
-  }
-  body.innerHTML = `
-    ${results.tracks.length ? `
-      <div class="section-head">歌曲 · ${results.tracks.length}</div>
-      <div class="track-list">${results.tracks.map((track) => trackRowHTML(track)).join("")}</div>` : ""}
-    ${results.albums.length ? `
-      <div class="section-head">专辑 · ${results.albums.length}</div>
-      <div class="album-grid">${results.albums.map(albumCardHTML).join("")}</div>` : ""}
-    ${results.artists.length ? `
-      <div class="section-head">艺人 · ${results.artists.length}</div>
-      ${results.artists.map(artistRowHTML).join("")}` : ""}
-    ${results.lyric_hits.length ? `
-      <div class="section-head">歌词 · ${results.lyric_hits.length}</div>
-      ${results.lyric_hits.map((hit) => `
-        <button class="lyric-hit" data-lyric-track="${hit.track.track_id}">
-          <span class="t-lead">${ICON_BARS}</span>
-          <span class="t-main">
-            <span class="t-title"><span class="t-title-text">${escapeHTML(hit.track.title)}</span></span>
-            <small>${escapeHTML(hit.line_text)}</small>
-          </span>
-          <i class="t-lyric">${ICON_LYRICS}</i>
-          <span class="t-time">${escapeHTML(hit.track.artist)}</span>
-        </button>`).join("")}` : ""}`;
-  syncPlayerIndicators();
-}
-

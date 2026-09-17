@@ -4,24 +4,33 @@
 //  - 封面图: 缓存优先 —— 后端虽已发长缓存头, iOS 的 HTTP 缓存容易被系统
 //    整体清掉, 50k 曲库一刷列表就是几百张图全回源; Cache API 里存一份,
 //    系统清不动 (配合 storage.persist), 只在没缓存过时才走网络;
+//  - 列表数据 (/music/api/ 的 GET, search 除外): 网络优先, 顺路存档 ——
+//    断网时回上次拉到的 (1.8.4 用户点名「断网播放列表都打不开」:
+//    壳和封面本来就缓存, 数据也缓一份, 联网打开过的页离线都能翻;
+//    401/403 = 换人了, 整档清掉免得串账号);
 //  - 应用壳 (页面 + 静态资源): 网络优先, 顺路存进缓存 —— 断网时页面也打得开,
-//    已下载的歌才谈得上离线播放 (api/* 数据接口不缓存, 离线时列表加载不了
-//    属正常, 已下载栏读的是本机索引, 不走接口);
-//  - activate 时清掉旧版壳缓存 + 接管已打开的页面 (clients.claim, 不用等重载)。
+//    已下载的歌照播 (已下载栏读的是本机索引, 不走接口);
+//  - activate 时清掉旧版壳/数据缓存 + 接管已打开的页面 (clients.claim,
+//    不用等重载)。
 // 下载动作本身是页面脚本直连 Cache API, 这里只管离线时把缓存喂给 <audio>。
 // 注意: 只在安全上下文 (HTTPS / localhost) 能注册, 明文 HTTP 下不存在。
 "use strict";
 
 const DOWNLOAD_CACHE = "music-downloads-v1";
-// 壳缓存 v3 (2026-09-17 1.8.0 界面重构: 底栏换成菜单键/气泡/搜索键三件套,
-// 顶栏遮罩与兜底脚本全撤 —— 静态资源地址变了 (?v=2), 换版本号让 activate 清旧账)
-const SHELL_CACHE = "music-shell-v3";
+// 壳缓存 v6 (2026-09-17 1.8.3/1.8.4: 搜索页重排 (底部输入框+四子页)、
+// 上次停的页回跳、API 数据离线缓存 —— 静态资源地址变了 (?v=3/4),
+// 换版本号让 activate 清旧账)
+const SHELL_CACHE = "music-shell-v6";
 const ARTWORK_CACHE = "music-artwork-v1";
+// 列表数据档 (1.8.4): /music/api/ 的 GET 全缓存 (search 除外 —— 词组合
+// 无限多, 缓存不值), 网络优先断网回档
+const DATA_CACHE = "music-data-v1";
 const TRACK_URL_PATTERN = /\/music\/media\/stream\/\d+$/;
 // 封面族: 专辑/艺人/单曲封面 + 播放列表自定义封面
 // (URL 全带 ?v= 版本号, 换图即换址 —— 缓存键跟着换, 不会读到旧图)
 const ARTWORK_PATTERN
   = /^\/music\/media\/(?:albums|artists|tracks)\/\d+\/artwork$|^\/music\/media\/playlists\/\d+\/cover$/;
+const DATA_PATTERN = /^\/music\/api\/(?!search\b)/;
 const SHELL_PATHS = new Set(["/music", "/music/", "/music/login", "/music/changelog"]);
 
 function isShellPath(path) {
@@ -36,6 +45,8 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(serveTrack(request));
   } else if (ARTWORK_PATTERN.test(path)) {
     event.respondWith(serveArtwork(request));
+  } else if (DATA_PATTERN.test(path)) {
+    event.respondWith(serveApiData(request));
   } else if (isShellPath(path)) {
     event.respondWith(serveShell(request));
   }
@@ -110,15 +121,55 @@ async function trimArtworkCache(cache) {
   }
 }
 
+/** 列表数据: 网络优先 (在线永远拿新的), 断网回上次存档 —— 联网打开过的
+    页 (播放列表/专辑/艺人/最近播放/统计…) 离线都能翻。401/403 = 登录态
+    没了或换人了, 整档清掉免得串账号 (退出登录时页面也清一次)。 */
+async function serveApiData(request) {
+  const cache = await caches.open(DATA_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const type = response.headers.get("Content-Type") || "";
+      if (type.includes("application/json")) {
+        await cache.put(request, response.clone());
+        trimDataCache(cache);
+      }
+    } else if (response.status === 401 || response.status === 403) {
+      const keys = await cache.keys();
+      for (const key of keys) await cache.delete(key);
+    }
+    return response;
+  } catch (_error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    return new Response(
+      JSON.stringify({ detail: "离线中: 这个页面联网打开过一次就能离线看" }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  }
+}
+
+/** 数据档条数封顶 (分页 URL 各占一条, 50k 曲库翻久了会攒出几十条):
+    超了丢最早一批 (Cache API 没有 LRU, keys() 顺序近似先来后到)。 */
+async function trimDataCache(cache) {
+  const keys = await cache.keys();
+  if (keys.length <= 120) return;
+  for (const key of keys.slice(0, keys.length - 80)) {
+    await cache.delete(key);
+  }
+}
+
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    // 壳缓存换版本号时清旧账; 下载缓存 (DOWNLOAD_CACHE) 是用户数据, 不动
+    // 壳/数据缓存换版本号时清旧账; 下载缓存 (DOWNLOAD_CACHE) 是用户数据, 不动
     const names = await caches.keys();
     for (const name of names) {
       if (name.startsWith("music-shell-") && name !== SHELL_CACHE) {
         await caches.delete(name);
       }
       if (name.startsWith("music-artwork-") && name !== ARTWORK_CACHE) {
+        await caches.delete(name);
+      }
+      if (name.startsWith("music-data-") && name !== DATA_CACHE) {
         await caches.delete(name);
       }
     }

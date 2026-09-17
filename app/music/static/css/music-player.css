@@ -8,7 +8,8 @@
 #full-player.open { transform: none; }
 /* 抓手条横拖收起: 整页向右甩出 (默认收起仍向下) */
 #full-player.dismiss-right { transform: translateX(100%); }
-.fp-bg { position: absolute; inset: -60px; overflow: hidden; }
+.fp-bg { position: absolute; inset: -60px; overflow: hidden;
+         touch-action: none; }   /* 1.8.2: 空白氛围底也能下拉收起 */
 .fp-bg img { width: 100%; height: 100%; object-fit: cover;
              filter: blur(70px) brightness(.45) saturate(1.3); }
 #full-player.lyrics .fp-bg img { filter: blur(70px) brightness(.22) saturate(1.35); }
@@ -17,11 +18,16 @@
   position: relative; height: 100%; max-width: 520px; margin: 0 auto;
   display: flex; flex-direction: column;
 }
-/* 顶部抓手条: 点一下 (或往下拖) 收起播放页 (1.8.0 起顶部让位纯 env,
-   不再兜 iOS 谎报的系统 bug —— 详见 music-base.css 的 main 注释) */
+/* 顶部抓手条: 点一下 (或往下拖) 收起播放页 (1.8.1 起用 --top-floor 下限
+   躲独立模式的系统磨砂带 —— 用户点名「往下一点, 离开模糊的区域」)。
+   下推走 margin 不走 padding: 按钮盒不跟着变大, 点按/拖拽的命中区
+   还是抓手那一条 —— 垫进按钮的话, 封面上方整条空白都一按就收。
+   队列视图 (#fp-queue) 住在 .fp-body 里, 天生排在抓手之下, 抓手
+   下移它跟着下移, 不会越过抓手。 */
 #fp-grab {
   display: flex; justify-content: center; align-items: flex-start;
-  padding: calc(env(safe-area-inset-top, 0px) + 3px) 0 0;
+  margin-top: max(env(safe-area-inset-top, 0px), var(--top-floor));
+  padding: 3px 0 0;
   border: 0; background: none; touch-action: none;
 }
 #fp-grab span { width: 60px; height: 5px; border-radius: 2.5px;
@@ -73,7 +79,7 @@
                 justify-content: center; color: var(--ink-3); }
 /* 标题行: 左歌名歌手, 右 ⋯ */
 .fp-meta { display: flex; align-items: center; gap: 12px; padding: 0 32px; }
-.fp-now { flex: 1; min-width: 0; }
+.fp-now { flex: 1; min-width: 0; touch-action: none; }   /* 曲名/艺人块: 整页下拉收起的新命中区 (1.8.2) */
 .fp-now b { display: block; font-size: 19px; font-weight: 700; color: #fff;
             overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .fp-now small { display: block; font-size: 12px; color: rgba(255,255,255,.62);
@@ -128,7 +134,7 @@
 .fp-source { margin-top: 10px; padding: 0 32px; text-align: center; font-size: 13px;
              color: rgba(255,255,255,.75); overflow: hidden; white-space: nowrap;
              text-overflow: ellipsis; }
-.fp-pad { height: 22px; flex-shrink: 0; }
+.fp-pad { height: 22px; flex-shrink: 0; touch-action: none; }   /* 底衬条: 下拉收起命中区 (1.8.2) */
 /* 横屏 (矮屏): 藏来源行, 收紧留白, 保控件行完整 */
 @media (max-height: 520px) {
   .fp-body { padding: 12px 24px; }

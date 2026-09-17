@@ -122,3 +122,17 @@ def test_moved_account_paths_redirect(client):
     # Tesla 业务接口没有平移到根路径 (不与门厅账号接口混住)
     assert client.get("/api/summary").status_code == 404
     assert client.get("/api/charging").status_code == 404
+
+
+def test_platform_verify_file_public(client):
+    """根路径平台验证 TXT (微信域名验证): 验证方不带 cookie 来抓, 不能
+    302 到登录页也不能 401 —— 内容与 verify/ 目录里的部署文件逐字一致;
+    目录里没有的 (或名字不合规的) 照旧 404。"""
+    r = client.get("/f67c7963a2d72946a2d651bf15edb368.txt",
+                   follow_redirects=False)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    assert r.text == "55db25c689d9c4e379f6810f46fe1edb1e4cbaa9"
+    # verify/ 目录里没有的 TXT: 404, 不是 500 也不是重定向
+    assert client.get("/not-deployed.txt").status_code == 404
+    assert client.get("/..%2Fsecret.txt").status_code == 404   # 穿越试探

@@ -3,8 +3,8 @@
 "use strict";
 /* global $, ICON_DOWNLOAD, createDownloads, currentRoute, downloadsSupported,
           renderDownloadsBody, toast */
-/* exported downloadAllCancelled, downloadAllFromUI, downloadMarkHTML, downloadTrackFromUI,
-            downloads, downloadsEnabled, syncDownloadIcons */
+/* exported downloadAllCancelled, downloadAllFromUI, downloadMarkHTML, downloadRingHTML,
+            downloadTrackFromUI, downloads, downloadsEnabled, syncDownloadIcons */
 
 // ------------------------------------------------------------ 下载 (离线)
 
@@ -81,6 +81,20 @@ if (downloadsEnabled) {
   downloads.onChange(syncDownloadIcons);
 }
 
+/** 下载中的进度环 (1.8.2 用户点名: 圆圈替掉百分比文字): 淡底圈 +
+    进度弧从正上方顺时针画。 */
+function downloadRingHTML(progress, size) {
+  const CIRCLE = 2 * Math.PI * 8.5;   // r=8.5 的周长
+  const offset = CIRCLE * (1 - Math.min(1, Math.max(0, progress)));
+  return `<svg class="dl-ring" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">`
+    + '<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor"'
+    + ' stroke-width="2.2" opacity=".3"/>'
+    + `<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor"`
+    + ' stroke-width="2.2" stroke-linecap="round"'
+    + ` stroke-dasharray="${CIRCLE.toFixed(2)}"`
+    + ` stroke-dashoffset="${offset.toFixed(2)}" transform="rotate(-90 12 12)"/></svg>`;
+}
+
 /** 曲目行的下载图标状态 (明文 HTTP 下整列不渲染)。 */
 function downloadMarkHTML(trackId) {
   if (!downloads) return "";
@@ -89,7 +103,7 @@ function downloadMarkHTML(trackId) {
   }
   const state = downloads.stateOf(trackId);
   if (state) {
-    return `<small class="dl-pct">${Math.round(state.progress * 100)}%</small>`;
+    return downloadRingHTML(state.progress, 17);
   }
   return ICON_DOWNLOAD;
 }

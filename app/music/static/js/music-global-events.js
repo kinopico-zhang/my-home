@@ -32,6 +32,22 @@ function bindGlobalEvents() {
     else if (playerOpen) closeFullPlayer();
     else if (pushStack.length) closePushStack(pushStack.length - 1);
   });
+  // 键盘避让 (1.8.3 搜索栏钉页底): iOS 键盘只盖不缩布局, visualViewport
+  // 量出键盘高写进 --kb-h (CSS 把搜索栏抬到键盘上沿); 没有输入框在焦点上
+  // 时归零 —— 捏拉缩放同样会缩 visualViewport, 别误抬。安卓
+  // interactive-widget=resizes-content 布局自己缩, 量出来是 0, 两不误伤。
+  if (window.visualViewport) {
+    const lift = () => {
+      const active = document.activeElement;
+      const keyboard = active && active.tagName === "INPUT"
+        ? Math.max(0, window.innerHeight - visualViewport.height
+                   - visualViewport.offsetTop)
+        : 0;
+      document.documentElement.style.setProperty("--kb-h", `${keyboard}px`);
+    };
+    visualViewport.addEventListener("resize", lift);
+    visualViewport.addEventListener("scroll", lift);
+  }
 }
 
 // ------------------------------------------------------------ 蜂窝流量
