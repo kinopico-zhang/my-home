@@ -12,4 +12,4 @@ fi
 PIDS=$(ps | grep 'uvicorn app.main:app' | grep -v grep | awk '{print $1}')
 [ -n "$PIDS" ] && kill $PIDS 2>/dev/null
 sleep 2
-/usr/bin/sudo -u admin sh -c 'exec /bin/setsid /share/CACHEDEV1_DATA/Public/myteslamate/run.sh >> /tmp/mytesla.log 2>&1 < /dev/null &'
+/usr/bin/sudo -u admin sh -c 'exec /bin/setsid /share/CACHEDEV1_DATA/Public/my-home/run.sh >> /tmp/mytesla.log 2>&1 < /dev/null &'
