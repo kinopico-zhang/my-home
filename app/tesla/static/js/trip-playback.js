@@ -4,19 +4,21 @@
    node --test 直测 + tsc --checkJs 把关; 页面编排 (地图实例/DOM/帧循环)
    留在 trips.js。
    UMD: 浏览器挂 window.TripPlayback, node (测试) 走 module.exports
-   (依赖同目录 trackutil.js 的 animAt/splitGaps)。 */
+   (依赖同目录 trackutil.js 的 splitGaps 与 track-animation.js 的 animAt)。 */
 /* c8 ignore start */
 /* UMD 挂载层: node (测试 require) 与浏览器 (生产 <script> 加载) 二选一。
    浏览器分支在 node 覆盖率里天然统计不到 (require 时 module 一定存在),
    c8 标记忽略; 挂载行为由 *_test 的 eval 桩用例验证。 */
 (function (root, factory) {
   if (typeof module === "object" && module.exports)
-    module.exports = factory(require("./trackutil.js"));
-  else root.TripPlayback = factory(root.TrackUtil);
-})(/** @type {Window | Record<string, unknown>} */(typeof self !== "undefined" ? self : this), function (rawTrackUtil) {
+    module.exports = factory(require("./trackutil.js"),
+                             require("./track-animation.js"));
+  else root.TripPlayback = factory(root.TrackUtil, root.TrackAnimation);
+})(/** @type {Window | Record<string, unknown>} */(typeof self !== "undefined" ? self : this), function (rawTrackUtil, rawTrackAnimation) {
 /* c8 ignore stop */
   "use strict";
   const TrackUtil = /** @type {typeof import("./trackutil.js")} */(rawTrackUtil);
+  const TrackAnimation = /** @type {typeof import("./track-animation.js")} */(rawTrackAnimation);
 
   /* ============================ 随速变焦 ============================ */
   /* 滑动窗 (播放时间轴): 过去 ZOOM_PAST_MS + 预看 ZOOM_FUT_MS, 均匀
@@ -36,7 +38,7 @@
     for (let k = 0; k < ZOOM_SAMPLES; k++) {
       const tw = t - ZOOM_PAST_MS
         + (ZOOM_PAST_MS + ZOOM_FUT_MS) * k / (ZOOM_SAMPLES - 1);
-      const p = TrackUtil.animAt(vt, tw, dur);
+      const p = TrackAnimation.animAt(vt, tw, dur);
       const va = pts[p.idx][2] || 0,
             vb = p.idx + 1 < pts.length ? (pts[p.idx + 1][2] || 0) : va;
       vSum += va + (vb - va) * p.frac;
