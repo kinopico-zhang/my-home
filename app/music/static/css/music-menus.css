@@ -1,5 +1,35 @@
-/* music-menus — My Music 前端样式 (浮层菜单: 曲目长按菜单 / 添加到播放列表选择单)。
+/* music-menus — My Music 前端样式 (浮层菜单: 菜单键上弹菜单 / 曲目长按菜单 / 添加到播放列表选择单)。
    拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
+
+/* ---------- 菜单键上弹菜单 (1.8.0, 原页签栏职能) ----------
+   钉在菜单键上方, 从键的位置放大入场 (transform-origin 落在键心附近);
+   [hidden] 摘掉即重放动画 (display:none → block 会重启 CSS animation)。 */
+#pop-mask {
+  position: fixed; inset: 0; z-index: 95; background: rgba(0,0,0,.4);
+}
+#pop-menu {
+  position: fixed; left: max(8px, env(safe-area-inset-left));
+  bottom: calc(var(--dock-h) + 22px + env(safe-area-inset-bottom));
+  z-index: 96; min-width: 190px; padding: 5px;
+  background: rgba(44,44,46,.96);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline); border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5);
+  transform-origin: 23px calc(100% + 18px);   /* 长在菜单键上 (键心 x, 键上方) */
+  animation: pop-in .22s cubic-bezier(.3, 1.3, .4, 1);
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(10px) scale(.88); }
+  to { opacity: 1; transform: none; }
+}
+#pop-menu button {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 10px 12px; border-radius: 10px; font-size: 14px; text-align: left;
+}
+#pop-menu button:active { background: var(--surface-3); }
+#pop-menu svg { flex-shrink: 0; color: var(--ink-2); }
+
 /* ---------- 曲目长按菜单 ---------- */
 .track-row, .dl-row, .pl-cover-btn {
   -webkit-touch-callout: none;        /* iOS 长按不弹放大镜/拷贝气泡 */

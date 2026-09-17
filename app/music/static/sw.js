@@ -13,9 +13,9 @@
 "use strict";
 
 const DOWNLOAD_CACHE = "music-downloads-v1";
-// 壳缓存 v2 (2026-09-17 结构化重构: 前端拆成 js/ css/ 小文件, v1 里的
-// 整文件条目 (music.js 等) 全成了死 URL, 换版本号让 activate 清掉)
-const SHELL_CACHE = "music-shell-v2";
+// 壳缓存 v3 (2026-09-17 1.8.0 界面重构: 底栏换成菜单键/气泡/搜索键三件套,
+// 顶栏遮罩与兜底脚本全撤 —— 静态资源地址变了 (?v=2), 换版本号让 activate 清旧账)
+const SHELL_CACHE = "music-shell-v3";
 const ARTWORK_CACHE = "music-artwork-v1";
 const TRACK_URL_PATTERN = /\/music\/media\/stream\/\d+$/;
 // 封面族: 专辑/艺人/单曲封面 + 播放列表自定义封面

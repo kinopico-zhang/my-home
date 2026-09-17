@@ -1,44 +1,62 @@
-// music-library-views — My Music 资料库视图: 专辑/艺人分段容器, 事件委托, 已下载管理栏。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// music-library-views — My Music 资料库独立页 (1.8.0 拆段成页): 专辑/艺人页容器与分页挂载, 已下载管理页。
+// 拆自 music.js (结构化重构), 原资料库页签分段 (segment) 撤掉,
+// 专辑/艺人/已下载各自成推入层, 缓存仍按段名住 pageState.lists。
 "use strict";
-/* global $, LIBRARY_SEGMENTS, appendListPage, downloadAllCancelled: writable, downloads,
+/* global $, appendListPage, downloadAllCancelled: writable, downloads,
           downloadsEnabled, escapeHTML, formatBytes, listPlaceholderHTML, loadListPage,
           navigate, pageState, playerStart, toast */
-/* exported downloadAllCancelled, playDownloadedRow, renderDownloadsBody, renderLibraryView,
+/* exported downloadAllCancelled, playDownloadedRow, renderAlbumsPane,
+            renderArtistsPane, renderDownloadsBody, renderDownloadsPane,
             resetLibraryLists */
 
-// ------------------------------------------------------------ 资料库页
+// ------------------------------------------------------------ 资料库独立页
 
 function resetLibraryLists() {
   pageState.lists = {};
 }
 
-function renderLibraryView() {
-  $("#root-view").innerHTML = `
-    <div class="sticky-head">
-      <div class="seg" id="lib-seg">
-        ${LIBRARY_SEGMENTS.map(([key, label]) => `
-          <button data-segment="${key}"${key === pageState.segment ? ' class="on"' : ""}>${label}</button>`).join("")}
-      </div>
-    </div>
-    <div id="lib-body"></div>`;
-  $("#lib-seg").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-segment]");
-    if (!button || button.dataset.segment === pageState.segment) return;
-    pageState.segment = button.dataset.segment;
-    localStorage.setItem("music-segment", pageState.segment);
-    document.querySelectorAll("#lib-seg [data-segment]")
-      .forEach((item) => item.classList.toggle("on",
-        item.dataset.segment === pageState.segment));
-    renderLibraryBody();
-  });
-  bindLibraryBody();
-  renderLibraryBody();
+/** 专辑页: 大标题 + 网格 (缓存有货直接铺, 不够的分页链自己续)。 */
+function renderAlbumsPane(target) {
+  target.innerHTML = `
+    <div class="pane-title">专辑</div>
+    <div class="lib-body"></div>`;
+  mountSegmentList(target.querySelector(".lib-body"), "albums");
 }
 
-/** 资料库容器事件 (专辑/艺人跳转 + 曲目开播 + 下载管理), 只绑一次。 */
-function bindLibraryBody() {
-  const body = $("#lib-body");
+/** 艺人页: 大标题 + 行列表 (与专辑页同一套分页链, 段名不同)。 */
+function renderArtistsPane(target) {
+  target.innerHTML = `
+    <div class="pane-title">艺人</div>
+    <div class="lib-body"></div>`;
+  mountSegmentList(target.querySelector(".lib-body"), "artists");
+}
+
+/** 分页列表挂载: 缓存重铺从头渲染, 没缓存先占位再拉首页。 */
+function mountSegmentList(body, segment) {
+  bindLibraryBody(body);
+  body.dataset.segment = segment;   // 段守卫的锚: 在途旧分页回来对不上就丢弃
+  const list = pageState.lists[segment];
+  if (list && list.items.length) {
+    list.renderedCount = 0;         // 缓存重铺从头渲染 (旧值是上次铺到的位置)
+    appendListPage(body, segment, list);
+    return;
+  }
+  body.innerHTML = listPlaceholderHTML("加载中…");
+  loadListPage(segment, body);
+}
+
+/** 已下载页: 下载管理 (统计行/逐首大小/删除与取消/一键清空)。 */
+function renderDownloadsPane(target) {
+  target.innerHTML = `
+    <div class="pane-title">已下载</div>
+    <div class="lib-body" id="dl-pane-body"></div>`;
+  const body = $("#dl-pane-body");
+  bindLibraryBody(body);
+  renderDownloadsBody(body);
+}
+
+/** 资料库页事件 (专辑/艺人跳转 + 已下载管理), 绑在各自的页容器上。 */
+function bindLibraryBody(body) {
   body.addEventListener("click", (event) => {
     const albumCard = event.target.closest("[data-album-id]");
     if (albumCard) { navigate(`album/${albumCard.dataset.albumId}`); return; }
@@ -77,25 +95,9 @@ function playDownloadedRow(trackId) {
   if (index >= 0) playerStart(tracks, index);
 }
 
-function renderLibraryBody() {
-  const body = $("#lib-body");
-  const segment = pageState.segment;
-  body.innerHTML = "";
-  body.dataset.segment = segment;   // 段守卫的锚: 在途旧分页回来对不上就丢弃
-  if (segment === "downloads") { renderDownloadsBody(body); return; }
-  const list = pageState.lists[segment];
-  if (list && list.items.length) {
-    list.renderedCount = 0;         // 缓存重铺从头渲染 (旧值是上次铺到的位置)
-    appendListPage(body, segment, list);
-    return;
-  }
-  body.innerHTML = listPlaceholderHTML("加载中…");
-  loadListPage(segment);
-}
-
 let downloadsRenderToken = 0;   // 重铺计数: 让在途的异步统计结果作废
 
-/** "已下载"段 = 下载管理: 合计大小/每首大小/删除与取消/一键清空
+/** "已下载"页 = 下载管理: 合计大小/每首大小/删除与取消/一键清空
  *  (明文 HTTP 下没有这一套, 说清楚)。 */
 async function renderDownloadsBody(body) {
   if (!downloadsEnabled) {
@@ -156,4 +158,3 @@ async function renderDownloadsBody(body) {
     }).catch(() => {});
   }
 }
-

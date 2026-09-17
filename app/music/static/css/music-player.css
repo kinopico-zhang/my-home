@@ -17,11 +17,11 @@
   position: relative; height: 100%; max-width: 520px; margin: 0 auto;
   display: flex; flex-direction: column;
 }
-/* 顶部抓手条: 点一下 (或往下拖) 收起播放页 */
+/* 顶部抓手条: 点一下 (或往下拖) 收起播放页 (1.8.0 起顶部让位纯 env,
+   不再兜 iOS 谎报的系统 bug —— 详见 music-base.css 的 main 注释) */
 #fp-grab {
   display: flex; justify-content: center; align-items: flex-start;
-  padding: calc(max(env(safe-area-inset-top, 0px), var(--sys-top-inset, 0px)) + 3px)
-           0 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 3px) 0 0;
   border: 0; background: none; touch-action: none;
 }
 #fp-grab span { width: 60px; height: 5px; border-radius: 2.5px;

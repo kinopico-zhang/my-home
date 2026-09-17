@@ -1,5 +1,5 @@
 // music-search-view — My Music 搜索视图: 搜索框常驻顶端, 防抖搜索/结果铺页。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// 拆自 music.js (结构化重构), 1.8.0 起住推入层 (搜索键进来), 渲染目标由调用方给。
 "use strict";
 /* global $, ICON_BARS, ICON_LYRICS, albumCardHTML, artistRowHTML, bindTrackLists,
           escapeHTML, fetchJSON, listPlaceholderHTML, navigate, openFullPlayer,
@@ -8,8 +8,8 @@
 
 // ------------------------------------------------------------ 搜索页
 
-function renderSearchView() {
-  $("#root-view").innerHTML = `
+function renderSearchView(target) {
+  target.innerHTML = `
     <div class="sticky-head">
       <div class="search-box">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m11 11 3.4 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

@@ -1,13 +1,13 @@
 // music-stats-view — My Music 统计视图 (听歌数据)。
-// 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
+// 拆自 music.js (结构化重构), 1.8.0 起住推入层 (设置页「统计」进来), 渲染目标由调用方给。
 "use strict";
 /* global $, describeDuration, escapeHTML, fetchJSON */
 /* exported renderStatsView */
 
 // ------------------------------------------------------------ 统计页
 
-async function renderStatsView() {
-  $("#root-view").innerHTML = '<div id="stats-body">'
+async function renderStatsView(target) {
+  target.innerHTML = '<div class="pane-title">统计</div><div id="stats-body">'
     + '<p class="stat-empty">正在统计…</p></div>';
   const body = $("#stats-body");
   let stats;
