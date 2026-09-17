@@ -3,7 +3,8 @@
 // 歌名/作者太长改跑马灯来回滚 (用户点名), 不再截断省略号。
 // 1.8.2 专辑名并进艺人行 (| 分隔), 来源行只留 作词/作曲, 没有就整行收掉。
 "use strict";
-/* global $, ICON_PAUSE, ICON_PAUSE_BIG, ICON_PLAY, ICON_PLAY_BIG, PLACEHOLDER_ARTWORK,
+/* global $, ICON_PAUSE, ICON_PAUSE_BIG, ICON_PLAY, ICON_PLAY_BIG, ICON_REPEAT,
+          ICON_REPEAT_ONE, PLACEHOLDER_ARTWORK,
           currentTrack, fetchJSON, playQueue, playerCurrentTrackId, playerIsPlaying */
 /* exported renderPlayerChrome, updatePlayButtons, updateShuffleRepeatButtons */
 
@@ -72,7 +73,9 @@ function updateShuffleRepeatButtons() {
   const repeat = playQueue.repeat;
   const repeatButton = $("#fp-repeat");
   repeatButton.classList.toggle("on", repeat !== "off");
-  repeatButton.classList.toggle("one", repeat === "one");
+  // 1.8.5 图标换用户贴的循环标: 单曲循环带 "1", 列表循环去 "1"
+  // (原 CSS ::after 贴 "1" 的做法随旧图标一起撤)
+  repeatButton.innerHTML = repeat === "one" ? ICON_REPEAT_ONE : ICON_REPEAT;
 }
 
 // ------------------------------------------------------------ 底部来源行

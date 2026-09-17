@@ -1,8 +1,8 @@
 // music-track-menus — My Music 曲目长按菜单: 开合/定位/按列表语境开播, 分享链接。
 // 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
 "use strict";
-/* global $, downloads, fetchJSON, playDownloadedRow, playerStart, rowForTrackMenu: writable,
-          toast, trackListBindings */
+/* global $, downloads, downloadsEnabled, fetchJSON, playDownloadedRow, playerStart,
+          rowForTrackMenu: writable, toast, trackListBindings */
 /* exported closeTrackMenu, menuTrackDirect, openTrackMenu, openTrackMenuForTrack,
             pickerTrack, placeMenuAt, playTrackFromMenu, rowForTrackMenu, sharePlaylist,
             shareTrack, trackFromRow */
@@ -10,8 +10,8 @@
 // ------------------------------------------------------------ 曲目长按菜单
 // 任何界面的曲目行 (含「已下载」栏) 长按 500ms / 桌面右键, 弹出菜单:
 // 播放 (在所在列表的语境里开播) / 进入艺人主页 / 进入专辑主页 (1.8.2) /
-// 添加到播放列表 / 分享。全屏页 ⋯ 也走这个菜单 (对着当前曲目直接开,
-// 没有「播放」项)。
+// 下载 (1.8.6) / 添加到播放列表 / 分享。全屏页 ⋯ 也走这个菜单 (对着当前
+// 曲目直接开, 没有「播放」项)。
 let pickerTrack = null;                   // 正在挑列表往里加的曲目
 let menuTrackDirect = null;               // 全屏页 ⋯ 直接对着曲目开时用这个
 
@@ -119,6 +119,7 @@ function openTrackMenu(row, point) {
   $("#menu-track-artist").textContent = track.artist;
   $("#track-menu-artist").hidden = !track.artist_id;   // 老下载索引没存艺人号
   $("#track-menu-album").hidden = !track.album_id;     // 同理 (1.8.2 加的键)
+  hideDownloadMenuItem(track);
   $("#track-menu").querySelector('[data-track-action="play"]').hidden = false;
   const menu = $("#track-menu");
   menu.hidden = false;
@@ -134,11 +135,19 @@ function openTrackMenuForTrack(track, point) {
   $("#menu-track-artist").textContent = track.artist;
   $("#track-menu-artist").hidden = !track.artist_id;
   $("#track-menu-album").hidden = !track.album_id;
+  hideDownloadMenuItem(track);
   $("#track-menu").querySelector('[data-track-action="play"]').hidden = true;
   const menu = $("#track-menu");
   menu.hidden = false;
   $("#track-menu-mask").hidden = false;
   placeMenuAt(menu, point);
+}
+
+/** 「下载」项 (1.8.6 用户点名加进 ⋯ 菜单): 离线下载没开 (明文 HTTP)
+    或这首已在库/已下载行上点出来的 — 藏掉, 别给点了没反应的钮。 */
+function hideDownloadMenuItem(track) {
+  $("#track-menu-download").hidden = !downloadsEnabled
+    || !downloads || downloads.isDownloaded(track.track_id);
 }
 
 /** 菜单定位: 触点下方, 出屏就翻到上方/收边 (fixed 元素, 坐标即视口)。 */

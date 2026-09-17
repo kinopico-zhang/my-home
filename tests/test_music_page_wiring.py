@@ -66,6 +66,12 @@ def test_music_downloads_wiring():
     # 正上方顺时针画满; 已下载照旧是勾)
     assert "function downloadRingHTML" in js
     assert "stroke-dasharray" in js and "stroke-dashoffset" in js
+    # 1.8.5 修「下载中已下载页封面闪烁」: 进度回调不再整页重铺 —— 行级
+    # 就地补 (同一行只换圆环, 状态翻转才换行), 全清了才补统计行
+    assert "function refreshDownloadsBody" in js
+    assert "function downloadRowHTML" in js
+    assert 'body.querySelectorAll("[data-dl-row]")' in js
+    assert "ring.outerHTML = downloadRingHTML" in js
     # 已下载行也带封面: 曲目封面接口 + 裂图退音符 (和播放列表行同款)
     assert 'src="/music/media/tracks/${entry.track_id}/artwork"' in js
     downloads_js = (MUSIC_STATIC / "js" / "downloads.js").read_text(encoding="utf-8")
@@ -73,15 +79,32 @@ def test_music_downloads_wiring():
     assert "AbortController" in downloads_js       # 下载中的删除 = 取消下载
     html = music_page_shell()
     assert ".dl-stats" in html and ".dl-clear" in html    # 统计行样式
+    # 1.8.6 多选删除 (用户点名): 「多选」进选择模式, capture 阶段截下点行
+    # 改勾选 (不再开播), 统计条换「删除 N 首」, 删完/「完成」退出;
+    # 状态住模块, 整页重铺后 syncDownloadsSelect 按 state 补圈补勾
+    assert "music-downloads-select.css?v=" in html        # 选择圈样式
+    select_js = (MUSIC_STATIC / "js" / "music-downloads-select.js").read_text(
+        encoding="utf-8")
+    for frag in ["function bindDownloadsSelect", "function syncDownloadsSelect",
+                 "function deleteSelected", "const dlSelected = new Set();",
+                 "event.stopPropagation();",          # capture 截下: 不走开播
+                 "删除选中的 ${dlSelected.size} 首?",
+                 "await downloads.removeDownload(trackId);"]:
+        assert frag in select_js, f"多选删除缺 {frag}"
+    assert "bindDownloadsSelect(target);" in js          # 挂 pane 层 (重铺不丢)
+    assert 'id="dl-select-toggle"' in js and 'id="dl-select-delete"' in js
+    assert "#dl-pane-body.selecting .dl-row.sel::after" in html  # 勾样式
     scripts = re.findall(r'<script src="([^"]+)"', html)
-    # 结构化重构后 42 个独立脚本 (1.8.1: +recent-pane; 1.8.3: +search-pages),
+    # 结构化重构后 45 个独立脚本 (1.8.1: +recent-pane; 1.8.3: +search-pages;
+    # 1.8.5: +bubble-swipe; 1.8.6: +downloads-select, push-panes 拆出 pane-swipe),
     # 引用一律带版本参数 (改哪个 bump 哪个)
-    assert len(scripts) == 42 and all("?v=" in src for src in scripts)
+    assert len(scripts) == 45 and all("?v=" in src for src in scripts)
     assert "js/downloads.js?v=" in html and "js/music-app-boot.js?v=" in html
+    assert "js/music-downloads-select.js?v=" in html   # 1.8.6 已下载多选删除
     sw = (MUSIC_STATIC / "sw.js").read_text(encoding="utf-8")
     assert "TRACK_URL_PATTERN" in sw               # 曲目流: 缓存回源 + Range 切片
     assert "caches.open" in sw and "206" in sw
-    assert "music-shell-v6" in sw                  # 应用壳也进缓存 (断网打得开)
+    assert "music-shell-v8" in sw                  # 应用壳也进缓存 (断网打得开)
     assert "clients.claim" in sw                   # 装完立刻接管已开的页面
 
 
@@ -93,11 +116,17 @@ def test_music_track_context_menu_wiring():
     for frag in ['id="track-menu"', 'id="track-menu-mask"',
                  'data-track-action="play"', 'data-track-action="artist"',
                  'data-track-action="playlist"', 'data-track-action="share"',
+                 'data-track-action="download" id="track-menu-download"',
                  'id="track-menu-artist"', 'id="picker-sheet"',
                  'id="picker-list"', 'id="picker-create"', 'id="picker-name"',
                  'id="picker-close"', 'id="picker-mask"',
                  "-webkit-touch-callout: none"]:
         assert frag in html, f"播放页缺少 {frag}"
+    # 1.8.6: 播放页 ⋯ 菜单加「下载」—— 已下过的/下载不可用时藏掉,
+    # 派发走 downloadTrackFromUI (与曲目行长按菜单同一颗)
+    assert 'hideDownloadMenuItem(track)' in js
+    assert '$("#track-menu-download").hidden' in js
+    assert 'downloadTrackFromUI(track);' in js
     for frag in ["function openTrackMenu", "function cancelTrackPress",
                  "function trackFromRow", "function shareTrack",
                  "function openPlaylistPicker", "trackListBindings",
