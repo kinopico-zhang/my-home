@@ -1,6 +1,7 @@
 // share-viewer-fullpage — My Music 分享页全屏播放页: 开合/下拉收起/顶部绑定。
-// 拆自 share.html 的内联 <script> (结构化重构)。1.8.2 歌词不再点封面切换,
-// 改为有词的曲子直接住在封面下面跟着滚 (用户点名), 封面点按没有别的含义。
+// 拆自 share.html 的内联 <script> (结构化重构)。1.8.5 下拉收起扩到整页
+// (封面/歌词/标题区都能拉, app 同款): 传输区和歌词键照常点; 歌词滚到
+// 中间时竖拖先归滚词, 滚到头再往下拉才收。
 "use strict";
 /* global $, nextTrack, prevTrack, togglePlay */
 
@@ -21,18 +22,21 @@ function closeFullPlayer() {
   setTimeout(() => { fp.hidden = true; }, 340);
 }
 
-// 下拉收起: 封面区跟手下移, 松手过 90px 或带甩劲就收; 横移/上移撒手
+// 下拉收起: 整页跟手下移, 松手过 90px 或带甩劲就收; 横移/上移撒手
 (function bindPullClose() {
-  const art = $("#fp-art-wrap");
+  const sheet = $("#fp .fp-sheet");
   const fp = $("#fp");
   let drag = null;
-  art.addEventListener("pointerdown", (event) => {
+  sheet.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.target.closest("button, input")) return;   // 传输区/歌词键照常点
+    const scroller = event.target.closest("#fp-lyrics");
+    if (scroller && scroller.scrollTop > 0) return;      // 词滚到中间: 先归滚词
     drag = { startX: event.clientX, startY: event.clientY,
              lastY: event.clientY, lastT: event.timeStamp,
              y: 0, decided: false };
   });
-  art.addEventListener("pointermove", (event) => {
+  sheet.addEventListener("pointermove", (event) => {
     if (!drag) return;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
@@ -40,7 +44,7 @@ function closeFullPlayer() {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       drag.decided = true;
       if (!(dy > 0 && dy > Math.abs(dx))) { drag = null; return; }  // 只收下拉
-      try { art.setPointerCapture(event.pointerId); } catch { /* 照拖 */ }
+      try { sheet.setPointerCapture(event.pointerId); } catch { /* 照拖 */ }
       fp.style.transition = "none";
     }
     drag.y = Math.max(0, dy);
@@ -59,8 +63,8 @@ function closeFullPlayer() {
     const flick = event.timeStamp - d.lastT < 100 && d.lastY - d.startY > 40;
     if (d.y > 90 || flick) closeFullPlayer();
   };
-  art.addEventListener("pointerup", (event) => finish(event, false));
-  art.addEventListener("pointercancel", () => finish(null, true));
+  sheet.addEventListener("pointerup", (event) => finish(event, false));
+  sheet.addEventListener("pointercancel", () => finish(null, true));
 })();
 
 $("#fp-grab").addEventListener("click", closeFullPlayer);

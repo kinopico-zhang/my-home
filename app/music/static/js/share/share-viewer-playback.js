@@ -19,10 +19,15 @@ function playQueue(pos) {
   $("#p-title").textContent = track.title;
   $("#p-artist").textContent = track.artist;
   setArt($("#p-art"), artURL(track));
-  // 全屏页: 曲名/封面/毛玻璃底/传输可用态 一起跟上
+  // 全屏页: 曲名/作者·专辑/封面/毛玻璃底 一起跟上 (1.8.5 作者行并上
+  // 专辑名, app 同款「下面是标题和作者专辑名称」)
   $("#fp-title").textContent = track.title;
-  $("#fp-artist").textContent = track.artist;
-  setArt($("#fp-art"), artURL(track));
+  $("#fp-artist").textContent =
+    [track.artist, track.album_title].filter(Boolean).join(" | ");
+  // 1.8.6 修「全屏页看不到封面」: #fp-art 本尊是 <img> (app 同款), 直接挂
+  // src; 此前错用了给容器 div 用的 setArt —— 往 <img> 里塞子 <img> 永远
+  // 不渲染, 封面就一直空着 (迷你条的 #p-art 是 div, setArt 没问题)
+  $("#fp-art").src = artURL(track);
   const bgImg = $("#fp-bg-img");
   bgImg.onerror = () => { $("#fp-bg").classList.add("ph"); bgImg.removeAttribute("src"); };
   if (bgImg.getAttribute("src") !== artURL(track)) {

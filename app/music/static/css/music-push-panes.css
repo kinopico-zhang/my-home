@@ -9,14 +9,16 @@
    歇下来再恢复磨砂。 */
 body.pane-anim #mini-player,
 body.pane-anim #dock-menu,
-body.pane-anim #dock-search {
+body.pane-anim #dock-search,
+body.pane-anim .search-box {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  /* 磨砂等效实底: rgba(44,44,46,.78) 盖在纯黑 (var(--bg)) 上 ≈
-     (34.3,34.3,35.9) —— 运动期底下扫过的推入层是实色黑, 换算过来
+  /* 磨砂等效实底: rgba(44,44,46,.7) 盖在纯黑 (var(--bg)) 上 ≈
+     (31.2,31.2,32.2) —— 运动期底下扫过的推入层是实色黑, 换算过来
      视觉不变 (1.8.1 立的规矩: 动画前后三件套深浅一致;
-     1.8.3 底色调实一档, 等效实底跟着重算) */
-  background: rgb(34,34,36);
+     1.8.5 底色调回半透明一档, 等效实底跟着重算; 搜索框 1.8.5 起同住
+     船坞位, 一起换底) */
+  background: rgb(31,31,32);
 }
 .push-pane {
   position: absolute; left: 0; right: 0; top: 0; bottom: 0;

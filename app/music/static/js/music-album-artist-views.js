@@ -3,7 +3,7 @@
 "use strict";
 /* global ICON_ACTION_PLAY, ICON_ACTION_SHUFFLE, ICON_DOWNLOAD, PLACEHOLDER_ARTWORK,
           albumArtworkURL, albumCardHTML, artistArtworkURL, bindTrackLists, describeDuration,
-          downloadAllFromUI, downloadsEnabled, escapeHTML, fetchJSON, formatAddedDate,
+          downloadAllFromUI, downloadsEnabled, escapeHTML, fetchJSON,
           listPlaceholderHTML, navigate, playerStart, pushPaneTarget, syncPlayerIndicators,
           toast, trackArtHTML, trackRowHTML */
 /* exported renderAlbumView, renderArtistView */
@@ -30,8 +30,7 @@ async function renderAlbumView(albumId, target) {
         <h2>${escapeHTML(album.title)}</h2>
         <button class="hero-artist" data-artist-id="${album.artist_id}">${escapeHTML(album.artist_name)}</button>
         <small>${escapeHTML([album.year || "",
-          describeDuration(album.duration_seconds, album.track_count),
-          formatAddedDate(album.added_at) && `入库 ${formatAddedDate(album.added_at)}`]
+          describeDuration(album.duration_seconds, album.track_count)]
           .filter(Boolean).join(" · "))}</small>
       </div>
     </div>

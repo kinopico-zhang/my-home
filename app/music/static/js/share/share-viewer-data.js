@@ -7,10 +7,9 @@
             setArt, token */
 
 // 分享页逻辑: 拿 uuid 换数据 → 渲染 → 流地址播放; 失效 (410) 走错误态。
-// 迷你条点文字区掀全屏播放页 (与应用同款骨架); 1.8.2 起有词的曲子歌词
-// 直接住封面下面跟着滚, 封面不再点击切换; 歌词解析借应用公开的
-// lyrics-parser.js (纯模块, 不带会话)。一切状态以 <audio> 的
-// play/pause 事件为准, 按钮只改 audio。
+// 迷你条点文字区掀全屏播放页 (1.8.5 与 app 同款: 封面/标题行字幕引号/
+// 传输三键/细进度条); 歌词解析借应用公开的 lyrics-parser.js (纯模块,
+// 不带会话)。一切状态以 <audio> 的 play/pause 事件为准, 按钮只改 audio。
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => (

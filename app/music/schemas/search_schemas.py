@@ -20,6 +20,12 @@ class SearchResult(BaseModel):
     albums: list[AlbumCard] = Field(default_factory=list)
     artists: list[ArtistBrief] = Field(default_factory=list)
     lyric_hits: list[LyricHit] = Field(default_factory=list)
+    # 各板块命中总数 (1.8.6): 列表按容量截断, 总数不截 —— 板块头/页签
+    # 报总数, 截断时列表尾注明 (修「艺人 64 专辑, 专辑板块只有 20 张」)
+    track_total: int = 0
+    album_total: int = 0
+    artist_total: int = 0
+    lyric_total: int = 0
 
 
 class PlayRecordRequest(BaseModel):

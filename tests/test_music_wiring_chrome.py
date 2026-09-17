@@ -40,7 +40,9 @@ def test_music_pane_fixed_chrome_wiring():
     assert 'pageState.rootScroll = $("#main").scrollTop;' in js
     assert "window.scrollY" not in js
     assert '$("#root-view").innerHTML' in js
-    assert "window.scrollTo" not in js
+    # 文档滚动唯一例外: iOS 键盘收走后视口可能停在偏移上 (回主页底部一块
+    # 黑), lift() 复位一次 —— 除它之外文档滚动仍彻底退出
+    assert js.count("window.scrollTo") == 1
     # 推入层铺满全高: 顶上一直铺到屏顶 (顶栏撤了, env 让开刘海), 底下从磨砂
     # 船坞/气泡底下过 (设计一致, 用户点名"气泡下面要有内容")
     pane_css = html[html.index(".push-pane {"):html.index(".push-pane .pane-scroll")]
@@ -64,7 +66,8 @@ def test_music_pane_fixed_chrome_wiring():
     assert "#push-stack::after" not in html
     assert "body.pane-anim #mini-player," in html
     assert "body.pane-anim #dock-menu," in html
-    assert "body.pane-anim #dock-search {" in html
+    # 1.8.5 搜索框同住船坞位, 一起换实底 (列表尾是 .search-box)
+    assert "body.pane-anim .search-box {" in html
     assert "backdrop-filter: none;" in html
     assert "function paneMotion" in js
     open_pane = js[js.index("function openPushPane"):js.index("function closePushStack")]
@@ -143,7 +146,8 @@ def test_music_172_fix_batch():
     assert "sticky-head" not in js and ".sticky-head" not in html
     assert '<div class="search-foot">' in js        # 页底一条: 页签 + 搜索框
     assert ".search-shell {" in html                # 页壳 (抵掉层衬, 顶端全给滚动内容)
-    assert "margin-bottom: var(--kb-h, 0);" in html   # iOS 键盘避让
+    # 1.8.5 搜索框顶替船坞三件套: 页底一条钉死在船坞位 (fixed + 键盘高度)
+    assert "bottom: calc(4px + env(safe-area-inset-bottom) + var(--kb-h, 0));" in html
     # 资料库段选择条 (.seg) 与语种 chips 随拆页撤掉: markup 不再产出, 样式一并清场
     assert 'class="seg"' not in js and ".seg {" not in html
     assert ".chip {" not in html and "chipsHTML" not in js

@@ -31,21 +31,31 @@ def test_music_share_link_wiring():
     # 整页不画滚动条 (与应用同款: 星规则 + 伪元素)
     assert "scrollbar-width: none;" in share
     assert "::-webkit-scrollbar { display: none; }" in share
-    # 全屏播放页 (用户点名"和 app 自己的播放界面大致一样"): 点迷你条掀开,
-    # 传输三键 + 进度 + 毛玻璃底 + 下拉收起; 有词的歌 1.8.2 起歌词常驻
-    # 封面下面跟着唱句滚 (点封面切换那套撤了), 歌词解析借公开的
-    # lyrics-parser.js (纯模块, 不带会话)
+    # 全屏播放页 1.8.5 与 app 一致 (用户点名): 大封面 + 标题/作者·专辑行,
+    # ⋯ 菜单位换成字幕引号键 (点开看歌词), 传输三键 + 细进度条 (无旋钮,
+    # 填充走 --fill), 下拉收起整页都能拉; 歌词视图罩住封面区 (app 同款
+    # 距离模糊/当前句放大), 歌词解析借公开的 lyrics-parser.js
     for frag in ['id="fp"', 'id="fp-play"', 'id="fp-prev"', 'id="fp-next"',
-                 'id="fp-lyrics"', 'id="fp-scrub"', 'id="fp-grab"',
-                 'id="fp-bg"', "openFullPlayer",
+                 'id="fp-lyrics"', 'id="fp-lyrics-btn"', 'id="fp-scrub"',
+                 'id="fp-grab"', 'id="fp-bg"', "openFullPlayer",
                  "closeFullPlayer", "bindPullClose", "updateMediaSession",
                  "/music/share/${token}/lyrics/${track.track_id}",
                  'src="/music/static/js/lyrics-parser.js',
                  ".lyrics-line.near-1", ".lyrics-line.active"]:
         assert frag in share_all, f"share.html 缺 {frag}"
-    # 歌词常驻封面下 (1.8.2): with-lyrics 类挂容器收缩封面, 没词整块收掉
-    assert "with-lyrics" in share_all and "box.hidden = !lyrics;" in share_all
-    assert "toggleLyricsView" not in share_all     # 点封面切换视图那套撤了
+    # 作者行并专辑名 (「下面是标题和作者专辑名称」)
+    assert '[track.artist, track.album_title].filter(Boolean).join(" | ")' in share_all
+    # 歌词视图开关 (1.8.5): 引号键开合, 开着封面让位; 没词键灰掉
+    assert "lyricsViewOpen" in share_all
+    assert '$("#fp-art-wrap").hidden = open;' in share_all
+    assert '$("#fp-lyrics-btn").disabled = !lyrics;' in share_all
+    assert "with-lyrics" not in share_all   # 常驻封面下面那套 (1.8.2) 撤了
+    # 下拉收起扩到整页: 传输区/歌词键照常点, 词滚到中间先归滚词
+    assert 'const sheet = $("#fp .fp-sheet");' in share_all
+    assert 'if (event.target.closest("button, input")) return;' in share_all
+    assert 'if (scroller && scroller.scrollTop > 0) return;' in share_all
+    # 细进度条填充: 播/拖都更新 --fill
+    assert "function setScrubFill" in share_all
     # 微信卡片: <head> 留 og 占位注释, 服务端换掉 (占位符漏替换卡片就漏空)
     assert "<!--og-->" in share
     share_routes = (Path(__file__).parent.parent / "app" / "music"

@@ -3,10 +3,11 @@
 // 1.8.2: 菜单加「进入专辑主页」; 艺人/专辑跳转前先收全屏页 (它盖着推入层,
 // 不收的话页面在底下开了也看不见 —— 表现就是「点了没反应」)。
 "use strict";
-/* global $, closeFullPlayer, closeTrackMenu, fetchJSON, menuTrackDirect, navigate,
-          onTrackChange, openPlaylistPicker, openTrackMenu, openTrackMenuForTrack,
-          placeMenuAt, playTrackFromMenu, playerCurrentTrack, playerOpen,
-          renderPlaylistView, rowForTrackMenu, shareTrack, toast, trackFromRow */
+/* global $, closeFullPlayer, closeTrackMenu, downloadTrackFromUI, fetchJSON,
+          menuTrackDirect, navigate, onTrackChange, openPlaylistPicker, openTrackMenu,
+          openTrackMenuForTrack, placeMenuAt, playTrackFromMenu, playerCurrentTrack,
+          playerOpen, renderPlaylistView, rowForTrackMenu, shareTrack, toast,
+          trackFromRow */
 /* exported bindCoverPress */
 
 // 长按开过菜单的那个元素 (行/封面): 它随后补发的尾随 click 要吞。
@@ -122,6 +123,7 @@ $("#track-menu").addEventListener("click", async (event) => {
              ? `artist/${track.artist_id}` : `album/${track.album_id}`);
   }
   else if (action.dataset.trackAction === "share") shareTrack(track);
+  else if (action.dataset.trackAction === "download") downloadTrackFromUI(track);
   else if (action.dataset.trackAction === "playlist") openPlaylistPicker(track);
 });
 

@@ -1,4 +1,5 @@
-/* music-player — My Music 前端样式 (全屏播放页: 氛围底 / 大封面 / 控件栈 / 歌词视图 / 队列视图)。
+/* music-player — My Music 前端样式 (全屏播放页: 氛围底 / 大封面 / 控件栈 / 歌词视图;
+   队列视图样式拆在 music-queue.css, 1.8.6 按域再拆)。
    拆自 music.html 的内联 <style> (结构化重构, 内容逐字节未动)。 */
 /* ---------- 全屏播放页 (参考图 1:1: 氛围底 + 顶部抓手 + 大封面 + 底部控件栈) ---------- */
 #full-player {
@@ -19,11 +20,8 @@
   display: flex; flex-direction: column;
 }
 /* 顶部抓手条: 点一下 (或往下拖) 收起播放页 (1.8.1 起用 --top-floor 下限
-   躲独立模式的系统磨砂带 —— 用户点名「往下一点, 离开模糊的区域」)。
-   下推走 margin 不走 padding: 按钮盒不跟着变大, 点按/拖拽的命中区
-   还是抓手那一条 —— 垫进按钮的话, 封面上方整条空白都一按就收。
-   队列视图 (#fp-queue) 住在 .fp-body 里, 天生排在抓手之下, 抓手
-   下移它跟着下移, 不会越过抓手。 */
+   躲独立模式的系统磨砂带)。下推走 margin 不走 padding: 命中区还是抓手
+   那一条。队列视图住在 .fp-body 里, 天生排在抓手之下不会越过。 */
 #fp-grab {
   display: flex; justify-content: center; align-items: flex-start;
   margin-top: max(env(safe-area-inset-top, 0px), var(--top-floor));
@@ -46,6 +44,7 @@
           background: rgba(255,255,255,.08); box-shadow: 0 18px 50px rgba(0,0,0,.55); }
 #fp-lyrics {
   position: absolute; inset: 0; overflow-y: auto; z-index: 2;
+  overscroll-behavior: contain;   /* 滚到顶再往下拖不做橡皮筋, 下拉收起通吃 */
   -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
   mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
   padding: 30% 28px;
@@ -59,18 +58,27 @@
   backdrop-filter: blur(20px) saturate(180%);
 }
 .lyrics-line {
+  /* 1.8.5 修「放大重新换行」: 平时行宽只给 80% —— 放大 (21→26px, ×1.24)
+     后同一行最多占 99%, 100% 装得下, 断行点不动 */
+  max-width: 80%;
   font-size: 21px; font-weight: 700; color: rgba(255,255,255,.32);
   padding: 12px 0; line-height: 1.34; text-align: left;
   filter: blur(3px); will-change: filter;
+  /* max-width 陪 font-size 一起过渡 (1.8.6 修「放大过程中跳动换行」):
+     none→80% 是瞬变而字号渐变, 中途 24px×80% 装不下就跳一下 —— 改成
+     80%→100% 可插值, 且两条直线的斜率恰好相等 (字宽随字号线性、
+     行宽随时间线性), 两端点之间全程不越界, 断行点全程不动 */
   transition: filter .5s cubic-bezier(.22,.61,.36,1),
               color .5s cubic-bezier(.22,.61,.36,1),
-              font-size .5s cubic-bezier(.22,.61,.36,1);
+              font-size .5s cubic-bezier(.22,.61,.36,1),
+              max-width .5s cubic-bezier(.22,.61,.36,1);
 }
 /* 距离模糊: 离当前句越近越清晰 (默认远处 3px), 近一两句半模糊,
    正在唱的一句全清 + 放大 (滚动动画在 music-player.js) */
 .lyrics-line.near-2 { filter: blur(2px); }
 .lyrics-line.near-1 { filter: blur(1px); }
-.lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0); }
+.lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0);
+                      max-width: 100%; }
 /* 手动滑动浏览期间整页清晰 (music-player.js 切换 browsing);
    无时间轴歌词没有"当前句"可依 (static), 也整页清晰 */
 #fp-lyrics.browsing .lyrics-line,
@@ -101,11 +109,9 @@
                 margin-top: 10px; padding: 0 24px; }
 .fp-time { flex-shrink: 0; font-size: 10px; color: rgba(255,255,255,.5);
            font-variant-numeric: tabular-nums; }
-/* 细进度条: 无旋钮 (滑块和填充同色, 静止时看不出)。range 住在 flex 行里
-   不会自动让位 (固有宽度顶住), flex:1 + min-width:0 才肯撑满剩余空间 */
+/* 细进度条: 无旋钮 (滑块和填充同色); range 在 flex 行里不让位, flex:1+min-width:0 才撑满 */
 .fp-scrub { flex: 1; min-width: 0; }
-/* 滑杆命中层: iOS 的 range 点轨道不跳值、小滑钮抓不住 (音量条整个点不动),
-   输入框蒙一层透明垫子自己算比例 —— 按下即跳、拖动跟手 (见 music-player.js) */
+/* 滑杆命中层: iOS 的 range 点轨道不跳值、小滑钮抓不住, 蒙透明垫子自己算比例 —— 按下即跳、拖动跟手 (见 music-player.js) */
 .slider-hit { position: relative; touch-action: none;
               -webkit-user-select: none; user-select: none;
               -webkit-touch-callout: none; }
@@ -121,8 +127,7 @@
   -webkit-appearance: none; width: 7px; height: 7px; border-radius: 50%;
   background: rgba(255,255,255,.7); margin-top: 0;
 }
-/* 底部三键: 加列表 / 歌词 / 队列 (无损标挂在队列键右上角) —— 与传输区
-   分成两拨, 中间留白给足 */
+/* 底部三键: 加列表 / 歌词 / 队列 (无损标挂队列键右上角), 与传输区分两拨留白给足 */
 .fp-actions { display: flex; align-items: center; justify-content: space-between;
               margin-top: 18px; padding: 0 53px; color: rgba(255,255,255,.58); }
 .fp-actions > button { position: relative; width: 40px; height: 40px; padding: 0;
@@ -143,57 +148,3 @@
   .fp-transport { margin-top: 6px; }
   .fp-actions { margin-top: 10px; }
 }
-
-/* ---------- 队列视图 (占封面那块地方, 不再弹底部单) ---------- */
-/* 点队列键: 封面原地翻开成播放队列 (照 Apple Music 待播放排版) —— 头部
-   待播放 + 歌曲数 (左) 和 随机/循环 (右); 下面滚动列表: 当前曲 eq 动条,
-   其余序号, 行右缘拖拽把手按住上下拖换顺序。 */
-#fp-queue {
-  position: absolute; inset: 0; z-index: 2;
-  display: flex; flex-direction: column; overflow: hidden;
-  /* 四边留白与大封面同款 (用户点名: 列表贴屏幕边太挤, 边距对齐封面) ——
-     inset:0 是 .fp-body 的 padding 盒 (罩到边), 得自己再衬回来 */
-  padding: 6px 24px 30px;
-  -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 94%, transparent);
-  mask-image: linear-gradient(transparent, #000 10%, #000 94%, transparent);
-}
-.fq-head { display: flex; align-items: center; justify-content: space-between;
-           padding: 6px 0 10px; }
-.fq-head-txt b { display: block; font-size: 19px; font-weight: 700;
-                 color: #fff; line-height: 1.25; }
-.fq-head-txt small { font-size: 12px; color: rgba(255,255,255,.5); }
-.fq-head-btns { display: flex; gap: 16px; }
-.fq-head-btns button {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 13px; font-weight: 600; color: rgba(255,255,255,.55);
-}
-.fq-head-btns button.on { color: #fff; }
-#fp-repeat.one::after { content: "1"; font-size: 10px; font-weight: 700;
-                        color: #fff; margin-left: 3px; }
-#queue-list {
-  flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 2px 0 14px;
-}
-.queue-row {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 8px 0; text-align: left;
-  border-bottom: 1px solid rgba(255,255,255,.09);
-  transition: transform .18s ease; touch-action: pan-y;
-}
-.queue-row.dragging { position: relative; z-index: 3; transition: none;
-  background: rgba(255,255,255,.08); box-shadow: 0 8px 22px rgba(0,0,0,.5);
-  border-radius: 8px; border-bottom-color: transparent; }
-.q-lead { width: 24px; flex-shrink: 0; display: flex; align-items: center;
-          justify-content: center; color: rgba(255,255,255,.4); }
-.q-num { font-size: 14px; font-style: normal;
-         font-variant-numeric: tabular-nums; }
-.queue-row.on .bars { display: inline-flex; }
-.queue-row.on .q-title { color: #fff; font-weight: 600; }
-.q-title { font-size: 15px; color: rgba(255,255,255,.85); flex-shrink: 1;
-           overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.q-artist { font-size: 13px; color: rgba(255,255,255,.4);
-            flex-shrink: 1; margin-left: auto; max-width: 42%;
-            overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.q-grip { flex-shrink: 0; width: 30px; height: 38px;
-          display: flex; align-items: center; justify-content: center;
-          color: rgba(255,255,255,.3); touch-action: none; }
-

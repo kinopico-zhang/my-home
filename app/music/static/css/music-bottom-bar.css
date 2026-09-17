@@ -31,8 +31,8 @@
   width: var(--dock-h); height: var(--dock-h); border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: var(--ink-1); flex-shrink: 0;
-  background: rgba(44,44,46,.78);  /* 磨砂玻璃, 气泡同款 (1.8.3 调实一档:
-    六成底太透, 底下内容一深一浅时三件套跟着忽明忽暗) */
+  background: rgba(44,44,46,.7);   /* 磨砂玻璃, 气泡同款 (1.8.5 调回半透明
+    一档: 八成底看着偏实心板, 七成磨砂感回来) */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hairline);
@@ -40,6 +40,10 @@
   transform: translateZ(0);   /* 自家合成层: 邻居层动起来时防复印 */
 }
 #dock-menu:active, #dock-search:active { transform: translateZ(0) scale(.92); }
+/* 搜索层到顶 (1.8.5 用户点名「三个控件消失, 换成搜索框」): 三件套让位给
+   搜索页的磨砂搜索框 (music-search.css 的 .search-foot 钉在船坞位, JS
+   的 syncSearchDock 切这枚开关); 扫描进度条不在行里, 照常站岗。 */
+body.search-top .dock-row > * { visibility: hidden; }
 
 /* ---------- 扫描进度条 (吊在船坞行上沿的浮层, 不挤布局) ---------- */
 #scan-strip {
@@ -67,9 +71,9 @@
   height: var(--dock-h);
   display: flex; align-items: center; gap: 8px;
   overflow: hidden;
-  background: rgba(44,44,46,.78);   /* 磨砂玻璃 (用户点名): 八成底色,
+  background: rgba(44,44,46,.7);    /* 磨砂玻璃 (用户点名): 七成底色,
     blur(20) 把底下划过的内容糊成影子透上来 —— 和圆键一个质感
-    (1.8.3 从六成调实: 太透时底下内容深浅直接透进三件套) */
+    (1.8.5 从八成调回半透明一档: 八成看着偏实心板) */
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hairline); border-radius: 23px;

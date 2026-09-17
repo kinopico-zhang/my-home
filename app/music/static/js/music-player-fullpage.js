@@ -69,8 +69,15 @@ function bindDismissDrag(target, swipeTracks = false, horizontalClose = false,
   target.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (ignoreInteractive && event.target.closest(
-          "#fp-grab, #fp-art-wrap, #fp-lyrics, #fp-queue, .fp-scrub,"
+          "#fp-grab, #fp-art-wrap, .fp-scrub,"
           + " button, input")) return;
+    // 歌词/待播放是整页盖屏的滚动器 (1.8.5 修「切到待播放后全局下拉
+    // 退出小了」): 自己滚在半路时让路, 滚到顶 (或头部区) 时下拉归收起 ——
+    // 待播放的滚动器是里面的 #queue-list, 歌词就是 #fp-lyrics 本身
+    if (ignoreInteractive) {
+      const scroller = event.target.closest("#fp-lyrics, #queue-list");
+      if (scroller && scroller.scrollTop > 0) return;
+    }
     dragging = true;
     pointerId = event.pointerId;
     startX = lastX = event.clientX;
