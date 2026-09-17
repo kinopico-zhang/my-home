@@ -2,7 +2,8 @@
 # 运行全部测试与检查 (提交前全绿):
 #   后端: pytest (2026-09-15 起不跑覆盖率, NAS 上太拖时间; JS 纯模块仍有 c8 门禁)
 #   前端: ESLint (页面脚本+测试) / tsc --checkJS (纯逻辑模块) /
-#         node --test + c8 覆盖率门禁 95% (gcj02 / trackutil / lastpage / 音乐)
+#         node --test + c8 覆盖率门禁 95% (gcj02 / trackutil / track-animation /
+#         lastpage / 音乐)
 # ESLint/tsc 在调试容器里跑: 宿主 node (QNAP 自带) 缺 ICU 数据, 连
 # eslint 9 内部的 unicode 属性正则都编译不了; 容器 node 22 没问题。
 # 工具链装在共享目录 (.tmp-pptr/node_modules), 仓库内 node_modules 是指向
@@ -39,9 +40,10 @@ fi
 
 # 单元测试 + 覆盖率门禁: 只统计纯逻辑模块 (页面脚本由 E2E 覆盖)
 node node_modules/c8/bin/c8.js \
-  --include 'app/tesla/static/gcj02.js' --include 'app/tesla/static/trackutil.js' \
-  --include 'app/tesla/static/format.js' --include 'app/tesla/static/trip-playback.js' \
-  --include 'app/tesla/static/lastpage.js' --include 'app/bookkeeping/static/bookkeeping-merge.js' \
+  --include 'app/tesla/static/js/gcj02.js' --include 'app/tesla/static/js/trackutil.js' \
+  --include 'app/tesla/static/js/track-animation.js' \
+  --include 'app/tesla/static/js/format.js' --include 'app/tesla/static/js/trip-playback.js' \
+  --include 'app/tesla/static/js/lastpage.js' --include 'app/bookkeeping/static/bookkeeping-merge.js' \
   --include 'app/bookkeeping/static/amount-calculator.js' \
   --include 'app/music/static/js/lyrics-parser.js' \
   --include 'app/music/static/js/player-queue.js' \

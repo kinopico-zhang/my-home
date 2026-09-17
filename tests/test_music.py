@@ -23,15 +23,15 @@ from app.music.library_database import (Album, Artist, PlayStat, Track,
                                         session_factory)
 from app.music.library_languages import (detect_script, language_for_script,
                                          scripts_for_language)
-from tests.music_static_files import (
-    MUSIC_STATIC, music_browser_js, music_page_shell, music_player_js,
-)
 from app.music.library_media import parse_range_header
 from app.music.library_scanner import LibraryScanner, backfill_legacy_rows
 from app.music.library_tags import (extract_album_artwork,
                                     read_track_metadata)
 from app.music import library_playlists, library_queries
 from app.music import library_search_keys
+from tests.music_static_files import (
+    MUSIC_STATIC, music_browser_js, music_page_shell, music_player_js,
+)
 
 PICTURE_BYTES = b"\xff\xd8\xff\xe0FAKEJPEG" + b"x" * 64
 

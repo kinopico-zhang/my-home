@@ -270,10 +270,21 @@ def test_diag_endpoint_logs_and_requires_auth(auth, capsys):
         "/tesla/map/api/diag", json={"stage": "x"}).status_code == 401
 
 
+# ---------------------------------------------------------------- 页面
+def _map_page(auth):
+    """页面 HTML + 拆出的样式与脚本全拼起来 (结构化重构后整页断言的口径)。"""
+    html = auth.get("/tesla/map").text
+    for name in ("css/tesla-map-page.css", "css/tesla-map-canvas.css",
+                 "js/map-page.js", "js/map-tracks-render.js",
+                 "js/map-tracks-refine.js", "js/map-boot.js",
+                 "js/map-filters.js"):
+        html += auth.get(f"/tesla/static/{name}").text
+    return html
+
+
 def test_map_page_time_menu_in_nav_row(auth):
     """时间下拉 (含自定义日历) 在顶栏 nav-row (与全站一致); 筛选行只剩驾驶员。"""
-    html = auth.get("/tesla/map").text
-    html += auth.get("/tesla/static/map.js?v=1").text
+    html = _map_page(auth)
     for frag in ['id="time-menu"', 'data-v="24h"', 'data-v="7d"', 'data-v="30d"',
                  'data-v="180d"', 'data-v="1y"', 'data-v="all"',
                  'data-v="custom"', 'id="tm-cal"', 'id="tm-prev"', 'id="tm-next"',
@@ -305,8 +316,7 @@ def test_map_page_time_menu_in_nav_row(auth):
 def test_map_page_driver_filter(auth):
     """驾驶员筛选下拉: 选项来自设置页驾驶员表 (没配驾驶员整颗藏掉),
     口径与行程页一致 (默认驾驶员含未标注); 写进 URL 可分享。"""
-    html = auth.get("/tesla/map").text
-    html += auth.get("/tesla/static/map.js?v=1").text
+    html = _map_page(auth)
     for frag in ['id="drv-menu"', 'id="drv-opts"', 'id="drv-lb"', "驾驶员: 全部",
                  '"/tesla/api/drivers"', "$(\"#drv-menu\").hidden = false",
                  'u.searchParams.set("driver_id", drvId)',

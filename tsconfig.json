@@ -1,7 +1,8 @@
 {
-  // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / format /
-  // trip-playback (Tesla) / lastpage / bookkeeping-merge (记账同步纯逻辑) /
-  // lyrics-parser + player-queue + downloads + cellular-usage (音乐, 在 js/ 子目录)。页面脚本 (trips.js 等) 依赖
+  // 纯逻辑模块的类型检查 (tsc --checkJs): gcj02 / trackutil / track-animation /
+  // format / trip-playback (Tesla, 在 static/js/ 子目录) / lastpage /
+  // bookkeeping-merge (记账同步纯逻辑) / lyrics-parser + player-queue +
+  // downloads + cellular-usage (音乐, 在 js/ 子目录)。页面脚本 (trips.js 等) 依赖
   // 高德/echarts 宿主对象, 类型声明成本高, 由 ESLint 把关。
   // types:[] — 不自动引入 node_modules/@types (共享目录里有别的包声明)
   "compilerOptions": {
@@ -13,11 +14,12 @@
     "types": []
   },
   "include": [
-    "app/tesla/static/gcj02.js",
-    "app/tesla/static/trackutil.js",
-    "app/tesla/static/format.js",
-    "app/tesla/static/trip-playback.js",
-    "app/tesla/static/lastpage.js",
+    "app/tesla/static/js/gcj02.js",
+    "app/tesla/static/js/trackutil.js",
+    "app/tesla/static/js/track-animation.js",
+    "app/tesla/static/js/format.js",
+    "app/tesla/static/js/trip-playback.js",
+    "app/tesla/static/js/lastpage.js",
     "app/bookkeeping/static/bookkeeping-merge.js",
     "app/music/static/js/lyrics-parser.js",
     "app/music/static/js/player-queue.js",

@@ -48,6 +48,8 @@ def test_changelog_entries_endpoint(auth):
 def test_changelog_page_skeleton(auth):
     """更新日志页: 版本块 (徽标/日期 + 逐条改动行, 类型胶囊)。"""
     html = auth.get("/tesla/changelog").text
+    # 类型胶囊的样式拆去了 css/tesla-changelog.css (结构化重构), 拼进来查
+    html += auth.get("/tesla/static/css/tesla-changelog.css?v=1").text
     html += auth.get("/static/changelog-page.js?v=1").text
     for frag in [
         "<title>更新日志 · My Tesla</title>",
@@ -80,7 +82,7 @@ def test_changelog_link_in_all_nav_menus(auth):
 
 def test_changelog_in_lastpage_and_login_whitelist(auth):
     """上次停留页/登录回跳白名单收录 (子页可停留, 直链可回跳)。"""
-    lastpage = auth.get("/tesla/static/lastpage.js?v=1").text
+    lastpage = auth.get("/tesla/static/js/lastpage.js?v=1").text
     assert '"/tesla/settings", "/tesla/changelog"]' in lastpage
     login_js = auth.get("/static/login.js?v=1").text
     assert "live|settings|changelog)" in login_js

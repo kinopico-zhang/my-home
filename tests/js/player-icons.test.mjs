@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)),
   "../../app/music/static/js");
 const common = fs.readFileSync(path.join(dir, "music-common.js"), "utf8");
-const page = fs.readFileSync(path.join(dir, "music.html"), "utf8");
+const page = fs.readFileSync(path.join(dir, "..", "music.html"), "utf8");
 
 /** 算 SVG 路径的几何包围盒 (图标用到的命令都认; M 后隐式 L 同样取点)。
     素材库图标 (2026-09-15 起) 是 q/t 二次曲线: 曲线必落在控制多边形凸包内,

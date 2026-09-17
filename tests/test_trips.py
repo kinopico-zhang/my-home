@@ -1,7 +1,6 @@
 """行程轨迹页 API 测试 (列表分页 / 单条全精度轨迹 / 参数校验 / 多选合并 /
 头尾区间 / 流式下载 / 断档补路自有库)。"""
 import json
-import re
 from datetime import datetime, timedelta
 
 from app.tesla import repository
@@ -11,12 +10,26 @@ from tests.conftest import (seed_addresses, seed_charging, seed_drive,
                             seed_position, seed_positions)
 
 
-# 行程页脚本按域拆成了四个文件 (format / trip-playback / trips-list / trips):
+# 行程页样式拆去了 css/ 四件套, 脚本按域拆成了 19 个模块 (结构化重构):
 # 页面片段断言可能落在其中任何一个, 全部拼起来查子串 (含 "not in" 守卫,
 # 残留在哪个文件都算回潮)
+TRIPS_ASSETS = ("css/tesla-trips-page.css", "css/tesla-trips-cards.css",
+                "css/tesla-trips-sheet.css", "css/tesla-trips-playback.css",
+                "js/format.js", "js/track-animation.js", "js/trip-playback.js",
+                "js/trips-list-page.js", "js/trips-list-url.js",
+                "js/trips-list-time-filters.js", "js/trips-list-region-filters.js",
+                "js/trips-list-select.js", "js/trips-list-groups.js",
+                "js/trips-sheet-page.js", "js/trips-playback-bar.js",
+                "js/trips-gap-routing.js", "js/trips-playback-zoom.js",
+                "js/trips-playback-overlays.js", "js/trips-playback-loop.js",
+                "js/trips-playback-session.js", "js/trips-preload-tiles.js",
+                "js/trips-preload-vector.js", "js/trips-sheet-driver.js",
+                "js/trips-sheet-open.js", "js/trips-export-video.js",
+                "js/trips-sheet-close.js")
+
+
 def _trips_scripts(auth):
-    return "".join(auth.get(f"/tesla/static/{name}").text for name in
-                   ("format.js", "trip-playback.js", "trips-list.js", "trips.js"))
+    return "".join(auth.get(f"/tesla/static/{name}").text for name in TRIPS_ASSETS)
 
 
 # ---------------------------------------------------------------- 列表
@@ -836,7 +849,7 @@ def test_trips_page_streams_speed_zoom_and_gap_fill_post(auth):
                  # 就开始拉近 (不等停稳才动); 窗口随播放位置现算无状态, 开播/
                  # 拖进度天然干净; 曲线基线 12.5~15.3 (原 13.5~16.3 过近, 拉远一档)
                  "ZOOM_PAST_MS = 2000", "ZOOM_FUT_MS = 5000",
-                 "TrackUtil.animAt(vt, tw, dur)",
+                 "TrackAnimation.animAt(vt, tw, dur)",
                  "const zt = speedZoom(TripPlayback.windowMeanSpeed(vt, pts, s.playT, dur));",
                  "Math.min(15.3, 15.3 - v / 46)", "Math.max(12.5,",
                  "(km < 20 ? 14 : km < 80 ? 13 : km < 200 ? 12 : 11)",
@@ -1059,9 +1072,9 @@ def test_trips_page_preloads_tiles(auth):
     html = auth.get("/tesla/trips").text
     html += _trips_scripts(auth)
     for frag in ["function followZoom(", "async function tileTemplate(", "function tileUrl(",
-                 "function preloadTiles(", "正在预载地图", "TrackUtil.lngLatToTile",
+                 "function preloadTiles(", "正在预载地图", "TrackAnimation.lngLatToTile",
                  "appmaptile", "playTrack(c.pts, c.ts || [], it, zoom)",
-                 "setTimeout(resolve, 8000)", "trackutil.js?v=8",
+                 "setTimeout(resolve, 8000)", "track-animation.js?v=1",
                  # 矢量扫路预取 (隐藏图拉过不认, 只能驱动主图自己扫)
                  "async function preloadVectorTrack(",
                  "const animDurMs = (n, km) =>",
@@ -1095,15 +1108,17 @@ def test_trips_page_preloads_tiles(auth):
 
 
 def test_trips_page_style_block_balanced(auth):
-    """样式块花括号必须配平: 少一个 } 会让 CSS 错误恢复把其后全部规则
-    吞进未闭合的规则 (ct-drv 接缝曾丢 }, 弹层/底栏/选中态全体裸奔,
-    且控制台无任何报错, 只有页面悄悄变丑)。"""
+    """样式拆去了 css/ 四件套 (页面不再有 <style>): 每件花括号必须配平 ——
+    少一个 } 会让 CSS 错误恢复把其后全部规则吞进未闭合的规则
+    (ct-drv 接缝曾丢 }, 弹层/底栏/选中态全体裸奔, 且控制台无任何报错,
+    只有页面悄悄变丑)。"""
     html = auth.get("/tesla/trips").text
-    html += _trips_scripts(auth)
-    m = re.search(r"<style>(.*?)</style>", html, re.S)
-    assert m is not None, "页面缺 <style> 块"
-    style = m.group(1)
-    assert style.count("{") == style.count("}"), "样式块花括号不配平, 后半规则全被吞"
+    assert "<style>" not in html, "样式应全在 css/ 文件里"
+    for name in TRIPS_ASSETS:
+        if not name.startswith("css/"):
+            continue
+        css = auth.get(f"/tesla/static/{name}").text
+        assert css.count("{") == css.count("}"), f"{name} 花括号不配平, 后半规则全被吞"
 
 
 def test_trips_page_has_multiselect(auth):
