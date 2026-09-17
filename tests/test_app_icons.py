@@ -1,14 +1,10 @@
 """应用图标测试: PNG 手工解码验不透明底 (Safari 看不见 SVG),
 三应用各自图标, 每页声明 PNG favicon + 触屏图标。
-拆自 test_auth.py (结构化重构, 代码逐字节未动)。"""
+拆自 test_auth.py (拆仓批次改口径: 图标按 HTTP 取 —— 三应用的静态
+挂在各自 scope 下, 本仓只存共享层那份)。"""
 import struct
 import zlib
-from pathlib import Path
 
-
-import app.main as m
-
-from tests.page_test_helpers import ALL_PAGES
 
 def _png_idat(data: bytes) -> bytes:
     """拼出 PNG 的全部 IDAT 块。"""
@@ -47,12 +43,10 @@ def _unfilter_png(raw: bytes, w: int, ch: int) -> list[bytearray]:
         rows.append(row)
     return rows
 
-def test_apple_touch_icon_opaque_with_padding():
+def test_apple_touch_icon_opaque_with_padding(auth):
     """iOS 主屏图标: 不透明纯白底 (透明底被 iOS 合成纯黑) + Tesla 红 T 居中留边。
     旧版 T 铺满整个画布还带 Alpha → 添加到主屏幕后 logo 过大且黑底。"""
-    path = Path(m.__file__).parent / "tesla" / "static" / "apple-touch-icon.png"
-    with path.open("rb") as fh:
-        d = fh.read()
+    d = auth.get("/tesla/static/apple-touch-icon.png").content
     w, h = struct.unpack(">II", d[16:24])
     ctype = d[25]
     assert (w, h) == (180, 180)
@@ -60,13 +54,7 @@ def test_apple_touch_icon_opaque_with_padding():
 
     # 纯 Python 解码 (无 Pillow 依赖): 拼出 IDAT 后逆滤镜
     ch = {2: 3, 6: 4}[ctype]
-    pos, idat = 8, b""
-    while pos < len(d):
-        ln, typ = struct.unpack(">I4s", d[pos:pos+8])
-        if typ == b"IDAT":
-            idat += d[pos+8:pos+8+ln]
-        pos += 12 + ln
-    rows = _unfilter_png(zlib.decompress(idat), w, ch)
+    rows = _unfilter_png(zlib.decompress(_png_idat(d)), w, ch)
 
     def px(x, y):
         return tuple(rows[y][x*ch:x*ch+3])
@@ -86,22 +74,27 @@ def test_apple_touch_icon_opaque_with_padding():
     assert px(w//2, h-1-18) == (255, 255, 255)
 
 
-
-def test_mymoney_app_has_own_icons():
-    """My Money 是独立应用: 自己的图标 (Tesla 红底白钱袋, 不透明全出血方形 ——
-    iOS 自己圆角, 透明底会被合成纯黑), 不借 My Tesla 的红 T。"""
-    base = Path(m.__file__).parent / "bookkeeping" / "static"
-    touch = b""   # apple-touch-icon 的原始字节, 循环里留住
+def _fetch_icons(auth, prefix):
+    """拉一个应用静态 scope 下的全套图标 (按用户实际拿到的字节验)。"""
+    icons = {}
     for fname, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192),
                         ("icon-512.png", 512), ("favicon-32.png", 32)):
-        with (base / fname).open("rb") as fh:
-            d = fh.read()
+        r = auth.get(f"{prefix}/{fname}")
+        assert r.status_code == 200, f"{prefix}/{fname}"
+        d = r.content
         w, h = struct.unpack(">II", d[16:24])
         assert (w, h) == (size, size), fname
         assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
-        if fname == "apple-touch-icon.png":
-            touch = d
-    rows = _unfilter_png(zlib.decompress(_png_idat(touch)), 180, 3)
+        icons[fname] = d
+    return icons
+
+
+def test_mymoney_app_has_own_icons(auth):
+    """My Money 是独立应用: 自己的图标 (Tesla 红底白钱袋, 不透明全出血方形 ——
+    iOS 自己圆角, 透明底会被合成纯黑), 不借 My Tesla 的红 T。"""
+    icons = _fetch_icons(auth, "/bookkeeping/static")
+    rows = _unfilter_png(zlib.decompress(_png_idat(icons["apple-touch-icon.png"])),
+                         180, 3)
     icon_w = icon_h = 180
     def px(x, y):
         return tuple(rows[y][x*3:x*3+3])
@@ -111,25 +104,16 @@ def test_mymoney_app_has_own_icons():
     whites = sum(1 for yy in range(30, icon_h-30, 3)
                  for xx in range(30, icon_w-30, 3) if min(px(xx, yy)) > 225)
     assert whites > 60, f"白色钱袋笔画太少: {whites}"
-    tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
-    assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
+    tesla = auth.get("/tesla/static/icon-512.png").content
+    assert icons["icon-512.png"] != tesla, "两个应用不该共用图标"
 
 
-def test_mymusic_app_has_own_icons():
+def test_mymusic_app_has_own_icons(auth):
     """My Music 是独立应用: 自己的图标 (Apple 红底白音符, 不透明全出血方形 ——
     iOS 自己圆角, 透明底会被合成纯黑), 不借 My Tesla 的红 T。"""
-    base = Path(m.__file__).parent / "music" / "static"
-    touch = b""   # apple-touch-icon 的原始字节, 循环里留住
-    for fname, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192),
-                        ("icon-512.png", 512), ("favicon-32.png", 32)):
-        with (base / fname).open("rb") as fh:
-            d = fh.read()
-        w, h = struct.unpack(">II", d[16:24])
-        assert (w, h) == (size, size), fname
-        assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
-        if fname == "apple-touch-icon.png":
-            touch = d
-    rows = _unfilter_png(zlib.decompress(_png_idat(touch)), 180, 3)
+    icons = _fetch_icons(auth, "/music/static")
+    rows = _unfilter_png(zlib.decompress(_png_idat(icons["apple-touch-icon.png"])),
+                         180, 3)
     icon_w = icon_h = 180
     def px(x, y):
         return tuple(rows[y][x*3:x*3+3])
@@ -139,29 +123,26 @@ def test_mymusic_app_has_own_icons():
     whites = sum(1 for yy in range(30, icon_h-30, 3)
                  for xx in range(30, icon_w-30, 3) if min(px(xx, yy)) > 225)
     assert whites > 60, f"白色音符笔画太少: {whites}"
-    tesla = (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
-    assert (base / "icon-512.png").read_bytes() != tesla, "两个应用不该共用图标"
+    tesla = auth.get("/tesla/static/icon-512.png").content
+    assert icons["icon-512.png"] != tesla, "两个应用不该共用图标"
 
 
-def test_myhome_app_has_own_icons():
-    """My Home 门厅也是独立入口: 自己的图标 (黑底白房子, 不透明全出血方形),
-    与 Tesla / Money 互不共用 —— 三个主屏图标一眼可分。"""
-    base = Path(m.__file__).parent / "home" / "static"
-    for fname, size in (("apple-touch-icon.png", 180), ("icon-192.png", 192),
-                        ("icon-512.png", 512), ("favicon-32.png", 32)):
-        with (base / fname).open("rb") as fh:
-            d = fh.read()
-        w, h = struct.unpack(">II", d[16:24])
-        assert (w, h) == (size, size), fname
-        assert d[25] in (0, 2), f"{fname} 必须不带 Alpha (iOS 透明底变黑)"
-    mine = (base / "icon-512.png").read_bytes()
-    assert mine != (Path(m.__file__).parent / "tesla" / "static" / "icon-512.png").read_bytes()
-    assert mine != (Path(m.__file__).parent / "bookkeeping" / "static"
-                    / "icon-512.png").read_bytes(), "三个入口不该共用图标"
+def test_myhome_app_has_own_icons(auth):
+    """共享层也有自己的图标 (黑底白房子, 不透明全出血方形), 与三个应用
+    互不共用 —— 四个主屏图标一眼可分。"""
+    icons = _fetch_icons(auth, "/static")
+    mine = icons["icon-512.png"]
+    assert mine != auth.get("/tesla/static/icon-512.png").content
+    assert mine != auth.get("/bookkeeping/static/icon-512.png").content
+    assert mine != auth.get("/music/static/icon-512.png").content, \
+        "四个入口不该共用图标"
+
 
 def test_all_pages_declare_png_and_touch_icons(auth):
     """每个页面都要有 PNG favicon + apple-touch-icon (Safari/iOS 看不见 SVG)。"""
+    from tests.page_test_helpers import (  # pylint: disable=import-outside-toplevel
+        ALL_PAGES, _page_client)
     for path in ALL_PAGES:
-        body = auth.get(path).text
+        body = _page_client(auth, path).get(path).text
         assert "favicon-32.png" in body, f"{path} 缺 PNG favicon"
         assert "apple-touch-icon.png" in body, f"{path} 缺 apple-touch-icon"

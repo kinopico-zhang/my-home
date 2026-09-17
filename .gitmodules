@@ -1,0 +1,9 @@
+[submodule "apps/my-music"]
+	path = apps/my-music
+	url = git@github.com:kinopico-zhang/my-music.git
+[submodule "apps/my-money"]
+	path = apps/my-money
+	url = git@github.com:kinopico-zhang/my-money.git
+[submodule "apps/my-tesla"]
+	path = apps/my-tesla
+	url = git@github.com:kinopico-zhang/my-tesla.git

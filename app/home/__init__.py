@@ -1,8 +1,8 @@
-"""My Home 门厅 —— 共享层: 根路径的应用入口 + 账号体系 (登录/注册/账号管理)。
+"""共享账号层: 登录/注册/账号管理 + 会话中间件 (静态文件在 app/home/static)。
 
-账号是所有应用共享的, 不属于任何一个应用 (My Tesla / My Money), 所以
-这些页面和接口都挂在根路径下, 静态资源也在本包自己的目录里。
-"""
+拆仓后 My Home 只剩这一层是"自己的"应用代码 —— 三个应用 (My Tesla /
+My Money / My Music) 都在 apps/ 下的子仓里, 由 main.py 以合成包名装载;
+账号体系与门厅时代完全同一套 (/api/*, 同一枚会话 cookie, path=/)。"""
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"

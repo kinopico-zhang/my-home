@@ -40,7 +40,7 @@ function pickNext() {
   let last = null;
   try { last = localStorage.getItem("mytesla-last-page"); } catch (e) {}
   return last && /^\/(tesla\/(charging|stats|chargemap|map|trips|groups|live|settings|changelog))(\?|$)/.test(last)
-    ? last : "/";
+    ? last : "/music";
 }
 
 // 查看密码: 明文 ↔ 密文, 图标同步切换

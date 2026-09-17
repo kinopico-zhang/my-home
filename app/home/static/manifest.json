@@ -1,7 +1,7 @@
 {
   "name": "My Home",
   "short_name": "My Home",
-  "description": "家里的服务门厅: My Tesla 与 My Money",
+  "description": "家里的服务入口: My Tesla / My Money / My Music",
   "id": "/",
   "start_url": "/",
   "scope": "/",

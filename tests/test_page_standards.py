@@ -4,7 +4,11 @@
 
 
 
-from tests.page_test_helpers import ALL_PAGES, _page_with_css
+from tests.page_test_helpers import (
+    ALL_PAGES,
+    _page_client,
+    _page_with_css,
+)
 
 def test_all_pages_have_standalone_meta(auth):
     """全部页面 (含登录/注册/记账) 都带全屏 App meta。
@@ -14,7 +18,7 @@ def test_all_pages_have_standalone_meta(auth):
     全屏 (2026-09-12 用户踩坑)。任何新增页面都必须带上。
     """
     for path in ALL_PAGES:
-        html = auth.get(path).text
+        html = _page_client(auth, path).get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
         assert 'content="black-translucent"' in html, path
         # manifest 各用各的: 门厅层一份, Tesla / 记账 / 音乐各一份
@@ -85,23 +89,23 @@ def test_pages_remember_last_page(auth):
     iOS 主屏图标每次都从添加时定格的 start_url 启动, 不记得停在哪页 ——
     localStorage 记 path+search, 冷启动 (sessionStorage 无标记) 且 standalone
     才 replace 过去; 行程弹层开合只动 URL 不重载, 靠 visibilitychange 补记。"""
-    # lastpage 是 Tesla 应用内的概念: 门厅/登录/注册/账号管理/记账/音乐都不挂
-    home_layer = ("/", "/login", "/register", "/accounts", "/bookkeeping", "/music")
+    # lastpage 是 Tesla 应用内的概念: 登录/注册/账号管理/记账/音乐都不挂
+    home_layer = ("/login", "/register", "/accounts", "/bookkeeping", "/music")
     for path in [p for p in ALL_PAGES if p not in home_layer]:
         html = auth.get(path).text
         tag = '<script src="/tesla/static/js/lastpage.js?v=1"></script>'
         assert tag in html, path
         assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
-    assert "lastpage.js" not in auth.get("/login").text
-    assert "lastpage.js" not in auth.get("/register").text
+    assert "lastpage.js" not in _page_client(auth, "/login").get("/login").text
+    assert "lastpage.js" not in _page_client(auth, "/register").get("/register").text
     # 登录成功去哪: 逻辑在 login.js —— 应用内的登录页回该应用 (或 next 参数
-    # 带来的原地址, 只认本应用 scope), 门厅的回上次停留页 (白名单正则,
-    # 站外/坏值回落门厅), 不再写死充电页
-    login_html = auth.get("/static/login.js?v=1").text
+    # 带来的原地址, 只认本应用 scope), 根登录页回上次停留页 (白名单正则,
+    # 站外/坏值回落 My Music —— 门厅撤了, 默认进音乐), 不再写死充电页
+    login_html = auth.get("/static/login.js?v=2").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
     assert ("/^\\/(tesla\\/(charging|stats|chargemap|map|trips|groups|live|settings"
             "|changelog))(\\?|$)/.test(last)") in login_html
-    assert '? last : "/"' in login_html
+    assert '? last : "/music"' in login_html
     assert 'function pickNext()' in login_html
     assert 'const APP_TITLES = { "/tesla": "My Tesla", "/music": "My Music",' in login_html
 

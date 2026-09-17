@@ -61,7 +61,7 @@ form.addEventListener("submit", async e => {
       body: JSON.stringify({ invite, name, password }),
     });
     if (r.ok) {                    // 注册即登录, 直接进门厅挑应用
-      location.replace("/");
+      location.replace("/music");
       return;
     }
     const d = await r.json().catch(() => null);

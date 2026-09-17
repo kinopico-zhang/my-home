@@ -1,10 +1,13 @@
-"""My Home 门厅的 HTML 页面: 门厅 + 登录 (全站一张, Tesla scope 内复用)
-+ 注册 + 账号管理 + 平台域名验证文件 (静态文件在 app/home/static)。"""
+"""共享账号层的 HTML 页面: 登录 (全站一张, Tesla scope 内复用)
++ 注册 + 账号管理 + 平台域名验证文件 (静态文件在 app/home/static)。
+
+门厅主页已撤 (拆仓批次): 根路径 / 无条件 302 进 My Music —— 想去别的
+应用用各应用的地址或收藏夹, 账号管理还在 /accounts。"""
 import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from . import STATIC_DIR
 
@@ -25,9 +28,10 @@ def _page(fname: str) -> FileResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
-def home_page() -> FileResponse:
-    """My Home 门厅: 所有应用的入口卡片 + 账号管理 (共享层, 不属于任何应用)。"""
-    return _page("home.html")
+def home_page() -> RedirectResponse:
+    """根路径: 门厅已撤, 无条件 302 进 My Music (未登录在应用 scope 里
+    会被再跳一次登录页, 已登录直接进)。"""
+    return RedirectResponse("/music", status_code=302)
 
 
 @router.get("/login", response_class=HTMLResponse)

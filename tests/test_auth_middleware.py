@@ -10,9 +10,10 @@ import app.main as m
 
 def test_unauthed_pages_redirect_to_login(client):
     """页面未登录 302 登录页: 应用页跳自己 scope 内的登录页 (带上原地址,
-    登录完回去), 门厅层 (/, /accounts) 跳根路径 /login。"""
+    登录完回去), 共享层 (/accounts) 跳根路径 /login; 根路径已撤门厅,
+    无条件 302 进 /music (拦截发生在音乐 scope 里)。"""
     from urllib.parse import quote
-    for path, login in (("/", "/login"), ("/accounts", "/login"),
+    for path, login in (("/accounts", "/login"),
                         ("/tesla", "/tesla/login"),
                         ("/tesla/charging", "/tesla/login"),
                         ("/tesla/stats", "/tesla/login"),
@@ -31,16 +32,20 @@ def test_unauthed_pages_redirect_to_login(client):
         assert r.status_code == 302, path
         expected = login if path == login else login + "?next=" + quote(path, safe="")
         assert r.headers["location"] == expected, path
+    # 根路径公开: 门厅撤了, 未登录也是 302 进 /music (不带 next)
+    r = client.get("/", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (302, "/music")
 
 
 def test_app_login_pages_in_scope(client):
     """各应用 scope 内的登录页: 未登录直接可开 (不再 302 到根路径 /login
-    越出 scope), 内容就是门厅那张登录页; 已登录访问直接回该应用主页
-    (独立 client, 不带上面的未登录态)。"""
+    越出 scope), 内容就是共享层那张登录页 (Tesla 的由本仓 pages.py 出,
+    音乐/记账的在子仓里自带一份, 脚本都指共享层 /static/login.js);
+    已登录访问直接回该应用主页 (独立 client, 不带上面的未登录态)。"""
     for path in ("/tesla/login", "/music/login", "/bookkeeping/login"):
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 200, path
-        assert 'src="/static/login.js?v=1"' in r.text, path
+        assert 'src="/static/login.js' in r.text, path
     authed = TestClient(m.app)
     assert authed.post("/api/login", json={"user": config.AUTH_USER,
                                            "password": config.AUTH_PASS}
@@ -81,8 +86,8 @@ def test_public_paths_accessible_without_login(client):
     assert client.get("/register").status_code == 200    # 注册页公开
     for asset in ("/tesla/static/echarts.min.js", "/tesla/static/js/gcj02.js",
                   "/tesla/static/js/trackutil.js", "/tesla/static/favicon.svg",
-                  "/static/login.js", "/static/register.js", "/static/home.js",
-                  "/static/favicon.svg",               # 门厅层静态放行
+                  "/static/login.js", "/static/register.js",
+                  "/static/favicon.svg",               # 共享层静态放行
                   "/bookkeeping/static/bookkeeping-state.js",
                   "/bookkeeping/static/bookkeeping-merge.js"):
         assert client.get(asset).status_code == 200, asset
