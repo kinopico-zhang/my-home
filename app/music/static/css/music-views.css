@@ -45,9 +45,21 @@
 .stat-empty { color: var(--ink-3); padding: 18px 2px; font-size: 13px; }
 
 /* ---------- 搜索 ---------- */
+/* 1.8.5 (用户点名「大小形状和三个控件的外轮廓一致」): 搜索层到顶时搜索框
+   顶替船坞三件套 —— 高度/圆角/边框/底色与三件套同款磨砂, 宽度铺满整条
+   船坞行 (三件套加在一起的宽度); 三件套由 body.search-top 让位
+   (music-bottom-bar.css), 钉位在 music-search.css 的 .search-foot。 */
 .search-box {
+  pointer-events: auto;
   display: flex; align-items: center; gap: 8px;
-  background: var(--surface-2); border-radius: 10px; padding: 0 12px;
+  width: 100%; max-width: 860px; height: var(--dock-h);
+  background: rgba(44,44,46,.7);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--hairline);
+  border-radius: 23px; padding: 0 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  transform: translateZ(0);   /* 自家合成层: 船坞件同款防复印 */
 }
 .search-box svg { color: var(--ink-3); flex-shrink: 0; }
 .search-box input {

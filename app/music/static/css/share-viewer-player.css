@@ -41,9 +41,13 @@
   }
   #p-toggle:active { transform: scale(.94); }
   #p-toggle svg { width: 17px; height: 17px; }
+  /* 滑杆是手势区: 自带 touch-action (app 的 .slider-hit 同思路), 竖拖
+     不被 body 的 pan-y 抢去当滚屏 */
+  input[type="range"] { touch-action: none; }
 
-  /* ---------- 全屏播放页 (与应用同款骨架: 封面上 + 歌词住封面下面跟着滚
-     (1.8.2, 有词的曲子才有), 传输三键站进度条上方) ---------- */
+  /* ---------- 全屏播放页 (1.8.5 与 app 同款, 用户点名): 大封面居中,
+     标题/作者·专辑 + 字幕引号键, 传输三键, 细进度条 (app 的底部三键行
+     不带 —— 分享页没有加列表/队列可进, 字幕键挪到标题行右侧) ---------- */
   #fp {
     position: fixed; inset: 0; z-index: 40; background: #000;
     transform: translateY(100%); transition: transform .32s cubic-bezier(.32,.72,0,1);
@@ -64,52 +68,67 @@
   }
   #fp-grab span { width: 60px; height: 5px; border-radius: 2.5px;
                  background: rgba(255,255,255,.5); }
-  /* 纵向一列: 封面上, 歌词下 (有词时); 没词封面独占 (上下居中) */
+  /* 封面独占中央 (歌词视图是罩上来的浮层, 不再挤封面 —— app 同款) */
   .fp-body {
     position: relative; flex: 1; min-height: 120px;
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center;
-    padding: 24px 24px 28px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 41px 24px 42px;
   }
   #fp-art-wrap { width: 100%; aspect-ratio: 1; max-height: 100%;
                  max-width: min(100%, 440px); touch-action: none; }
-  /* 有词: 封面缩成上半截, 词住下半截 (用户点名「在封面下面滚动播放」) */
-  .fp-body.with-lyrics { justify-content: flex-start; }
-  .fp-body.with-lyrics #fp-art-wrap { width: min(48%, 240px); flex-shrink: 0; }
   /* 封面不许原生拖拽/长按呼出 (不然下拉手势被 dragstart 劫持) */
   #fp-art-wrap, #fp-art { -webkit-user-drag: none; user-select: none;
                           -webkit-touch-callout: none; }
   #fp-art { width: 100%; height: 100%; object-fit: cover; border-radius: 8px;
             background: rgba(255,255,255,.08);
             box-shadow: 0 18px 50px rgba(0,0,0,.55); }
+  /* 歌词视图 (1.8.5 点字幕引号开, app 同款): 罩住整个封面区, 距离模糊 +
+     当前句放大; 上下渐隐蒙版, 滚到头再往下拖不做橡皮筋 (下拉收起通吃) */
   #fp-lyrics {
-    flex: 1; min-height: 0; align-self: stretch; overflow-y: auto; z-index: 2;
-    -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent);
-    mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent);
-    padding: 10% 28px;
+    position: absolute; inset: 0; overflow-y: auto; z-index: 2;
+    overscroll-behavior: contain;
+    -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+    padding: 30% 28px;
   }
   .lyrics-line {
+    /* 与应用同款: 平时行宽 80%, 放大 (21→26px) 后 99% 仍装得下,
+       断行点不动 (1.8.5 修「放大重新换行」); max-width 陪 font-size
+       一起过渡, 放大过程中也不跳行 (1.8.6, 见 music-player.css 注) */
+    max-width: 80%;
     font-size: 21px; font-weight: 700; color: rgba(255,255,255,.32);
     padding: 12px 0; line-height: 1.34; text-align: left;
     filter: blur(3px); will-change: filter;
     transition: filter .5s cubic-bezier(.22,.61,.36,1),
                 color .5s cubic-bezier(.22,.61,.36,1),
-                font-size .5s cubic-bezier(.22,.61,.36,1);
+                font-size .5s cubic-bezier(.22,.61,.36,1),
+                max-width .5s cubic-bezier(.22,.61,.36,1);
   }
   /* 距离模糊: 近一两句半模糊, 正在唱的全清放大 (与应用同一套) */
   .lyrics-line.near-2 { filter: blur(2px); }
   .lyrics-line.near-1 { filter: blur(1px); }
-  .lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0); }
+  .lyrics-line.active { color: #fff; font-size: 26px; filter: blur(0);
+                        max-width: 100%; }
   /* 纯文本歌词没有"当前句", 整页清晰 */
   #fp-lyrics.static .lyrics-line { filter: blur(0); }
-  .fp-meta { display: flex; align-items: center; padding: 0 32px; }
+  /* 标题行 (app 同款): 左曲名/作者·专辑, 右字幕引号 (1.8.5 起替掉
+     app 的 ⋯ 菜单位 —— 分享页没有菜单, 这颗键管歌词视图) */
+  .fp-meta { display: flex; align-items: center; gap: 12px; padding: 0 32px; }
+  .fp-now { flex: 1; min-width: 0; touch-action: none; }   /* 曲名块: 下拉收起命中区 */
   .fp-meta b { display: block; font-size: 19px; font-weight: 700; color: #fff;
                overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .fp-meta small { display: block; font-size: 12px; color: rgba(255,255,255,.62);
                    margin-top: 2px; overflow: hidden; white-space: nowrap;
                    text-overflow: ellipsis; }
+  #fp-lyrics-btn {
+    color: #fff; opacity: .9; padding: 12px; flex-shrink: 0; border: 0;
+    background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #fp-lyrics-btn.on { opacity: 1; }
+  #fp-lyrics-btn:disabled { opacity: .35; }   /* 探明没词: 键灰掉点不开 */
   .fp-controls { display: flex; align-items: center; justify-content: center;
-                 gap: 32px; margin-top: 14px; }
+                 gap: 32px; margin-top: 16px; }
   .fp-controls > button {
     width: 44px; height: 44px; color: #fff; padding: 0; border: 0;
     background: none; cursor: pointer;
@@ -123,17 +142,26 @@
   .fp-time { flex-shrink: 0; font-size: 10px; color: rgba(255,255,255,.5);
              font-variant-numeric: tabular-nums; }
   .fp-scrub { flex: 1; min-width: 0; }
+  /* 细进度条 (app 同款风格, 用户点名「进度条保留, 风格一致」): 无旋钮
+     (滑块和填充同色, 静止时看不出), 填充比例走 --fill (JS 拖/播时更新) */
   #fp-scrub {
     -webkit-appearance: none; appearance: none; width: 100%; height: 26px;
     background: transparent; cursor: pointer;
   }
-  #fp-scrub::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
-                                             background: var(--surface-3); }
-  #fp-scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 14px;
-                                    height: 14px; border-radius: 50%;
-                                    background: #fff; margin-top: -5px; }
-  #fp-scrub::-moz-range-track { height: 4px; border-radius: 2px;
-                                background: var(--surface-3); }
-  #fp-scrub::-moz-range-thumb { width: 14px; height: 14px; border: 0;
-                                border-radius: 50%; background: #fff; }
+  #fp-scrub::-webkit-slider-runnable-track {
+    height: 7px; border-radius: 3.5px;
+    background: linear-gradient(to right, rgba(255,255,255,.7) var(--fill, 0%),
+                                rgba(255,255,255,.3) 0);
+  }
+  #fp-scrub::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 7px; height: 7px; border-radius: 50%;
+    background: rgba(255,255,255,.7); margin-top: 0;
+  }
+  #fp-scrub::-moz-range-track {
+    height: 7px; border-radius: 3.5px;
+    background: linear-gradient(to right, rgba(255,255,255,.7) var(--fill, 0%),
+                                rgba(255,255,255,.3) 0);
+  }
+  #fp-scrub::-moz-range-thumb { width: 7px; height: 7px; border: 0;
+                                border-radius: 50%; background: rgba(255,255,255,.7); }
   .fp-pad { height: calc(28px + env(safe-area-inset-bottom, 0px)); }

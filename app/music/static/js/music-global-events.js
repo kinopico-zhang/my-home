@@ -10,10 +10,13 @@
 
 function bindGlobalEvents() {
   // 底部船坞: 搜索键进搜索层 (顺手聚焦输入框 —— 老放大镜按钮的手感;
-  // 导航是同步渲染, 走到这儿输入框已经在页面上了); 菜单键的上弹菜单自成一模块
+  // 导航是同步渲染, 走到这儿输入框已经在页面上了)。聚焦收窄到顶层层的
+  // 输入框: 旧搜索层滑出还挂着 DOM 的 420ms 里, $() 全局找会抓到旧层
+  // 那枚 (聚焦即被移除, 键盘/视口状态全乱) —— 1.8.6 修重进搜索失灵
   $("#dock-search").addEventListener("click", () => {
     navigate("search");
-    const input = $("#search-input");
+    const top = pushStack[pushStack.length - 1];
+    const input = top && top.pane.querySelector("#search-input");
     if (input) input.focus();
   });
   bindDockMenu();
@@ -44,6 +47,11 @@ function bindGlobalEvents() {
                    - visualViewport.offsetTop)
         : 0;
       document.documentElement.style.setProperty("--kb-h", `${keyboard}px`);
+      // 键盘收走后 iOS 偶尔把视口停在偏移上 (输入框随层撤走时没回滚),
+      // 表现是回主页后底部一块黑、页面没充满屏 —— 没有键盘就归零复位 (1.8.5)
+      if (!keyboard && (visualViewport.offsetLeft || visualViewport.offsetTop)) {
+        window.scrollTo(0, 0);
+      }
     };
     visualViewport.addEventListener("resize", lift);
     visualViewport.addEventListener("scroll", lift);

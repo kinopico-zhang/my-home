@@ -1,6 +1,7 @@
 // share-viewer-lyrics — My Music 分享页歌词: 取词铺词/当前句高亮/手动滚词暂停跟唱。
-// 拆自 share.html 的内联 <script> (结构化重构)。1.8.2 起有词的曲子歌词
-// 常驻封面下面跟着滚 (不再点封面切换): 没词整块收掉, 封面独占。
+// 拆自 share.html 的内联 <script> (结构化重构)。1.8.5 改 app 同款 (用户点名
+// 「点开可以看字幕, 歌词界面跟 app 一致」): 标题行的字幕引号键开合歌词
+// 视图 (罩住封面区的浮层), 不再常驻封面下面; 没词的曲子键灰掉。
 "use strict";
 /* global $, activeLyricIndex, audio, esc, lyricIndex: writable, lyrics: writable,
           lyricsAutoUntil: writable, lyricsCache, lyricsFollowPaused: writable,
@@ -8,6 +9,15 @@
 /* exported loadLyrics, syncLyricHighlight */
 
 // ------------------------------------------------------------ 歌词
+
+let lyricsViewOpen = false;   // 字幕引号键开的歌词视图 (换曲不自动关, app 同款)
+
+/** 字幕引号键: 开/合歌词视图 (没词的曲子键是灰的, 进不来)。 */
+$("#fp-lyrics-btn").addEventListener("click", () => {
+  if (!lyrics) return;
+  lyricsViewOpen = !lyricsViewOpen;
+  renderLyricsView();
+});
 
 /** 换曲铺词: 先空态, 取回来 (404 = 没词) 再铺; 换得快就听最后那首的。 */
 async function loadLyrics(track) {
@@ -35,12 +45,17 @@ async function loadLyrics(track) {
 
 function renderLyricsView() {
   const box = $("#fp-lyrics");
+  const open = Boolean(lyrics) && lyricsViewOpen;
   box.classList.toggle("static", !lyrics || !lyrics.synced);
-  box.hidden = !lyrics;                          // 没词: 封面独占
-  box.closest(".fp-body").classList.toggle("with-lyrics", Boolean(lyrics));
-  if (!lyrics) return;
+  $("#fp-lyrics-btn").disabled = !lyrics;         // 探明没词: 键灰掉点不开
+  $("#fp-lyrics-btn").classList.toggle("on", open);
+  box.hidden = !open;
+  $("#fp-art-wrap").hidden = open;                // 视图开着: 封面让位
+  if (!open) return;
   box.innerHTML = lyrics.lines.map(
-    (line) => `<p class="lyrics-line">${esc(line.text)}</p>`).join("");
+    (line) => `<p class="lyrics-line" data-time="${line.timeSeconds}">`
+      + `${esc(line.text)}</p>`).join("");
+  box.scrollTop = 0;                              // 换曲/重铺从头 (1.8.5)
   syncLyricHighlight(true);
 }
 
@@ -81,4 +96,16 @@ setInterval(() => {
     syncLyricHighlight(true);
   }
 }, 600);
+
+// 点句定位 (1.8.6, 用户点名「通过歌词快速定位歌曲进度」, app 同款):
+// 点一句跳到那句的时间; 跳播后退出手动滚词的"暂停跟唱", 紧跟的
+// timeupdate 把新当前句高亮并滚回视线中央。纯文本词没时间轴, 点不动。
+$("#fp-lyrics").addEventListener("click", (event) => {
+  const line = event.target.closest(".lyrics-line");
+  if (!line || !lyrics || !lyrics.synced) return;
+  const time = Number(line.dataset.time);
+  if (time >= 0) audio.currentTime = time;
+  lyricsFollowPaused = false;
+  syncLyricHighlight(true);
+});
 

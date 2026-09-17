@@ -2,7 +2,7 @@
 // 拆自 music.js (结构化重构: 代码逐字节未动, 经典脚本按 music.html 里的顺序加载, 跨模块引用走全局)。
 "use strict";
 /* global $, ICON_DOWNLOAD, createDownloads, currentRoute, downloadsSupported,
-          renderDownloadsBody, toast */
+          refreshDownloadsBody, toast */
 /* exported downloadAllCancelled, downloadAllFromUI, downloadMarkHTML, downloadRingHTML,
             downloadTrackFromUI, downloads, downloadsEnabled, syncDownloadIcons */
 
@@ -118,7 +118,8 @@ function syncDownloadIcons() {
   }
   if (currentRoute().view === "downloads") {
     const body = $("#dl-pane-body");
-    if (body) renderDownloadsBody(body);       // 进度/删除即时反映
+    // 1.8.5 原地刷: 整页重铺会让已下好行的封面连着闪 (用户报的 bug)
+    if (body) refreshDownloadsBody(body);
   }
 }
 

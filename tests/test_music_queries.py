@@ -115,6 +115,10 @@ def test_search_four_boards(tmp_path):
         result = library_queries.search_library(session, "曲A")
         assert [track.title for track in result.tracks] == ["曲A"]
         assert result.albums == [] and result.artists == []
+        # 1.8.6 数量口径: *_total = 同条件不截断的命中总数 (未截断时与
+        # 列表长度一致; 页签/板块头挂它, 不再拿截断长度当命中数)
+        assert result.track_total == 1 and result.album_total == 0
+        assert result.artist_total == 0 and result.lyric_total == 0
 
         result = library_queries.search_library(session, "甲")
         assert [card.title for card in result.albums] == ["甲"]
@@ -122,11 +126,15 @@ def test_search_four_boards(tmp_path):
 
         result = library_queries.search_library(session, "AI, Crew")
         assert [brief.name for brief in result.artists] == ["AI机组"]  # 排序名命中
+        # 1.8.5 修「搜艺人显示 0专辑0首歌」: 计数跟资料库艺人列表同一套聚合
+        assert result.artists[0].album_count >= 1
+        assert result.artists[0].track_count >= 1
 
         result = library_queries.search_library(session, "さよなら")
         assert len(result.lyric_hits) == 1
         assert result.lyric_hits[0].line_text == "さよならの向こう"
         assert result.lyric_hits[0].track.title == "曲A"
+        assert result.lyric_total == 1
 
         # 语种过滤: 英文歌名在日文筛选下不出现
         assert library_queries.search_library(

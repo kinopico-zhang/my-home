@@ -45,7 +45,8 @@ def test_music_browse_and_search_endpoints(auth):
     assert auth.get("/music/api/tracks").json()["tracks"] == []
     assert auth.get("/music/api/search", params={"q": "x"}).json() == {
         "query": "x", "language": "全部", "tracks": [], "albums": [],
-        "artists": [], "lyric_hits": []}
+        "artists": [], "lyric_hits": [],
+        "track_total": 0, "album_total": 0, "artist_total": 0, "lyric_total": 0}
     assert auth.get("/music/api/albums/1").status_code == 404
     assert auth.get("/music/api/artists/1").status_code == 404
     assert auth.get("/music/api/tracks/1/lyrics").status_code == 404

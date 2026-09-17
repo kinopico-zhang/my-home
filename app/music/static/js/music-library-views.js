@@ -2,10 +2,11 @@
 // 拆自 music.js (结构化重构), 原资料库页签分段 (segment) 撤掉,
 // 专辑/艺人/已下载各自成推入层, 缓存仍按段名住 pageState.lists。
 "use strict";
-/* global $, appendListPage, downloadAllCancelled: writable, downloadRingHTML, downloads,
-          downloadsEnabled, escapeHTML, formatBytes, listPlaceholderHTML, loadListPage,
-          navigate, pageState, playerStart, toast */
-/* exported downloadAllCancelled, playDownloadedRow, renderAlbumsPane,
+/* global $, appendListPage, bindDownloadsSelect, downloadAllCancelled: writable,
+          downloadRingHTML, downloads, downloadsEnabled, escapeHTML, formatBytes,
+          listPlaceholderHTML, loadListPage, navigate, pageState, playerStart, toast,
+          syncDownloadsSelect */
+/* exported downloadAllCancelled, playDownloadedRow, refreshDownloadsBody, renderAlbumsPane,
             renderArtistsPane, renderDownloadsBody, renderDownloadsPane,
             resetLibraryLists */
 
@@ -45,13 +46,14 @@ function mountSegmentList(body, segment) {
   loadListPage(segment, body);
 }
 
-/** 已下载页: 下载管理 (统计行/逐首大小/删除与取消/一键清空)。 */
+/** 已下载页: 下载管理 (统计行/逐首大小/删除与取消/一键清空/多选删除)。 */
 function renderDownloadsPane(target) {
   target.innerHTML = `
     <div class="pane-title">已下载</div>
     <div class="lib-body" id="dl-pane-body"></div>`;
   const body = $("#dl-pane-body");
   bindLibraryBody(body);
+  bindDownloadsSelect(target);   // 多选删除 (1.8.6): 绑 pane 层, 正文重铺不丢
   renderDownloadsBody(body);
 }
 
@@ -99,7 +101,7 @@ let downloadsRenderToken = 0;   // 重铺计数: 让在途的异步统计结果�
 
 /** "已下载"页 = 下载管理: 合计大小/每首大小/删除与取消/一键清空
  *  (明文 HTTP 下没有这一套, 说清楚)。 */
-async function renderDownloadsBody(body) {
+function renderDownloadsBody(body) {
   if (!downloadsEnabled) {
     body.innerHTML = listPlaceholderHTML(
       "离线下载需要 HTTPS 环境 (当前是明文 HTTP); 局域网在线听不受影响");
@@ -111,16 +113,25 @@ async function renderDownloadsBody(body) {
       "还没有下载的歌曲; 曲目行右侧的下载标就是下载");
     return;
   }
-  const token = ++downloadsRenderToken;
   body.innerHTML = `
     <div class="dl-stats">
       <span class="dl-stats-main">
         <strong id="dl-total">统计中…</strong>
         <small id="dl-quota"></small>
       </span>
+      <button class="dl-clear" id="dl-select-delete" hidden>删除</button>
+      <button class="dl-clear" id="dl-select-toggle">多选</button>
       <button class="dl-clear" id="dl-clear-all">全部删除</button>
     </div>
-    ${entries.map((entry) => `
+    ${entries.map(downloadRowHTML).join("")}`;
+  syncDownloadsSelect(body);   // 选择模式开着时整页重铺: 圈/勾按 state 补
+  if (!entries.some((entry) => entry.state)) fillDownloadsStats(body);
+  // 有下载在跑: 等完成再量, 免得白量 (收批时 refreshDownloadsBody 补)
+}
+
+/** 单行模板 (整页重铺与原地补丁共用)。 */
+function downloadRowHTML(entry) {
+  return `
     <div class="dl-row${entry.state ? " busy" : ""}" data-dl-row="${entry.track_id}">
       ${entry.state
         ? '<span class="t-art">♪</span>'
@@ -136,11 +147,39 @@ async function renderDownloadsBody(body) {
         : `<span class="dl-state" data-dl-size="${entry.track_id}">…</span>`}
       <button class="dl-remove" data-dl-remove="${entry.track_id}"
               aria-label="${entry.state ? "取消下载" : "删除下载"}">${entry.state ? "取消" : "删除"}</button>
-    </div>`).join("")}`;
-  if (entries.some((entry) => entry.state)) return;   // 有下载在跑: 等完成再量, 免得白量
+    </div>`;
+}
+
+/** 下载状态原地刷新 (1.8.5 修「下载中, 已下好行的封面闪」): 整页重铺会把
+ *  所有行连同封面换成新 <img>, 解码间隙闪一下 —— 下载进度一秒触发好几
+ *  次, 封面就一直闪。行集合没变 (同序同 id) 时只动该动的行: 进行中的换
+ *  进度环, 刚下完的单行换新, 其余一根毫毛不碰。 */
+function refreshDownloadsBody(body) {
+  const entries = downloads.entries();
+  const rows = body.querySelectorAll("[data-dl-row]");
+  const sameSet = rows.length === entries.length && entries.every(
+    (entry, index) => Number(rows[index].dataset.dlRow) === entry.track_id);
+  if (!sameSet) { renderDownloadsBody(body); return; }   // 行集合变了才重铺
+  entries.forEach((entry, index) => {
+    const row = rows[index];
+    if (row.classList.contains("busy") === Boolean(entry.state)) {
+      if (entry.state) {
+        const ring = row.querySelector(".dl-ring");
+        if (ring) ring.outerHTML = downloadRingHTML(entry.state.progress, 18);
+      }
+    } else {
+      row.outerHTML = downloadRowHTML(entry);   // 忙闲翻转 (下完/重下): 单行换新
+    }
+  });
+  if (!entries.some((entry) => entry.state)) fillDownloadsStats(body);   // 收批补统计
+}
+
+/** 统计与每首大小 (异步, 在途期间又重铺过就作废)。 */
+async function fillDownloadsStats(body) {
+  const token = ++downloadsRenderToken;
   const usage = await downloads.storageUsage();
   if (token !== downloadsRenderToken) return;         // 期间又重铺了, 结果作废
-  const total = $("#dl-total");
+  const total = body.querySelector("#dl-total");
   if (total) {
     total.textContent = `${usage.entries.length} 首 · ${formatBytes(usage.totalBytes)}`;
   }
@@ -151,7 +190,7 @@ async function renderDownloadsBody(body) {
   if (navigator.storage && navigator.storage.estimate) {
     navigator.storage.estimate().then((estimate) => {
       if (token !== downloadsRenderToken) return;
-      const quota = $("#dl-quota");
+      const quota = body.querySelector("#dl-quota");
       if (quota && estimate && estimate.quota) {
         quota.textContent = `占手机存储 ${formatBytes(estimate.usage || 0)}`;
       }

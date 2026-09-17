@@ -17,10 +17,10 @@
 "use strict";
 
 const DOWNLOAD_CACHE = "music-downloads-v1";
-// 壳缓存 v6 (2026-09-17 1.8.3/1.8.4: 搜索页重排 (底部输入框+四子页)、
-// 上次停的页回跳、API 数据离线缓存 —— 静态资源地址变了 (?v=3/4),
+// 壳缓存 v8 (2026-09-18 1.8.6: 搜索数量口径/输入框竞态/队列蒙版/歌词换行、
+// ⋯ 菜单下载、已下载多选、分享播放页补齐 —— 静态资源地址变了 (?v= 各升),
 // 换版本号让 activate 清旧账)
-const SHELL_CACHE = "music-shell-v6";
+const SHELL_CACHE = "music-shell-v8";
 const ARTWORK_CACHE = "music-artwork-v1";
 // 列表数据档 (1.8.4): /music/api/ 的 GET 全缓存 (search 除外 —— 词组合
 // 无限多, 缓存不值), 网络优先断网回档

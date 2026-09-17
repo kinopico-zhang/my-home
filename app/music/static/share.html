@@ -2,13 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- maximum-scale/user-scalable + 页 css 的 touch-action 双保险: 访客双击/两指
+     捏不放大 (1.8.6, 用户点名「不能放大缩小界面」; app 靠 body pan-y 收口) -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/music/static/favicon.svg">
 <!--og-->
 <title>分享 · My Music</title>
-<link rel="stylesheet" href="/music/static/css/share-viewer-page.css?v=1">
-<link rel="stylesheet" href="/music/static/css/share-viewer-player.css?v=2">
+<link rel="stylesheet" href="/music/static/css/share-viewer-page.css?v=2">
+<link rel="stylesheet" href="/music/static/css/share-viewer-player.css?v=4">
 </head>
 <body>
 
@@ -74,7 +76,10 @@
       <div id="fp-art-wrap"><img id="fp-art" alt=""></div>
       <div id="fp-lyrics" hidden></div>
     </div>
-    <div class="fp-meta"><b id="fp-title"></b><small id="fp-artist"></small></div>
+    <div class="fp-meta">
+      <div class="fp-now"><b id="fp-title"></b><small id="fp-artist"></small></div>
+      <button type="button" id="fp-lyrics-btn" aria-label="歌词"><svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M11.049 7.801L11.049 13.662Q11.406 15.378 10.242 16.689Q9.078 18 7.332 17.848Q7.244 17.9 7.146 17.87Q7.049 17.84 7.005 17.748Q6.9 17.71 6.858 17.608Q6.815 17.505 6.863 17.404L6.863 15.73Q6.83 15.576 6.931 15.454Q7.032 15.333 7.189 15.336Q7.857 15.352 8.276 14.832Q8.695 14.311 8.537 13.662L8.537 12.825L6.026 12.825Q5.286 12.952 4.755 12.421Q4.224 11.89 4.351 11.15L4.351 7.801Q4.224 7.062 4.755 6.531Q5.286 6 6.026 6.127L9.375 6.127Q10.114 6 10.645 6.531Q11.176 7.062 11.049 7.801L11.049 7.801M17.747 6.127L14.398 6.127Q13.658 6 13.127 6.531Q12.597 7.062 12.723 7.801L12.723 11.15Q12.597 11.89 13.127 12.421Q13.658 12.952 14.398 12.825L16.91 12.825L16.91 13.662Q17.068 14.311 16.649 14.832Q16.23 15.352 15.562 15.336Q15.399 15.335 15.298 15.462Q15.197 15.589 15.235 15.747L15.235 17.421Q15.194 17.517 15.236 17.611Q15.279 17.706 15.377 17.739Q15.421 17.832 15.518 17.862Q15.616 17.892 15.704 17.84Q17.448 17.992 18.612 16.684Q19.776 15.376 19.421 13.662L19.421 7.801Q19.548 7.062 19.017 6.531Q18.487 6 17.747 6.127L17.747 6.127" fill="currentColor"/></svg></button>
+    </div>
     <div class="fp-controls">
       <button type="button" id="fp-prev" aria-label="上一首"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M21.981 6.098L14.6 10.949Q13 12 14.6 13.051L21.981 17.902Q23.5 18.9 23.5 17.082L23.5 6.918Q23.5 5.1 21.981 6.098M9.481 6.098L2.1 10.949Q0.5 12 2.1 13.051L9.481 17.902Q11 18.9 11 17.082L11 6.918Q11 5.1 9.481 6.098" fill="currentColor"/></svg></button>
       <button type="button" id="fp-play" aria-label="播放/暂停"></button>
@@ -92,10 +97,10 @@
 <audio id="audio" playsinline></audio>
 
 <script src="/music/static/js/lyrics-parser.js?v=1"></script>
-<script src="/music/static/js/share/share-viewer-data.js?v=2"></script>
-<script src="/music/static/js/share/share-viewer-playback.js?v=1"></script>
-<script src="/music/static/js/share/share-viewer-fullpage.js?v=2"></script>
-<script src="/music/static/js/share/share-viewer-lyrics.js?v=2"></script>
-<script src="/music/static/js/share/share-viewer-events.js?v=1"></script>
+<script src="/music/static/js/share/share-viewer-data.js?v=3"></script>
+<script src="/music/static/js/share/share-viewer-playback.js?v=3"></script>
+<script src="/music/static/js/share/share-viewer-fullpage.js?v=3"></script>
+<script src="/music/static/js/share/share-viewer-lyrics.js?v=4"></script>
+<script src="/music/static/js/share/share-viewer-events.js?v=3"></script>
 </body>
 </html>

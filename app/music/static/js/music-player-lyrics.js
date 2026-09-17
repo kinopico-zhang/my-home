@@ -35,6 +35,9 @@ async function loadLyrics() {
   container.innerHTML = lyricsDocument.lines.map((line) =>
     `<div class="lyrics-line" data-time="${line.timeSeconds}">${escapeHTML(line.text)}</div>`
   ).join("");
+  // 1.8.5 修「刚开歌打开字幕不在第一句」: innerHTML 换血不会清 scrollTop,
+  // 上一首滚过的位置会留着; 开头还没有"当前句"可滚, 先回顶停第一句
+  container.scrollTop = 0;
   // 无时间轴的歌词没有"当前句", 谈不上距离模糊 → 整页清晰
   container.classList.toggle("static", !lyricsDocument.synced);
   lyricsActiveIndex = -1;

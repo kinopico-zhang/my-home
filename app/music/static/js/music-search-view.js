@@ -2,8 +2,10 @@
 // 页底船坞上方 (顶端不再有钉死的内容), 回车收起 iOS 键盘; 有查询时结果
 // 分四子页左右滑切换 (骨架/页签/铺页在 music-search-pages.js)。
 // 搜索本身还是边打边搜 (防抖 300ms)。拆自 music.js (结构化重构)。
+// 1.8.6 起所有元素查找都收在本层 target 里: 旧搜索层滑出还挂着 DOM 的
+// 420ms 内, $() 全局找会抓到旧层的元素 (重进搜索输入框失灵的元凶)。
 "use strict";
-/* global $, bindSearchTabs, bindTrackLists, buildSearchPages, escapeHTML, fetchJSON,
+/* global bindSearchTabs, bindTrackLists, buildSearchPages, escapeHTML, fetchJSON,
           listPlaceholderHTML, navigate, openFullPlayer, openLyricsView, pageState,
           playerStart, renderSearchResults, toast */
 /* exported renderSearchView */
@@ -30,14 +32,14 @@ function renderSearchView(target) {
         </div>
       </div>
     </div>`;
-  const input = $("#search-input");
-  const clearButton = $("#search-clear");
+  const input = target.querySelector("#search-input");
+  const clearButton = target.querySelector("#search-clear");
   let debounceTimer = 0;
   input.addEventListener("input", () => {
     pageState.searchQuery = input.value.trim();
     clearButton.hidden = !input.value;
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(runSearch, 300);
+    debounceTimer = setTimeout(() => runSearch(target), 300);
   });
   // 回车 = 收起 iOS 键盘 (搜索是边打边搜的, 回车没有别的活; 键盘一收
   // 结果区立刻多出一截 —— 用户点名)
@@ -48,17 +50,17 @@ function renderSearchView(target) {
     input.value = "";
     pageState.searchQuery = "";
     clearButton.hidden = true;
-    runSearch();
+    runSearch(target);
   });
-  bindSearchBody();
-  bindSearchTabs();
-  runSearch();
+  bindSearchBody(target);
+  bindSearchTabs(target);
+  runSearch(target);
 }
 
 /** 结果区事件 (专辑/艺人跳转 + 行开播 + 歌词命中连播): 绑在容器上 ——
     容器跨查询常驻, 绑内容会重复累加。 */
-function bindSearchBody() {
-  const body = $("#search-body");
+function bindSearchBody(target) {
+  const body = target.querySelector("#search-body");
   body.addEventListener("click", (event) => {
     const albumCard = event.target.closest("[data-album-id]");
     if (albumCard) { navigate(`album/${albumCard.dataset.albumId}`); return; }
@@ -86,8 +88,8 @@ function bindSearchBody() {
   });
 }
 
-async function runSearch() {
-  const body = $("#search-body");
+async function runSearch(target) {
+  const body = target.querySelector("#search-body");
   if (!body) return;
   if (pageState.searchAbort) pageState.searchAbort.abort();
   if (!pageState.searchQuery) {
@@ -107,7 +109,7 @@ async function runSearch() {
     const results = await fetchJSON(
       `/music/api/search?q=${encodeURIComponent(pageState.searchQuery)}`,
       { signal: controller.signal });
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || !body.isConnected) return;   // 层已收走
     pageState.searchResults = results;
     renderSearchResults(body, results);
   } catch (error) {

@@ -7,8 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
      <!-- ↑ 全出血 (页面伸进刘海区): 顶部让位靠 main 的 margin-top,
-        env(safe-area-inset-top) 在 main 让位和二级页顶衬两处用,
-        要拿真实值 —— black 会让独立模式报 0。
+        env(safe-area-inset-top) 要拿真实值 (black 会让独立模式报 0)。
         iOS 26.1 起的系统磨砂带 bug (WebKit 301994, env 谎报 0) 1.8.0 起
         不再兜底: 顶部任凭系统糊, 不做处理 (用户点名撤掉黑罩那套) -->
 <meta name="apple-mobile-web-app-title" content="My Music">
@@ -20,18 +19,19 @@
 <!-- 样式按逻辑拆成独立文件 (结构化重构): 加载顺序 = 底座 → 内容列表
      → 一级视图 → 底部常驻件 → 推入层 → 播放页 → 浮层菜单 -->
 <link rel="stylesheet" href="/music/static/css/music-base.css?v=2">
-<link rel="stylesheet" href="/music/static/css/music-bottom-bar.css?v=3">
-<link rel="stylesheet" href="/music/static/css/music-push-panes.css?v=3">
+<link rel="stylesheet" href="/music/static/css/music-bottom-bar.css?v=4">
+<link rel="stylesheet" href="/music/static/css/music-push-panes.css?v=4">
 <link rel="stylesheet" href="/music/static/css/music-lists.css?v=3">
-<link rel="stylesheet" href="/music/static/css/music-views.css?v=4">
-<link rel="stylesheet" href="/music/static/css/music-search.css?v=1">
-<link rel="stylesheet" href="/music/static/css/music-player.css?v=3">
+<link rel="stylesheet" href="/music/static/css/music-views.css?v=5">
+<link rel="stylesheet" href="/music/static/css/music-search.css?v=3">
+<link rel="stylesheet" href="/music/static/css/music-downloads-select.css?v=1">
+<link rel="stylesheet" href="/music/static/css/music-player.css?v=6">
+<link rel="stylesheet" href="/music/static/css/music-queue.css?v=1">
 <link rel="stylesheet" href="/music/static/css/music-menus.css?v=2">
 </head>
 <body>
 
 <audio id="audio" preload="none"></audio>
-
 <!-- 固定壳: 文档不滚, main 是唯一一级滚动器; 底部船坞 (fixed bottom) 和
      推入层 (z44) 从它底下扫过 -->
 <main id="main">
@@ -85,10 +85,10 @@
       <div id="fp-lyrics" hidden></div>
       <div id="fp-queue" hidden>
         <div class="fq-head">
-          <div class="fq-head-txt"><b>待播放</b><small id="fq-count"></small></div>
+          <div class="fq-head-txt"><b>继续播放</b><small id="fq-count"></small></div>
           <div class="fq-head-btns">
-            <button type="button" id="fp-shuffle" aria-label="随机播放"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M16.5 3q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.527q0 0.316-0.217 0.533l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.22t-0.22-0.53q0-0.299 0.217-0.527l1.723-1.723l-1.19 0q-1.055 0-1.981 0.46t-1.552 1.257q-0.967 1.231-0.967 2.783q0 1.564-0.75 2.906q-0.398 0.721-0.967 1.295q-0.832 0.85-1.94 1.325t-2.344 0.475l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22l1.5 0q1.061 0 1.984-0.457t1.55-1.254q0.967-1.231 0.967-2.789q0-1.564 0.75-2.906q0.404-0.727 0.967-1.289q0.832-0.85 1.94-1.327t2.344-0.478l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM16.5 13.5q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.533q0 0.31-0.217 0.527l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.217t-0.22-0.527q0-0.305 0.217-0.533l1.723-1.723l-1.19 0q-1.236 0-2.344-0.475t-1.94-1.325q0.451-0.662 0.75-1.412q0.627 0.796 1.55 1.254t1.984 0.457l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM4.5 6l1.5 0q1.236 0 2.344 0.478t1.94 1.327q-0.457 0.673-0.75 1.412q-0.627-0.796-1.552-1.257t-1.981-0.46l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22z" fill="currentColor"/></svg>随机</button>
-            <button type="button" id="fp-repeat" aria-label="循环模式"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4.209 12.708l4.25 0q0.293 0 0.501 0.208t0.208 0.501t-0.208 0.501t-0.501 0.208l-2.39 0l1.926 1.881q0.819 0.824 1.876 1.245q1.013 0.415 2.13 0.415t2.13-0.415q0.553-0.227 1.038-0.556t0.824-0.675t0.62-0.742t0.448-0.727t0.285-0.664q0.1-0.277 0.365-0.401t0.537-0.03q0.277 0.1 0.401 0.363t0.03 0.534q-0.232 0.708-0.675 1.405t-0.996 1.251q-1.018 1.018-2.341 1.555q-1.283 0.52-2.667 0.52q-1.378 0-2.667-0.52q-1.322-0.537-2.341-1.555l-2.075-2.031l0 2.689q0 0.293-0.208 0.501t-0.501 0.208t-0.501-0.208t-0.208-0.501l0-4.25q0-0.293 0.208-0.501t0.501-0.208zM12 4.917q1.378 0 2.667 0.52q1.322 0.537 2.341 1.555l0.011 0.011l2.064 2.02l0-2.689q0-0.293 0.208-0.501t0.501-0.208t0.501 0.208t0.208 0.501l0 4.25q0 0.293-0.208 0.501t-0.501 0.208l-4.25 0q-0.293 0-0.501-0.208t-0.208-0.501t0.208-0.501t0.501-0.208l2.39 0l-1.926-1.881q-0.808-0.808-1.84-1.234t-2.167-0.426q-1.118 0-2.13 0.415q-1.057 0.421-1.876 1.245q-0.332 0.293-0.727 0.894t-0.611 1.225q-0.1 0.277-0.365 0.401t-0.537 0.03q-0.277-0.1-0.401-0.363t-0.03-0.534q0.232-0.708 0.675-1.405t0.996-1.251q1.018-1.018 2.341-1.555q1.289-0.52 2.667-0.52z" fill="currentColor"/></svg>循环</button>
+            <button type="button" id="fp-shuffle" aria-label="随机播放"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M16.5 3q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.527q0 0.316-0.217 0.533l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.22t-0.22-0.53q0-0.299 0.217-0.527l1.723-1.723l-1.19 0q-1.055 0-1.981 0.46t-1.552 1.257q-0.967 1.231-0.967 2.783q0 1.564-0.75 2.906q-0.398 0.721-0.967 1.295q-0.832 0.85-1.94 1.325t-2.344 0.475l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22l1.5 0q1.061 0 1.984-0.457t1.55-1.254q0.967-1.231 0.967-2.789q0-1.564 0.75-2.906q0.404-0.727 0.967-1.289q0.832-0.85 1.94-1.327t2.344-0.478l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM16.5 13.5q0.31 0 0.533 0.223l3 3q0.217 0.217 0.217 0.533q0 0.31-0.217 0.527l-3 3q-0.217 0.217-0.533 0.217q-0.31 0-0.53-0.217t-0.22-0.527q0-0.305 0.217-0.533l1.723-1.723l-1.19 0q-1.236 0-2.344-0.475t-1.94-1.325q0.451-0.662 0.75-1.412q0.627 0.796 1.55 1.254t1.984 0.457l1.19 0l-1.723-1.717q-0.217-0.229-0.217-0.533q0-0.31 0.22-0.53t0.53-0.22zM4.5 6l1.5 0q1.236 0 2.344 0.478t1.94 1.327q-0.457 0.673-0.75 1.412q-0.627-0.796-1.552-1.257t-1.981-0.46l-1.5 0q-0.31 0-0.53-0.22t-0.22-0.53t0.22-0.53t0.53-0.22z" fill="currentColor"/></svg></button>
+            <button type="button" id="fp-repeat" aria-label="循环模式"><svg viewBox="0 0 1024 1024" width="18" height="18" aria-hidden="true"><path d="M640 810.666667H341.333333C187.733333 810.666667 64 686.933333 64 533.333333s123.733333-277.333333 277.333333-277.333333h597.333334c12.8 0 21.333333 8.533333 21.333333 21.333333s-8.533333 21.333333-21.333333 21.333334H341.333333C211.2 298.666667 106.666667 403.2 106.666667 533.333333s104.533333 234.666667 234.666666 234.666667h298.666667c85.333333 0 164.266667-38.4 217.6-104.533333 19.2-25.6 36.266667-53.333333 44.8-83.2 4.266667-14.933333 8.533333-29.866667 10.666667-42.666667 2.133333-10.666667 12.8-19.2 23.466666-17.066667 10.666667 2.133333 19.2 12.8 17.066667 23.466667-2.133333 17.066667-6.4 34.133333-12.8 51.2-12.8 34.133333-29.866667 68.266667-53.333333 96-57.6 74.666667-149.333333 119.466667-247.466667 119.466667z" fill="currentColor"/><path d="M810.666667 426.666667c-6.4 0-10.666667-2.133333-14.933334-6.4-8.533333-8.533333-8.533333-21.333333 0-29.866667l113.066667-113.066667-113.066667-113.066666c-8.533333-8.533333-8.533333-21.333333 0-29.866667s21.333333-8.533333 29.866667 0l128 128c8.533333 8.533333 8.533333 21.333333 0 29.866667l-128 128c-4.266667 4.266667-8.533333 6.4-14.933333 6.4z" fill="currentColor"/></svg></button>
           </div>
         </div>
         <div id="queue-list"></div>
@@ -118,13 +118,13 @@
     <div class="fp-pad"></div>
   </div>
 </div>
-
 <div id="track-menu-mask" hidden></div>
 <div id="track-menu" hidden>
   <div class="menu-track"><b id="menu-track-title"></b><small id="menu-track-artist"></small></div>
   <button type="button" data-track-action="play"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6.583 17.466L6.583 6.534Q6.583 5.5 7.47 6.032L16.516 11.46Q17.416 12 16.516 12.54L7.47 17.968Q6.583 18.5 6.583 17.466zM14.167 11.736L8.461 8.31Q8.028 8.05 8.028 8.556L8.028 15.444Q8.028 15.95 8.461 15.69L14.167 12.264Q14.607 12 14.167 11.736z" fill="currentColor"/></svg>播放</button>
   <button type="button" data-track-action="artist" id="track-menu-artist"><svg viewBox="0 3 24 24" width="18" height="18" aria-hidden="true"><path d="M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 19.5a6.5 6.5 0 0 1 13 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>进入艺人主页</button>
   <button type="button" data-track-action="album" id="track-menu-album"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/></svg>进入专辑主页</button>
+  <button type="button" data-track-action="download" id="track-menu-download"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17.5v1.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>下载</button>
   <button type="button" data-track-action="playlist"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3.024 4.992H12.961Q13.969 4.992 13.969 6Q13.969 7.008 12.961 7.008H3.024Q2.016 7.008 2.016 6Q2.016 4.992 3.024 4.992zM3.024 8.976H12.961Q13.969 8.976 13.969 9.984Q13.969 10.992 12.961 10.992H3.024Q2.016 10.992 2.016 9.984Q2.016 8.976 3.024 8.976zM3.0005 13.008H8.9995Q9.984 13.008 9.984 13.9925Q9.984 14.977 8.9995 14.977H3.0005Q2.016 14.977 2.016 13.9925Q2.016 13.008 3.0005 13.008zM12.9845 13.008H20.9995Q21.984 13.008 21.984 13.9925Q21.984 14.977 20.9995 14.977H12.9845Q12 14.977 12 13.9925Q12 13.008 12.9845 13.008zM15.984 9.984V18Q15.984 19.008 16.992 19.008Q18 19.008 18 18V9.984Q18 8.976 16.992 8.976Q15.984 8.976 15.984 9.984z" fill="currentColor"/></svg>添加到播放列表</button>
   <button type="button" data-track-action="share"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3.5v11M8.5 7 12 3.5 15.5 7M6 12v6.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>分享</button>
 </div>
@@ -146,12 +146,9 @@
     <button type="button" id="picker-create">新建</button>
   </div>
 </div>
-
 <div id="toast" hidden></div>
-
 <!-- 播放列表换封面: 选中文件后 JS 直接把字节 PUT 上去 (不用表单) -->
 <input type="file" id="cover-file" accept="image/png,image/jpeg,image/webp" hidden>
-
 <!-- 脚本按逻辑拆分 (结构化重构, 拆自 music.js / music-player.js): 经典脚本,
      必须按此顺序加载 (后加载的可引用先加载的全局; ?v= 换文件即换址) -->
 <script src="/music/static/js/lyrics-parser.js?v=2"></script>
@@ -159,42 +156,45 @@
 <script src="/music/static/js/downloads-capability.js?v=2"></script>
 <script src="/music/static/js/downloads.js?v=2"></script>
 <script src="/music/static/js/cellular-usage.js?v=2"></script>
-<script src="/music/static/js/music-common.js?v=2"></script>
+<script src="/music/static/js/music-common.js?v=3"></script>
 <script src="/music/static/js/music-player-state.js?v=2"></script>
 <script src="/music/static/js/music-player-queue.js?v=2"></script>
 <script src="/music/static/js/music-player-persistence.js?v=2"></script>
-<script src="/music/static/js/music-player-chrome.js?v=3"></script>
-<script src="/music/static/js/music-player-fullpage.js?v=3"></script>
+<script src="/music/static/js/music-player-chrome.js?v=4"></script>
+<script src="/music/static/js/music-player-fullpage.js?v=4"></script>
 <script src="/music/static/js/music-player-lyrics-toggle.js?v=2"></script>
-<script src="/music/static/js/music-player-lyrics.js?v=2"></script>
+<script src="/music/static/js/music-player-lyrics.js?v=3"></script>
 <script src="/music/static/js/music-player-queue-view.js?v=2"></script>
 <script src="/music/static/js/music-player-media-session.js?v=2"></script>
 <script src="/music/static/js/music-player-audio-events.js?v=2"></script>
 <script src="/music/static/js/music-player-events.js?v=3"></script>
 <script src="/music/static/js/music-player-boot.js?v=2"></script>
 <script src="/music/static/js/music-navigation.js?v=4"></script>
-<script src="/music/static/js/music-push-panes.js?v=4"></script>
-<script src="/music/static/js/music-downloads-integration.js?v=3"></script>
+<script src="/music/static/js/music-push-panes.js?v=7"></script>
+<script src="/music/static/js/music-pane-swipe.js?v=1"></script>
+<script src="/music/static/js/music-bubble-swipe.js?v=1"></script>
+<script src="/music/static/js/music-downloads-integration.js?v=4"></script>
 <script src="/music/static/js/music-list-rendering.js?v=3"></script>
 <script src="/music/static/js/music-swipe-delete.js?v=2"></script>
-<script src="/music/static/js/music-track-menus.js?v=3"></script>
-<script src="/music/static/js/music-menu-gestures.js?v=3"></script>
+<script src="/music/static/js/music-track-menus.js?v=4"></script>
+<script src="/music/static/js/music-menu-gestures.js?v=4"></script>
 <script src="/music/static/js/music-dock-menu.js?v=3"></script>
 <script src="/music/static/js/music-playlist-picker.js?v=2"></script>
 <script src="/music/static/js/music-home-view.js?v=2"></script>
 <script src="/music/static/js/music-playlists-pane.js?v=2"></script>
 <script src="/music/static/js/music-recent-pane.js?v=1"></script>
-<script src="/music/static/js/music-library-views.js?v=3"></script>
+<script src="/music/static/js/music-downloads-select.js?v=1"></script>
+<script src="/music/static/js/music-library-views.js?v=5"></script>
 <script src="/music/static/js/music-library-pagination.js?v=2"></script>
-<script src="/music/static/js/music-album-artist-views.js?v=2"></script>
+<script src="/music/static/js/music-album-artist-views.js?v=3"></script>
 <script src="/music/static/js/music-playlist-view.js?v=2"></script>
-<script src="/music/static/js/music-search-pages.js?v=1"></script>
-<script src="/music/static/js/music-search-view.js?v=3"></script>
+<script src="/music/static/js/music-search-pages.js?v=2"></script>
+<script src="/music/static/js/music-search-view.js?v=4"></script>
 <script src="/music/static/js/music-stats-view.js?v=2"></script>
 <script src="/music/static/js/music-settings-view.js?v=3"></script>
 <script src="/music/static/js/music-changelog-view.js?v=2"></script>
 <script src="/music/static/js/music-scan-status.js?v=2"></script>
-<script src="/music/static/js/music-global-events.js?v=3"></script>
+<script src="/music/static/js/music-global-events.js?v=5"></script>
 <script src="/music/static/js/music-app-boot.js?v=3"></script>
 </body>
 </html>

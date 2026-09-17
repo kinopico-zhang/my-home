@@ -36,7 +36,7 @@ def test_music_dock_wiring():
     assert "env(safe-area-inset-bottom)" in dock_css       # 让开小白条
     keys_css = html[html.index("#dock-menu, #dock-search {"):html.index("#dock-menu:active")]
     assert "border-radius: 50%;" in keys_css               # 圆键
-    assert "rgba(44,44,46,.78);" in keys_css               # 磨砂配方与气泡同款 (1.8.3 调实一档)
+    assert "rgba(44,44,46,.7);" in keys_css               # 磨砂配方与气泡同款 (1.8.5 调回半透明)
     assert "backdrop-filter: blur(20px) saturate(180%);" in keys_css
     assert "transform: translateZ(0);" in keys_css         # 自家合成层防复印
     # 气泡变窄: flex:1 占中间, 圆角胶囊; 上下曲没了, 只留播放/暂停
@@ -97,12 +97,13 @@ def test_music_dock_wiring():
     assert "bottom: calc(var(--dock-h) + 22px + env(safe-area-inset-bottom));" \
         in html[html.index("#toast {"):]
     # 层动画期的重影对策罩住三件套 (透明船坞不罩, 罩磨砂子件); 实底是
-    # 磨砂等效色 (1.8.1 立的规矩: 动画前后深浅一致; 1.8.3 底色调实一档,
-    # 等效实底跟着重算)
+    # 磨砂等效色 (1.8.1 立的规矩: 动画前后深浅一致; 1.8.5 底色调回半透明
+    # 一档, 等效实底跟着重算; 搜索框 1.8.5 起同住船坞位, 一起罩)
     assert "body.pane-anim #mini-player," in html
     assert "body.pane-anim #dock-menu," in html
-    assert "body.pane-anim #dock-search {" in html
-    assert "background: rgb(34,34,36);" in html[
+    assert "body.pane-anim #dock-search," in html
+    assert "body.pane-anim .search-box {" in html
+    assert "background: rgb(31,31,32);" in html[
         html.index("body.pane-anim #mini-player"):html.index(".push-pane {")]
 
 
@@ -136,12 +137,33 @@ def test_music_top_fallback_removed():
     assert "margin-top: max(env(safe-area-inset-top, 0px), var(--top-floor));" in grab_css
     # 首帧兜底的独立模式媒体查询也撤了 (147px 黑罩那套, 别回来)
     assert "147px" not in html
-    # 脚本清单随行: 42 个模块全带版本参数 (1.8.1: +recent-pane; 1.8.3: +search-pages)
+    # 脚本清单随行: 45 个模块全带版本参数 (1.8.1: +recent-pane; 1.8.3:
+    # +search-pages; 1.8.5: +bubble-swipe; 1.8.6: +downloads-select,
+    # push-panes 拆出 pane-swipe)
     scripts = re.findall(r'<script src="([^"]+)"', html)
-    assert len(scripts) == 42 and all("?v=" in src for src in scripts)
+    assert len(scripts) == 45 and all("?v=" in src for src in scripts)
     assert "js/music-dock-menu.js?v=" in html
     assert "js/music-playlists-pane.js?v=" in html
     webapp_dir = Path(__file__).parent.parent / "app" / "music" / "webapp"
     webapp = "".join(path.read_text(encoding="utf-8")
                      for path in sorted(webapp_dir.glob("*.py")))
     assert "header-probe" not in webapp and "probe.jsonl" not in webapp
+
+
+def test_music_185_bubble_swipe_back():
+    """1.8.5 修「气泡右划返回不好用」: 1.8.0 推入层铺满全高后, 气泡
+    (z50) 底下的内容全是层 (z44), 层上的右划手势收不到气泡那片 ——
+    气泡成了手势死角。给气泡单绑一份: 拖栈顶层跟手位移, 松手够远或
+    带甩劲就收层; 竖向/左划立刻放掉, 不碍气泡自己的点击。"""
+    html = music_page_shell()
+    js = music_browser_js()
+    assert 'src="/music/static/js/music-bubble-swipe.js?v=' in html
+    assert "bindBubbleSwipe" in js
+    bubble = (MUSIC_STATIC / "js" / "music-bubble-swipe.js").read_text(
+        encoding="utf-8")
+    assert 'const bubble = $("#mini-player");' in bubble
+    assert "if (!pushStack.length) return;" in bubble   # 没层可收: 原样
+    assert "horizontal = dx > 0 && Math.abs(dx) > Math.abs(dy);" in bubble
+    assert "closePushStack(pushStack.length - 1);" in bubble  # 只收顶层
+    # 层运动期磨砂暂撤照旧罩着 (拖动中每下续期)
+    assert "paneMotion();" in bubble
