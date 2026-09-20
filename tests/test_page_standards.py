@@ -1,4 +1,4 @@
-"""全站页面标准测试: 独立模式 meta, 双击缩放禁用, 刷新按钮接线,
+"""全站页面标准测试: 独立模式 meta, 双击缩放禁用, 刷新按钮退役,
 记住最后页面, manifest 各用各的。
 拆自 test_auth.py (结构化重构, 代码逐字节未动)。"""
 
@@ -39,65 +39,38 @@ def test_all_pages_disable_double_tap_zoom_on_controls(auth):
         assert "button, a, summary { touch-action: manipulation; }" in page, path
 
 
-def test_all_pages_have_refresh_button(auth):
-    """每页顶栏都有刷新按钮 (2026-09-13 用户反馈: 不是每个页面都有)。
+def test_no_page_has_refresh_button(auth):
+    """刷新按钮全站退役 (用户点名: 导航菜单不需要刷新按钮)。
 
-    行程页首倡的胶囊刷新按钮 (busy 时图标旋转) 铺到全部业务页; 每页接
-    自己的重载入口 —— 列表页重拉后回顶, 地图页不带首载遮罩 (refresh(false)),
-    设置页拉完设置再补司机列表; 记账页 = 立即同步, 账号页 = 重拉用户与邀请。
-    """
-    # 页面路径 -> (该页 JS 文件, 点击后接的重载调用)
-    wiring = {
-        "/tesla/charging": ("js/charging-cards.js", "await refetch();"),
-        "/tesla/stats": ("js/stats-time-filters.js", "await refetch();"),
-        "/tesla/chargemap": ("js/chargemap-time-filters.js", "await refresh(false);"),
-        "/tesla/map": ("js/map-filters.js", "await refresh(false);"),
-        "/tesla/trips": ("js/trips-list-page.js", "await refreshList();"),
-        "/tesla/groups": ("js/groups.js", "await load();"),
-        "/tesla/live": ("js/live-driving.js", "await poll();"),
-        "/tesla/settings": ("js/settings-account.js", "await loadSettings();"),
-        "/tesla/changelog": ("/static/changelog-page.js", "await load();"),
-        "/music/changelog": ("/static/changelog-page.js", "await load();"),
-        "/bookkeeping/changelog": ("/static/changelog-page.js", "await load();"),
-        "/bookkeeping": ("bookkeeping-sync.js", "await syncNow();"),
-        "/accounts": ("accounts.js", "await loadAll();"),
-    }
-    for path, (js_file, call) in wiring.items():
-        page = _page_with_css(auth, path)   # refresh-spin/#refresh-btn 样式在 css 文件里
-        assert '<button type="button" id="refresh-btn"' in page, path  # 按钮在顶栏
-        assert "refresh-spin" in page, path                   # busy 旋转动画
-        prefix = ("/bookkeeping/static" if path.startswith("/bookkeeping")
-                  else "/music/static" if path == "/music"
-                  else "/static" if path == "/accounts"
-                  else "/tesla/static")
-        js_path = js_file if js_file.startswith("/") else f"{prefix}/{js_file}"
-        js = auth.get(f"{js_path}?v=1").text
-        assert '$("#refresh-btn").addEventListener' in js, path
-        assert call in js, f"{path} 刷新按钮没接上 {call}"
-        # 刷新按钮始终顶栏最右: 有时间菜单的页菜单吃 auto 边距, 按钮跟在后面;
-        # 没有的页 (分组/驾驶/设置/日志/记账/账号) 按钮自己吃 auto 边距
-        if 'id="time-menu"' not in page:
-            block = page[page.index("#refresh-btn {"):]
-            assert "margin-left: auto" in block[:block.index("}")], path
+    曾经的形态: 记账/账号/各应用日志页顶栏胶囊刷新按钮 (busy 时图标旋转),
+    Tesla 2.x 每页顶栏也有。现在一个不留 —— 页面数据都是打开即拉, 记账的
+    同步更是定时+回前台自动跑, 按钮是冗余入口; Tesla 3.0 单壳每视图下拉
+    刷新 (见子仓 test_shell_wiring)。"""
+    paths = [*ALL_PAGES, "/music/changelog", "/bookkeeping/changelog"]
+    for path in paths:
+        page = _page_with_css(auth, path)
+        assert 'id="refresh-btn"' not in page, path
+        assert "refresh-spin" not in page, path
 
 
-def test_pages_remember_last_page(auth):
-    """上次停留页: 业务页 head 挂 lastpage.js (冷启动在任何渲染前跳转,
-    不闪启动页), 登录页/注册页不挂 (不是停留目标); 登录成功回上次页而非
-    写死充电页。
+def test_tesla_shell_remembers_last_view(auth):
+    """My Tesla 的"记住停留页": 3.0 起壳自己记 (localStorage tesla.lastView,
+    冷启回放上次视图), lastpage.js 随旧页退役 —— 任何页面都不再挂它。
 
-    iOS 主屏图标每次都从添加时定格的 start_url 启动, 不记得停在哪页 ——
-    localStorage 记 path+search, 冷启动 (sessionStorage 无标记) 且 standalone
-    才 replace 过去; 行程弹层开合只动 URL 不重载, 靠 visibilitychange 补记。"""
-    # lastpage 是 Tesla 应用内的概念: 登录/注册/账号管理/记账/音乐都不挂
-    home_layer = ("/login", "/register", "/accounts", "/bookkeeping", "/music")
-    for path in [p for p in ALL_PAGES if p not in home_layer]:
-        html = auth.get(path).text
-        tag = '<script src="/tesla/static/js/lastpage.js?v=1"></script>'
-        assert tag in html, path
-        assert html.index(tag) < html.index("<title>"), "要放 <title> 前 (首渲染前执行)"
-    assert "lastpage.js" not in _page_client(auth, "/login").get("/login").text
-    assert "lastpage.js" not in _page_client(auth, "/register").get("/register").text
+    登录页这边剩兼容账: 老版本存下的 mytesla-last-page 是旧页路径, 登录后
+    照跳 —— 旧地址 302 回壳带 ?view=, 落点不丢; 站外/坏值回落 My Music
+    (门厅撤了, 默认进音乐), 不再写死充电页。"""
+    # lastpage.js 已删: 全站页面 (含 Tesla 壳) 与登录/注册都不再挂它
+    for path in ALL_PAGES:
+        html = _page_client(auth, path).get(path).text
+        assert "lastpage.js" not in html, path
+    # 壳: 上次视图记在 localStorage, boot 冷启回放 (?view= 深链优先, 洗成裸壳)
+    shell_js = auth.get("/tesla/static/js/tesla-shell.js?v=1").text
+    assert 'localStorage.setItem("tesla.lastView", key)' in shell_js
+    assert "function readLastView()" in shell_js
+    boot_js = auth.get("/tesla/static/js/tesla-app-boot.js?v=1").text
+    assert '(VIEWS[lastView] ? lastView : "charging")' in boot_js
+    assert 'history.replaceState(null, "", "/tesla");' in boot_js
     # 登录成功去哪: 逻辑在 login.js —— 应用内的登录页回该应用 (或 next 参数
     # 带来的原地址, 只认本应用 scope), 根登录页回上次停留页 (白名单正则,
     # 站外/坏值回落 My Music —— 门厅撤了, 默认进音乐), 不再写死充电页
@@ -109,21 +82,6 @@ def test_pages_remember_last_page(auth):
     assert 'function pickNext()' in login_html
     assert 'const APP_TITLES = { "/tesla": "My Tesla", "/music": "My Music",' in login_html
 
-    r = auth.get("/tesla/static/js/lastpage.js")
-    assert r.status_code == 200
-    js = r.text
-    for frag in [
-        '"/tesla/charging", "/tesla/stats", "/tesla/chargemap",',   # 白名单业务页
-        '"/tesla/changelog"]',
-        "PAGES.indexOf(path) === -1) return",                  # login/静态不记不跳
-        "sessionStorage.getItem(LAUNCH)",                      # 冷启动判据 (会话标记)
-        "catch (e) { return; }",                               # 隐私模式防回弹循环
-        "navigator.standalone === true",                       # 只在主屏全屏 App 里跳
-        'location.replace(saved)',                             # 目标过白名单才跳
-        'if (document.hidden) record()',                       # 后台时补记 (弹层开合)
-    ]:
-        assert frag in js, f"lastpage.js 缺少 {frag}"
-
 
 def test_webapp_manifests_scoped_per_app(auth):
     """Web App Manifest: 各入口一份 (门厅 / Tesla / 记账 / 音乐), 名字和启动页
@@ -132,7 +90,7 @@ def test_webapp_manifests_scoped_per_app(auth):
     会话过期 302 /login 越界的旧坑 (2026-09-12) 由各应用 scope 内自带登录页
     解决 (见 test_app_login_pages_in_scope)。图标各用各的, 加主屏互不干扰。"""
     for url, name, scope, start in (
-            ("/tesla/static/manifest.json", "My Tesla", "/tesla", "/tesla/charging"),
+            ("/tesla/static/manifest.json", "My Tesla", "/tesla", "/tesla"),
             ("/bookkeeping/static/manifest.json", "My Money", "/bookkeeping", "/bookkeeping"),
             ("/music/static/manifest.json", "My Music", "/music", "/music"),
             ("/static/manifest.json", "My Home", "/", "/")):

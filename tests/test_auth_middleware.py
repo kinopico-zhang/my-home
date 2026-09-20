@@ -50,7 +50,7 @@ def test_app_login_pages_in_scope(client):
     assert authed.post("/api/login", json={"user": config.AUTH_USER,
                                            "password": config.AUTH_PASS}
                        ).status_code == 200
-    for path, root in (("/tesla/login", "/tesla/charging"),
+    for path, root in (("/tesla/login", "/tesla"),
                        ("/music/login", "/music"),
                        ("/bookkeeping/login", "/bookkeeping")):
         r = authed.get(path, follow_redirects=False)

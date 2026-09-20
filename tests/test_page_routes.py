@@ -10,24 +10,36 @@ from tests.page_test_helpers import _page_with_css
 
 def test_root_redirect_chain(auth):
     """门厅已撤: 根路径无条件 302 进 My Music (未登录会在音乐 scope 里
-    被再拦一次登录页); /tesla 仍收口到默认页。"""
+    被再拦一次登录页)。"""
     r = auth.get("/", follow_redirects=False)
     assert (r.status_code, r.headers["location"]) == (302, "/music")
+
+
+def test_tesla_legacy_routes_redirect_to_shell(auth):
+    """My Tesla 3.0 单壳: /tesla 直出壳, 9 个旧页地址全部 302 回壳并带
+    ?view= 落到对应视图 (老书签/分享链接不丢目标); query 原样跟走,
+    充电地图旧页的度量参数 ?view= 换名 ?metric= (?view= 让给视图选择)。"""
     r = auth.get("/tesla", follow_redirects=False)
-    assert (r.status_code, r.headers["location"]) == (302, "/tesla/charging")
+    assert r.status_code == 200 and "My Tesla" in r.text
+    r = auth.get("/tesla/charging", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (302, "/tesla?view=charging")
+    r = auth.get("/tesla/settings", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (302, "/tesla?view=settings-db")
+    # 行程分享深链: ?id= 原样跟到壳 (boot 消费后直开弹层)
+    r = auth.get("/tesla/trips?id=42&range=30d", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == \
+        (302, "/tesla?id=42&range=30d&view=trips")
+    # 充电地图度量参数换名; P2-P6 开发地址洗成裸壳
+    r = auth.get("/tesla/chargemap?view=energy", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == \
+        (302, "/tesla?metric=energy&view=chargemap")
+    r = auth.get("/tesla/app", follow_redirects=False)
+    assert (r.status_code, r.headers["location"]) == (302, "/tesla")
 
 
 def test_pages_served_after_login(auth):
-    for path, marker in (("/tesla/charging", "My Tesla"),
-                         ("/tesla/stats", "My Tesla"),
-                         ("/tesla/chargemap", "My Tesla"),
-                         ("/tesla/map", "My Tesla"),
-                         ("/tesla/trips", "My Tesla"),
+    for path, marker in (("/tesla", "My Tesla"),
                          ("/register", "My Home"),
-                         ("/tesla/changelog", "My Tesla"),
-                         ("/tesla/groups", "My Tesla"),
-                         ("/tesla/live", "My Tesla"),
-                         ("/tesla/settings", "My Tesla"),
                          ("/accounts", "My Home"),             # 账号管理
                          ("/bookkeeping", "My Money"),
                          ("/bookkeeping/changelog", "My Money"),
@@ -50,8 +62,7 @@ def test_cache_control_headers(auth):
     # 未登录的 401 API 响应同样禁缓存
     anon = TestClient(m.app)
     assert anon.get("/tesla/map/api/config").headers["cache-control"] == "no-store"
-    for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
-                 "/accounts", "/bookkeeping"):
+    for path in ("/tesla", "/accounts", "/bookkeeping"):
         assert auth.get(path).headers["cache-control"] == "no-cache", path
     assert auth.get("/bookkeeping/static/bookkeeping-state.js").headers["cache-control"] \
         == "no-cache"
@@ -78,21 +89,20 @@ def test_accounts_page_is_home_layer(auth):
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
     assert "<summary>My Home" in html
     assert '<a href="/music">My Music</a>' in html
-    assert '<a href="/tesla/charging">My Tesla</a>' in html
+    assert '<a href="/tesla">My Tesla</a>' in html
     assert '<a href="/bookkeeping">My Money</a>' in html
     assert '<a class="on" href="/accounts">账号管理</a>' in html
     assert 'class="logout-row" id="logout"' in html
 
 
 def test_bookkeeping_topbar_is_own_app(auth):
-    """记账应用自己的顶栏: 品牌下拉 + 退出登录收菜单里, 刷新按钮最右;
-    与 My Tesla 只共享账号 —— 页面里不出现任何 tesla 链接/脚本。"""
-    html = _page_with_css(auth, "/bookkeeping")    # refresh-btn 样式在 css 文件里
+    """记账应用自己的顶栏: 品牌下拉 + 退出登录收菜单里 (刷新按钮已按用户
+    要求全站退役, 同步是定时+回前台自动跑的); 与 My Tesla 只共享账号 ——
+    页面里不出现任何 tesla 链接/脚本。"""
+    html = _page_with_css(auth, "/bookkeeping")
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
     assert 'class="logout-row" id="logout"' in html
-    assert '<button type="button" id="refresh-btn"' in html
-    block = html[html.index("#refresh-btn {"):]
-    assert "margin-left: auto" in block[:block.index("}")]
+    assert 'id="refresh-btn"' not in html
     assert "/tesla/" not in html          # 独立应用: 图标/脚本/链接全自己的
     assert 'href="/bookkeeping/static/manifest.json"' in html
 
@@ -120,10 +130,8 @@ def test_mymusic_topbar_is_own_app(auth):
 
 
 def test_accounts_not_in_app_pages(auth):
-    """账号管理属于共享层, 不属于任何一个应用: My Tesla 的页面不出现
+    """账号管理属于共享层, 不属于任何一个应用: My Tesla 的壳不出现
     账号管理入口, 也不引共享层的 me.js (门厅撤了, 入口只有直达 /accounts)。"""
-    for path in ("/tesla/charging", "/tesla/map", "/tesla/trips",
-                 "/tesla/settings", "/tesla/live"):
-        html = auth.get(path).text
-        assert "账号管理" not in html, path
-        assert "me.js" not in html, path
+    html = auth.get("/tesla").text
+    assert "账号管理" not in html
+    assert "me.js" not in html
