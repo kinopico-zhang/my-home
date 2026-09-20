@@ -3,6 +3,8 @@
 # admin 身份、后台运行、日志 /tmp/mytesla.log)。
 # 手动重启用; acme.sh 续完证书的 reloadcmd 也是它 —— root 调时先把
 # 证书属主交给 admin (服务以 admin 跑, 读不了 root 600)。
+# acme.sh 家在 data/.acme.sh (2026-09-19 从 /root 迁来, /root 重启会丢;
+# 每日 04:17 续期见 /etc/config/crontab)。
 cd "$(dirname "$0")/.." || exit 1
 if [ "$(id -u)" = "0" ] && [ -f data/certs/privkey.pem ]; then
   chown admin data/certs/privkey.pem data/certs/fullchain.pem 2>/dev/null

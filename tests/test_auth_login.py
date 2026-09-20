@@ -71,7 +71,7 @@ def test_legacy_two_part_token_maps_to_admin(usersdb, client):
     token = f"{exp}.{sig}"
     assert authentication.check_token(token) == authentication.LEGACY_ADMIN
     client.cookies.set("auth", token)
-    assert client.get("/tesla/charging").status_code == 200
+    assert client.get("/tesla").status_code == 200
     me = client.get("/api/me").json()
     assert me["is_admin"] is True
     # 过期的旧 cookie 无效
@@ -85,12 +85,12 @@ def test_logout_clears_only_this_device(client, usersdb):
     other = account_store.create_user(usersdb, "二号账号", "password123")
     client.post("/api/login",
                 json={"user": config.AUTH_USER, "password": config.AUTH_PASS})
-    assert client.get("/tesla/charging").status_code == 200
+    assert client.get("/tesla").status_code == 200
     assert client.post("/api/logout").status_code == 200
-    r = client.get("/tesla/charging", follow_redirects=False)
+    r = client.get("/tesla", follow_redirects=False)
     assert r.status_code == 302
     # 应用页的登录跳转留在本应用 scope 内 (带原地址, 登录完回来)
-    assert r.headers["location"] == "/tesla/login?next=%2Ftesla%2Fcharging"
+    assert r.headers["location"] == "/tesla/login?next=%2Ftesla"
     # 别人的会话不受影响
     client2 = TestClient(m.app)
     client2.cookies.set("auth", authentication.make_token(other.uuid))

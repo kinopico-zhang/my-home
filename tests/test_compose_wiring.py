@@ -54,11 +54,11 @@ def test_three_apps_mounted_and_gated(client, auth):
     # auth 夹具登的是 client 这同一个实例 (夹具按名共享), 匿名视角要新建
     from fastapi.testclient import TestClient  # pylint: disable=import-outside-toplevel
     anon = TestClient(m.app)
-    for path in ("/tesla/charging", "/bookkeeping", "/music"):
+    for path in ("/tesla", "/bookkeeping", "/music"):
         r = anon.get(path, follow_redirects=False)
         assert r.status_code == 302, path
         assert "/login?next=" in r.headers["location"], path
-    for path, marker in (("/tesla/charging", "My Tesla"),
+    for path, marker in (("/tesla", "My Tesla"),
                          ("/bookkeeping", "My Money"),
                          ("/music", "My Music")):
         r = auth.get(path)

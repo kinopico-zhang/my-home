@@ -8,12 +8,12 @@ import app.main as m
 def test_brand_menu_pages_show_current_user(auth):
     """每个带品牌下拉的页面都引 menu-user.js (共享层小件, 挂根 /static):
     菜单顶部显示当前登录的账号。页面本体在三个子仓里, 这里按 HTTP 口径
-    验接线 —— 组合装配把它们拼在同一个源下。"""
-    # 带品牌菜单的页面 (My Tesla 各业务页 + 记账 + 账号管理;
-    # 音乐主页 1.8.0 撤了菜单, 不在此列)
-    for path in ("/tesla/charging", "/tesla/stats", "/tesla/map",
-                 "/tesla/trips", "/tesla/live", "/tesla/settings",
-                 "/bookkeeping", "/accounts"):
+    验接线 —— 组合装配把它们拼在同一个源下。
+
+    My Tesla 3.0 单壳不在此列: 账号行收进右划抽屉 (子仓 test_shell_wiring
+    钉), 不引共享层小件。"""
+    # 带品牌菜单的页面 (记账 + 账号管理; 音乐主页 1.8.0 撤了菜单)
+    for path in ("/bookkeeping", "/accounts"):
         html = auth.get(path).text
         assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
         assert "/static/menu-user.js" in html, f"{path} 缺 menu-user.js"
@@ -28,23 +28,12 @@ def test_brand_menu_pages_show_current_user(auth):
         assert frag in widget, f"menu-user.js 缺少 {frag}"
 
 
-def test_all_pages_have_brand_menu(auth):
-    """品牌即入口: My Tesla 是下拉按钮, 展开是三个页面 + 退出登录, 当前页高亮。"""
-    for path, cur, slug in (("/tesla/charging", "充电记录", "charging"),
-                            ("/tesla/map", "足迹地图", "map"),
-                            ("/tesla/trips", "行程列表", "trips"),
-                            ("/tesla/live", "当前驾驶", "live")):
-        html = auth.get(path).text
-        assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
-        assert '<nav class="tabs">' not in html, path       # 平铺页签已删
-        assert "<h1>My Tesla</h1>" not in html, path        # 旧标题位换成品牌下拉
-        assert 'id="nav-menu"' not in html, path            # 旧页签菜单已删
-        for href in ("/tesla/charging", "/tesla/map", "/tesla/trips",
-                     "/tesla/live"):
-            assert f'href="{href}"' in html, (path, href)
-        assert f'<a class="on" href="/tesla/{slug}">{cur}</a>' in html, (path, cur)
-        # 退出收进品牌菜单 (不再是顶栏独立按钮)
-        assert 'class="logout-row" id="logout"' in html and "logout-btn" not in html, path
-        assert "退出登录" in html, path
-        # 记账是独立应用: My Tesla 的菜单不再链过去
-        assert 'href="/bookkeeping"' not in html, path
+def test_tesla_shell_has_no_brand_menu(auth):
+    """My Tesla 3.0 单壳: 品牌下拉/页签菜单/顶栏退出全撤, 换右划抽屉
+    (导航 + 时间 + 车辆 + 账号行); 共享层小件 menu-user.js 不进壳。"""
+    html = auth.get("/tesla").text
+    assert 'id="brand-menu"' not in html
+    assert "/static/menu-user.js" not in html
+    assert '<nav class="tabs">' not in html
+    # 抽屉是新的导航位 (细节接线在子仓 test_shell_wiring)
+    assert 'id="drawer"' in html and 'id="menu-key"' in html

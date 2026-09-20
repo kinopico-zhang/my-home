@@ -53,7 +53,7 @@ def _moved_target(path: str) -> str | None:
 
 # 应用登录页 → 登录后回哪 (登录页在应用 scope 内, 已登录的访客直接回应用)
 _APP_LOGIN_ROOTS = {
-    "/tesla/login": "/tesla/charging",
+    "/tesla/login": "/tesla",     # 3.0 单壳: 应用根就是页面 (旧 /tesla/charging 302 回这)
     "/music/login": "/music",
     "/bookkeeping/login": "/bookkeeping",
 }
