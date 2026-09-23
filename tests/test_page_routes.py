@@ -96,12 +96,13 @@ def test_accounts_page_is_home_layer(auth):
 
 
 def test_bookkeeping_topbar_is_own_app(auth):
-    """记账应用自己的顶栏: 品牌下拉 + 退出登录收菜单里 (刷新按钮已按用户
-    要求全站退役, 同步是定时+回前台自动跑的); 与 My Tesla 只共享账号 ——
-    页面里不出现任何 tesla 链接/脚本。"""
+    """记账应用自己的导航 (1.3.0: 主页顶栏菜单整个撤了 — 更新日志/退出登录
+    搬进更新日志页的菜单, 页面从同步状态条开始; 菜单在那边由
+    test_page_branding 盯); 与 My Tesla 只共享账号 —— 页面里不出现任何
+    tesla 链接/脚本。"""
     html = _page_with_css(auth, "/bookkeeping")
-    assert 'class="nav-menu brand-menu" id="brand-menu"' in html
-    assert 'class="logout-row" id="logout"' in html
+    assert 'class="nav-menu brand-menu" id="brand-menu"' not in html   # 主页菜单撤了
+    assert 'id="logout"' not in html          # 退出登录住更新日志页
     assert 'id="refresh-btn"' not in html
     assert "/tesla/" not in html          # 独立应用: 图标/脚本/链接全自己的
     assert 'href="/bookkeeping/static/manifest.json"' in html
