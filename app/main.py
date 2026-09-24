@@ -133,7 +133,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     bookkeeping_store.create_all()
     bookkeeping_store.migrate_columns()
     bookkeeping_store.seed_default_categories()
-    # My Music: 曲库索引 + 后台首扫
+    # My Music: 曲库索引装配 (扫描全手动, 1.8.83)
     music_service.start_service()
     # My Tesla: 自有库建表 + 补列, 再读设置定 TeslaMate 连接
     tesla_database.init_own_engine()
