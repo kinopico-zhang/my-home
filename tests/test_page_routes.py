@@ -22,7 +22,10 @@ def test_tesla_legacy_routes_redirect_to_shell(auth):
     r = auth.get("/tesla", follow_redirects=False)
     assert r.status_code == 200 and "My Tesla" in r.text
     r = auth.get("/tesla/charging", follow_redirects=False)
-    assert (r.status_code, r.headers["location"]) == (302, "/tesla?view=charging")
+    # 2026-09-25 my-tesla 3.2.5 (未合入): /tesla/charging 回裸壳不再指
+    # view=charging —— 2.x PWA 安装档把 start_url 烙死在这里, 指了 view=
+    # 永远压过壳的「记住上次视图」(用户报每次冷启都是充电页)
+    assert (r.status_code, r.headers["location"]) == (302, "/tesla")
     r = auth.get("/tesla/settings", follow_redirects=False)
     assert (r.status_code, r.headers["location"]) == (302, "/tesla?view=settings-db")
     # 行程分享深链: ?id= 原样跟到壳 (boot 消费后直开弹层)
@@ -57,7 +60,9 @@ def test_static_js_must_revalidate(client):
 
 
 def test_cache_control_headers(auth):
-    """API 响应禁止缓存 (配置更新要即时生效), 页面允许缓存但必须重新校验。"""
+    """API 响应禁止缓存 (配置更新要即时生效), 页面允许缓存但必须重新校验;
+    接口自带 Cache-Control 的例外 (2026-09-25 轨迹类接口 ETag/304) 不被
+    no-store 盖掉 —— 那套在 my-tesla 测试仓验, 这里盖中间件自己的默认。"""
     assert auth.get("/tesla/map/api/config?_=1").headers["cache-control"] == "no-store"
     # 未登录的 401 API 响应同样禁缓存
     anon = TestClient(m.app)
@@ -67,6 +72,12 @@ def test_cache_control_headers(auth):
     assert auth.get("/bookkeeping/static/bookkeeping-state.js").headers["cache-control"] \
         == "no-cache"
     assert auth.get("/static/login.js").headers["cache-control"] == "no-cache"
+    # 带版本参数 (?v=N) 的静态资源: 版本号一改 URL 就换, 同 URL 内容永不
+    # 回头 (三个应用的门禁都钉着 HTML 里的版本串) → immutable 长缓存,
+    # 重开页面不再整排 304 校验; 参数名要精确是 v
+    assert auth.get("/static/login.js?v=1").headers["cache-control"] \
+        == "public, max-age=31536000, immutable"
+    assert auth.get("/static/login.js?x=1").headers["cache-control"] == "no-cache"
 
 
 def test_login_page_redirects_authed_visitor(auth, client):
@@ -119,7 +130,11 @@ def test_mymusic_topbar_is_own_app(auth):
     assert 'class="nav-menu brand-menu" id="brand-menu"' not in html  # 菜单撤了
     assert 'id="logout"' not in html and 'id="stats-link"' not in html
     assert "重新扫描曲库" not in html          # 职能进设置页 (JS 渲染)
-    assert 'id="set-logout"' in js and 'id="set-rescan"' in js
+    # 重扫在设置页本体; 退出登录随 1.8.57 账号自助进设置页的账号子模块
+    # (music-settings-account.js), 不在设置页视图 js 里
+    account_js = auth.get("/music/static/js/music-settings-account.js").text
+    assert 'id="set-rescan"' in js
+    assert 'id="set-logout"' in account_js
     assert '<div id="dock">' in html                    # 底部船坞三件套
     assert 'id="dock-menu"' in html and 'id="dock-search"' in html
     assert 'data-pop-nav="settings"' in html            # 设置在上弹菜单里

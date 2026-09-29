@@ -41,6 +41,13 @@ TEST_PASS = "unit-test-pass"
 def isolate(tmp_path, monkeypatch):
     """每个用例独立: 账号库 / 曲库 / 记账库 / TeslaMate 镜像库与自有库 /
     会话密钥 / 登录限速 / 轨迹缓存互不串扰。"""
+    # sqlite 排序溢出的临时文件钉到 tmp_path 名下 (随 --basetemp 落大盘):
+    # NAS 的 /tmp 是 64MB 内存盘, 被 QNAP 系统文件占到 98% 时 ORDER BY
+    # 溢出直接报 "database or disk is full" (2026-09-28 my-tesla 子仓 trips
+    # 33k 行排序用例实锤, 与 09-24 线上 503 同根; 三套子库同场都会踩)
+    sqlite_tmp = tmp_path / "sqlite-tmp"
+    sqlite_tmp.mkdir()
+    monkeypatch.setenv("SQLITE_TMPDIR", str(sqlite_tmp))
     # 共享账号库 (本仓): 用户 + 邀请; 挂载的两个应用各带一份账号引擎模块
     # (拆仓后同名不同物), 指到同一个临时库 —— 单点登录不分层
     database.init_users_engine(f"sqlite:///{tmp_path / 'users.db'}")

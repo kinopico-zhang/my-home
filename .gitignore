@@ -15,3 +15,8 @@ coverage/
 # 用户私有数据 / 参考截图 (不进仓库)
 wacai.db
 IMG_*.PNG
+IMG_*.JPG
+IMG_*.jpg
+tesla-car.png
+*历史记录.txt
+claude-code/

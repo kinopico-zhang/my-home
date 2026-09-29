@@ -20,7 +20,13 @@ def test_all_pages_have_standalone_meta(auth):
     for path in ALL_PAGES:
         html = _page_client(auth, path).get(path).text
         assert 'name="apple-mobile-web-app-capable" content="yes"' in html, path
-        assert 'content="black-translucent"' in html, path
+        # 状态栏样式跟各应用底色走, 不再全站钉死 black-translucent (深底白字
+        # 时代的值): My Money 1.4.0 翻浅青底改 default (浅底深字), 深底应用
+        # (Tesla/音乐/门厅) 仍 black-translucent —— 只要求 meta 在且值是
+        # 有意识选的两种之一, 不许缺 (缺了会被弹回 Safari 露地址栏)
+        assert ('name="apple-mobile-web-app-status-bar-style"'
+                ' content="default"' in html
+                or 'content="black-translucent"' in html), path
         # manifest 各用各的: 门厅层一份, Tesla / 记账 / 音乐各一份
         manifest = ("/bookkeeping/static/manifest.json" if path == "/bookkeeping"
                     else "/music/static/manifest.json" if path == "/music"
@@ -69,7 +75,8 @@ def test_tesla_shell_remembers_last_view(auth):
     assert 'localStorage.setItem("tesla.lastView", key)' in shell_js
     assert "function readLastView()" in shell_js
     boot_js = auth.get("/tesla/static/js/tesla-app-boot.js?v=1").text
-    assert '(VIEWS[lastView] ? lastView : "charging")' in boot_js
+    # 3.3.0 起冷启默认落地状态页 (原先充电记录; 详见子仓 tesla-app-boot)
+    assert '(VIEWS[lastView] ? lastView : "live")' in boot_js
     assert 'history.replaceState(null, "", "/tesla");' in boot_js
     # 登录成功去哪: 逻辑在 login.js —— 应用内的登录页回该应用 (或 next 参数
     # 带来的原地址, 只认本应用 scope), 根登录页回上次停留页 (白名单正则,

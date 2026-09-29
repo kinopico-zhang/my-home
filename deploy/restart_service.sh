@@ -9,6 +9,10 @@
 # 听歌的流媒体请求一行行刷日志, 一两天就撑满 —— 满了 sqlite 临时空间
 # 跟着 ENOSPC, 接口成片 503 (新建播放列表实报), 测试也报 database or
 # disk is full。启动时翻一代旧的 (data/mytesla.log.1), 硬盘 9TB 随便长。
+# 2026-09-28 服务的临时文件也钉离 /tmp: TMPDIR/SQLITE_TMPDIR 指
+# data/service-tmp (大盘) —— /tmp 连 QNAP 系统自己都会占满 (当天被
+# Music Station 缓存占到 98%, 测试排序溢出实报 database or disk is full),
+# 服务的 sqlite 溢出与 python 临时文件从此不指望它。
 cd "$(dirname "$0")/.." || exit 1
 if [ "$(id -u)" = "0" ] && [ -f data/certs/privkey.pem ]; then
   chown admin data/certs/privkey.pem data/certs/fullchain.pem 2>/dev/null
@@ -23,4 +27,4 @@ sleep 2
 if [ "$(id -u)" = "0" ]; then
   chown admin data/mytesla.log.1 2>/dev/null
 fi
-/usr/bin/sudo -u admin sh -c 'exec /bin/setsid /share/CACHEDEV1_DATA/Public/my-home/run.sh >> /share/CACHEDEV1_DATA/Public/my-home/data/mytesla.log 2>&1 < /dev/null &'
+/usr/bin/sudo -u admin sh -c 'mkdir -p /share/CACHEDEV1_DATA/Public/my-home/data/service-tmp && exec /bin/setsid env TMPDIR=/share/CACHEDEV1_DATA/Public/my-home/data/service-tmp SQLITE_TMPDIR=/share/CACHEDEV1_DATA/Public/my-home/data/service-tmp /share/CACHEDEV1_DATA/Public/my-home/run.sh >> /share/CACHEDEV1_DATA/Public/my-home/data/mytesla.log 2>&1 < /dev/null &'
