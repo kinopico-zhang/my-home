@@ -83,6 +83,7 @@ tesla_config = importlib.import_module("mytesla.app.config")
 tesla_database = importlib.import_module("mytesla.app.database")
 tesla_settings_store = importlib.import_module("mytesla.app.tesla.settings_store")
 tesla_tracks_cache = importlib.import_module("mytesla.app.tesla.tracks_cache")
+tesla_roads_worker = importlib.import_module("mytesla.app.tesla.roads_worker")
 tesla_own_models = importlib.import_module("mytesla.app.tesla.models")
 tesla_pages = importlib.import_module("mytesla.app.tesla.routers.pages")
 tesla_charging = importlib.import_module("mytesla.app.tesla.routers.charging")
@@ -106,6 +107,13 @@ def _migrate_own_db() -> None:
         if "map_provider" not in cols:  # v: 地图服务商 (高德/OSM, 设置页切换)
             conn.exec_driver_sql(
                 "ALTER TABLE app_settings ADD COLUMN map_provider TEXT NOT NULL DEFAULT ''")
+        if "amap_web_key" not in cols:  # v: 高德 Web 服务 key (足迹道路拟合)
+            conn.exec_driver_sql(
+                "ALTER TABLE app_settings ADD COLUMN amap_web_key TEXT NOT NULL DEFAULT ''")
+        rcols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(drive_roads)")}
+        if "gaps" not in rcols:  # v: 推断层顶点区间 (可能走过, 虚线渲染)
+            conn.exec_driver_sql(
+                "ALTER TABLE drive_roads ADD COLUMN gaps VARCHAR NOT NULL DEFAULT '[]'")
 
 
 @asynccontextmanager
@@ -145,6 +153,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # 后台预热轨迹缓存 (全量下采样 ~15s, 不阻塞启动)
     threading.Thread(target=tesla_tracks_cache.warm,
                      args=(tesla_database.session_factory(),), daemon=True).start()
+    # 足迹「走过之路」拟合 worker (高德纠偏回填, 没配 Web 服务 key 就空转;
+    # worker 自身先睡 90s 让预热先跑)
+    threading.Thread(target=tesla_roads_worker.start,
+                     args=(tesla_database.session_factory(),
+                           tesla_database.own_session_factory()),
+                     daemon=True).start()
     yield
     tesla_database.dispose_engine()
     tesla_database.dispose_own_engine()

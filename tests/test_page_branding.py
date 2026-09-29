@@ -31,10 +31,11 @@ def test_brand_menu_pages_show_current_user(auth):
 
 def test_tesla_shell_has_no_brand_menu(auth):
     """My Tesla 3.0 单壳: 品牌下拉/页签菜单/顶栏退出全撤, 换右划抽屉
-    (导航 + 时间 + 车辆 + 账号行); 共享层小件 menu-user.js 不进壳。"""
+    (导航 + 车辆); 共享层小件 menu-user.js 不进壳。菜单圆键 2026-09-27
+    退役 (任意页右划/地图左缘条呼出抽屉, 圆键成冗余入口)。"""
     html = auth.get("/tesla").text
     assert 'id="brand-menu"' not in html
     assert "/static/menu-user.js" not in html
     assert '<nav class="tabs">' not in html
     # 抽屉是新的导航位 (细节接线在子仓 test_shell_wiring)
-    assert 'id="drawer"' in html and 'id="menu-key"' in html
+    assert 'id="drawer"' in html and 'id="menu-key"' not in html
