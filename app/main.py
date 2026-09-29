@@ -96,7 +96,6 @@ tesla_changelog = importlib.import_module("mytesla.app.tesla.routers.changelog")
 
 def _migrate_own_db() -> None:
     """create_all 只建新表不改旧表: 已有生产库要补的列写在这里 (幂等)。
-
     与 my-tesla 子仓 standalone main.py 里那份是同一配方 —— 自有库在
     两边都要能开 (组合部署 / 单仓部署共用同一个 data/mytesla.db)。"""
     with tesla_database.own_engine().begin() as conn:
