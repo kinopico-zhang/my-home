@@ -9,8 +9,13 @@ if [ -f .env ]; then
   . ./.env
   set +a
 fi
+# --timeout-keep-alive 75: uvicorn 默认 5 秒就掐空闲连接, 手机公网每次翻页
+#   都要重付 TCP+TLS 握手 (多两个往返) —— 放宽到一分多钟, 连着点页不再
+#   重握手 (2026-10-03 「点设置/统计很久才响应」的配套, 重启后生效)
 if [ -f data/certs/fullchain.pem ] && [ "${HTTP:-0}" != "1" ]; then
   exec .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8500}" \
+    --timeout-keep-alive 75 \
     --ssl-keyfile data/certs/privkey.pem --ssl-certfile data/certs/fullchain.pem
 fi
-exec .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8500}"
+exec .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8500}" \
+  --timeout-keep-alive 75
