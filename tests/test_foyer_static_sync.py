@@ -33,8 +33,8 @@ def _submodule_pages() -> list[Path]:
 def test_submodule_foyer_refs_exist():
     """三应用页面引用的首厅资产, 首厅目录里都得有 (404 类问题再犯即红)。"""
     pages = _submodule_pages()
-    assert len(pages) >= 15, "子仓页面枚举异常 (glob 失配会静默跳过)"
-    assert any(p.name == "settings.html" for p in pages)   # my-money 子页在
+    assert len(pages) >= 14, "子仓页面枚举异常 (glob 失配会静默跳过)"
+    assert any(p.name == "bookkeeping.html" for p in pages)   # my-money 主页在
     assert any(p.name == "login.html" for p in pages)      # 首厅页在
     for page in pages:
         refs = REF.findall(page.read_text(encoding="utf-8"))
@@ -44,8 +44,10 @@ def test_submodule_foyer_refs_exist():
 
 
 def test_foyer_twins_identical():
-    """no-zoom.js / back-swipe.js: 首厅副本与子仓副本逐字节相同 (漂移即红)。"""
-    for name in ("no-zoom.js", "back-swipe.js"):
+    """no-zoom.js: 首厅副本与子仓副本逐字节相同 (漂移即红)。
+    (back-swipe.js 随 my-money 1.8.0 子页退役 — 全局右划返回由推入层的
+    右划接替, 唯一用它的四张子页已并进记账主页。)"""
+    for name in ("no-zoom.js",):
         foyer = (FOYER / name).read_bytes()
         twins = list((ROOT / "apps").glob(f"*/app/home/static/{name}"))
         assert twins, f"没有任何子仓带 {name} (首厅这份成了无源之水)"

@@ -68,11 +68,15 @@ def test_three_apps_mounted_and_gated(client, auth):
     # webapp 的 bare_root 路由由本仓 include, 直出页面 — 这里钉装配线真接上了
     r = auth.get("/bookkeeping", follow_redirects=False)
     assert r.status_code == 200 and "My Money" in r.text
-    # 子页 HTML 带 ?v= 的也走一年 immutable (1.7.3 秒开批): 子仓 _page 认
+    # 主页 HTML 带 ?v= 的走一年 immutable (1.7.3 秒开批): 子仓 _page 认
     # 版本号, 本仓中间件对页面响应不设缓存头 —— 组合层不得把它盖掉
-    v = auth.get("/bookkeeping/settings?v=1")
+    v = auth.get("/bookkeeping/?v=1")
     assert v.status_code == 200
     assert v.headers["cache-control"] == "public, max-age=31536000, immutable"
+    # 子页 1.8.0 起住进主页的推入层: 老地址 307 落回主页 (不 404 — 404 也会
+    # 被长缓存钉一年), 子页的样式/脚本全随主页 immutable 一起装
+    r = auth.get("/bookkeeping/settings", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/bookkeeping/"
     # 静态各归各: 共享层小件挂根 /static, 三应用自己的静态在各自 scope
     for asset in ("/static/menu-user.js", "/tesla/static/js/gcj02.js",
                   "/bookkeeping/static/bookkeeping-state.js",
