@@ -12,9 +12,10 @@ def test_brand_menu_pages_show_current_user(auth):
 
     My Tesla 3.0 单壳不在此列: 账号行收进右划抽屉 (子仓 test_shell_wiring
     钉), 不引共享层小件。"""
-    # 带品牌菜单的页面 (记账更新日志页 + 账号管理; 音乐主页 1.8.0 撤了菜单,
-    # 记账主页 1.3.0 也撤了 —— 菜单住更新日志页)
-    for path in ("/bookkeeping/changelog", "/accounts"):
+    # 带品牌菜单的页面 (账号管理; 音乐主页 1.8.0 撤了菜单, 记账主页 1.3.0
+    # 也撤了 —— my-money 1.8.0 起更新日志住进推入层, 账号/退出挪进设置视图,
+    # 品牌下拉在记账这一系只剩账号管理页)
+    for path in ("/accounts",):
         html = auth.get(path).text
         assert 'class="nav-menu brand-menu" id="brand-menu"' in html, path
         assert "/static/menu-user.js" in html, f"{path} 缺 menu-user.js"
