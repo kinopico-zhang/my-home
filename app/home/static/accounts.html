@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 2026-10-03 门厅页补齐禁缩放 (与三应用同款): maximum-scale/user-scalable 掐双击/聚焦放大;
+     iOS 捏合不吃 touch-action, 由 body 后第一条脚本 no-zoom.js 拦 gesture -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,6 +16,7 @@
 <link rel="stylesheet" href="/static/css/accounts-page.css?v=1">
 </head>
 <body>
+<script src="/static/no-zoom.js?v=2"></script>
 
 <header>
   <div class="nav-row">

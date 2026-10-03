@@ -8,6 +8,8 @@ back-swipe.js 只进了子仓, 组合仓 /static (8500 线上真身) 没有双�
 - 双胞胎一致: no-zoom.js / back-swipe.js 与带它的子仓副本逐字节相同;
 - 首厅三份页 css 带 touch-action: pan-y (1.7.0 禁缩放 — 三应用的
   scoped 登录/注册/账号页运行时用的都是首厅这份);
+- 壳自家的三张门厅页也装了 no-zoom (meta + body 后第一条脚本,
+  2026-10-03 补齐, 与三应用同款);
 - 版本化缓存头: ?v= 的静态回 immutable (?v= 家规配套, 手机公网导航提速)。
 """
 import re
@@ -57,6 +59,17 @@ def test_foyer_css_pinch_guard():
     for name in ("login-page.css", "register-page.css", "accounts-page.css"):
         css = (FOYER / "css" / name).read_text(encoding="utf-8")
         assert "touch-action: pan-y" in css, name
+
+
+def test_foyer_pages_no_zoom():
+    """壳自家三张门厅页 (登录/注册/账号) 也掐死放大缩小: meta 掐双击/聚焦
+    放大, no-zoom.js 是 body 后第一条脚本 (2026-10-03 补齐, 与三应用同款)。"""
+    for name in ("login", "register", "accounts"):
+        html = (FOYER / f"{name}.html").read_text(encoding="utf-8")
+        assert "maximum-scale=1, user-scalable=no" in html, name
+        body_at = html.index("<body")
+        assert html.index("<script", body_at + 1) == html.index(
+            '<script src="/static/no-zoom.js?v=2"></script>'), name
 
 
 def test_versioned_static_immutable():
