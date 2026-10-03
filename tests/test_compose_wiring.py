@@ -64,6 +64,15 @@ def test_three_apps_mounted_and_gated(client, auth):
         r = auth.get(path)
         assert r.status_code == 200, path
         assert marker in r.text, path
+    # 挂载点裸地址不再 307 跳斜杠版 (2026-10-03 灭冷启动白付一跳): 子仓
+    # webapp 的 bare_root 路由由本仓 include, 直出页面 — 这里钉装配线真接上了
+    r = auth.get("/bookkeeping", follow_redirects=False)
+    assert r.status_code == 200 and "My Money" in r.text
+    # 子页 HTML 带 ?v= 的也走一年 immutable (1.7.3 秒开批): 子仓 _page 认
+    # 版本号, 本仓中间件对页面响应不设缓存头 —— 组合层不得把它盖掉
+    v = auth.get("/bookkeeping/settings?v=1")
+    assert v.status_code == 200
+    assert v.headers["cache-control"] == "public, max-age=31536000, immutable"
     # 静态各归各: 共享层小件挂根 /static, 三应用自己的静态在各自 scope
     for asset in ("/static/menu-user.js", "/tesla/static/js/gcj02.js",
                   "/bookkeeping/static/bookkeeping-state.js",

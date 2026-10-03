@@ -28,9 +28,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from . import account_store, config, database
-from .home import STATIC_DIR as HOME_STATIC_DIR
-from .home import accounts_api, middleware as home_middleware
-from .home import pages as home_pages, session_api
+from .home import (STATIC_DIR as HOME_STATIC_DIR, accounts_api,
+                   middleware as home_middleware, pages as home_pages, session_api)
 from .home.staticfiles import VersionedStaticFiles
 from .models import UsersBase
 
@@ -196,5 +195,6 @@ app.include_router(tesla_changelog.changelogapi)
 app.mount("/static", VersionedStaticFiles(directory=HOME_STATIC_DIR), name="home-static")
 app.mount("/tesla/static", StaticFiles(directory=tesla_config.STATIC_DIR), name="static")
 # My Money / My Music: 独立应用, 只共享账号体系 (会话 cookie + 账号库)
+app.include_router(bookkeeping_webapp.bare_root)  # 裸地址 /bookkeeping 直出 (灭 307 一跳, 2026-10-03)
 app.mount("/bookkeeping", bookkeeping_webapp.bk_app)
 app.mount("/music", music_webapp.music_app)
