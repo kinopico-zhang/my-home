@@ -31,6 +31,7 @@ from . import account_store, config, database
 from .home import STATIC_DIR as HOME_STATIC_DIR
 from .home import accounts_api, middleware as home_middleware
 from .home import pages as home_pages, session_api
+from .home.staticfiles import VersionedStaticFiles
 from .models import UsersBase
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -192,9 +193,8 @@ app.include_router(tesla_trips.trips)
 app.include_router(tesla_live.live)
 app.include_router(tesla_settings.settingsapi)
 app.include_router(tesla_changelog.changelogapi)
-app.mount("/static", StaticFiles(directory=HOME_STATIC_DIR), name="home-static")
-app.mount("/tesla/static", StaticFiles(directory=tesla_config.STATIC_DIR),
-          name="static")
+app.mount("/static", VersionedStaticFiles(directory=HOME_STATIC_DIR), name="home-static")
+app.mount("/tesla/static", StaticFiles(directory=tesla_config.STATIC_DIR), name="static")
 # My Money / My Music: 独立应用, 只共享账号体系 (会话 cookie + 账号库)
 app.mount("/bookkeeping", bookkeeping_webapp.bk_app)
 app.mount("/music", music_webapp.music_app)
