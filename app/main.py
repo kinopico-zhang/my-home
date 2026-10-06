@@ -84,6 +84,7 @@ tesla_database = importlib.import_module("mytesla.app.database")
 tesla_settings_store = importlib.import_module("mytesla.app.tesla.settings_store")
 tesla_tracks_cache = importlib.import_module("mytesla.app.tesla.tracks_cache")
 tesla_roads_worker = importlib.import_module("mytesla.app.tesla.roads_worker")
+tesla_places_worker = importlib.import_module("mytesla.app.tesla.place_worker")
 tesla_own_models = importlib.import_module("mytesla.app.tesla.models")
 tesla_pages = importlib.import_module("mytesla.app.tesla.routers.pages")
 tesla_charging = importlib.import_module("mytesla.app.tesla.routers.charging")
@@ -152,12 +153,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # 后台预热轨迹缓存 (全量下采样 ~15s, 不阻塞启动)
     threading.Thread(target=tesla_tracks_cache.warm,
                      args=(tesla_database.session_factory(),), daemon=True).start()
-    # 足迹「走过之路」拟合 worker (高德纠偏回填, 没配 Web 服务 key 就空转;
-    # worker 自身先睡 90s 让预热先跑)
-    threading.Thread(target=tesla_roads_worker.start,
-                     args=(tesla_database.session_factory(),
-                           tesla_database.own_session_factory()),
-                     daemon=True).start()
+    # 足迹拟合 + 地点命名两个高德 worker (同把 Web 服务 key, 先睡错峰; 没配空转)
+    for wk in (tesla_roads_worker, tesla_places_worker):
+        threading.Thread(target=wk.start, args=(
+            tesla_database.session_factory(), tesla_database.own_session_factory()),
+            daemon=True).start()
     yield
     tesla_database.dispose_engine()
     tesla_database.dispose_own_engine()
