@@ -12,7 +12,10 @@
 
 三个子仓各自可以单独 clone、单独部署 (带自己的鉴权层), 也可以像本仓
 这样组合部署 —— 账号库/曲库/记账库/TeslaMate 镜像库四份数据都在本仓
-`data/` 下, 单点登录。
+`data/` 下, 单点登录。独立部署想共用账号也行: 让各实例的
+`MYHOME_USERS_DB` / `MYHOME_SECRET_FILE` 指到同一份 `users.db` 和
+`.session_secret` —— 会话 cookie 是无状态 HMAC 签名, 跨端口、跨实例都认
+(HTTP 直连同样可用, cookie 不带 secure 标记)。
 
 ## 装载方式
 
@@ -31,10 +34,13 @@ cd my-home
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env    # 填 AUTH_PASS (首启种管理员) + 高德 Key
-./run.sh                # http://NAS_IP:8500 (有 data/certs/ 证书则自动 HTTPS)
+./run.sh                # http://IP:8500 起明文服务
 ```
 
-`run.sh` 自动加载 `.env`。首次启动会用 `AUTH_PASS` 种管理员 `admin`
+`run.sh` 自动加载 `.env`, **HTTPS 是可选的**: 没证书就单进程跑明文
+HTTP; 有 `data/certs/` 证书则 8500 走 HTTPS、`HTTP_PORT` (默认 8501)
+并行开一个明文口给局域网直连, `HTTP=1 ./run.sh` 可随时强制明文。
+首次启动会用 `AUTH_PASS` 种管理员 `admin`
 (已有账号库不受影响); 足迹地图需要高德开放平台 Key
 (`AMAP_KEY` + `AMAP_SECURITY_CODE`, 个人开发者免费)。
 
@@ -55,11 +61,13 @@ apps/my-tesla     My Tesla (submodule, 独立仓)
 apps/my-money     My Money (submodule, 独立仓)
 apps/my-music     My Music (submodule, 独立仓)
 data/             四份 SQLite (users/music/bookkeeping/mytesla) + 轨迹缓存
-deploy/           QNAP 重启脚本 / DDNS / 证书续期
+deploy/local/     WSL 部署脚本 (NAS 反向隧道 / 证书续期重载 / TeslaMate 隧道)
 ```
 
 数据源: TeslaMate 的 PostgreSQL (docker 容器自动定位, `TMDB_*` 可覆盖),
 曲库根目录默认 `/share/Media/Music` (`MYTESLA_MUSIC_DIR` 可改)。
+家宽 DDNS (DuckDNS) 已拆成姊妹仓 [kinopico-zhang/ddns](https://github.com/kinopico-zhang/ddns)
+(独立 timer 每 5 分钟报 IP, 不再挂本仓 deploy/)。
 
 ## 测试
 
@@ -68,7 +76,7 @@ deploy/           QNAP 重启脚本 / DDNS / 证书续期
 .venv/bin/python -m pytest tests -q             # 后端 (共享层 + 装配接线)
 ```
 
-组合仓的测试只覆盖共享层与装配接线 (49 例); 三个应用的深度测试在各自
+组合仓的测试只覆盖共享层与装配接线 (55 例); 三个应用的深度测试在各自
 仓里 (`apps/*/tests`, 各自的 CI 也各自跑)。前端门禁 (ESLint / stylelint /
 html-validate) 只管共享层页面, 同理。
 

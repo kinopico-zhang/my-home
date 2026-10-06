@@ -4,11 +4,11 @@
 #         (组合仓只查共享层 + 装配接线; 三个应用的深度测试在各自仓里)
 #   前端: ESLint / stylelint (3 个 CSS) / html-validate (3 个页面) ——
 #         只管共享层 app/home/static; 三个应用的前端门禁在各自仓
-# ESLint/stylelint/html-validate 在调试容器里跑: 宿主 node (QNAP 自带) 缺
-# ICU 数据, 连 eslint 9 内部的 unicode 属性正则都编译不了; 容器 node 22 没问题。
-# 工具链版本锁在 package.json, node_modules 是实体目录; 容器重建后在容器里
-# `cd /repo && npm install --no-package-lock` 重装 —— 千万别在仓库里
-# `npm install <包名>` (无锁文件语境会把没列进命令行的包当无主树修剪掉)。
+# ESLint/stylelint/html-validate 本机 node 直跑 (需要 node 22 在 PATH;
+# WSL 便携 node 在 ~/tools/node)。QNAP 调试容器时代已随 2026-10 WSL 迁移
+# 退役。工具链版本锁在 package.json; 根仓 node_modules 软链 apps/my-music
+# 自建的那份 (同版本) —— 千万别在仓库里 `npm install <包名>` (无锁文件
+# 语境会把没列进命令行的包当无主树修剪掉)。
 cd "$(dirname "$0")" || exit 1
 rc=0
 
@@ -31,13 +31,18 @@ fi
 
 .venv/bin/python -m pytest tests -q || rc=1
 
-DOCKER=/share/CACHEDEV1_DATA/.qpkg/container-station/bin/docker
-if ! $DOCKER exec mytesla-debug sh -c \
-  "cd /repo && node node_modules/eslint/bin/eslint.js app/home/static \
-   && node node_modules/stylelint/bin/stylelint.mjs 'app/home/static/css/*.css' \
-   && node node_modules/html-validate/bin/html-validate.mjs 'app/home/static/*.html'"; then
-  echo "前端静态检查失败 (或调试容器 mytesla-debug 未运行)" >&2
-  rc=1
+# 前端工具链: 根仓没有实体 node_modules 时软链 apps/my-music 的那份
+# (npm ci 自建, 版本与本仓 package.json 锁的一致)
+if [ ! -e node_modules ] && [ -d apps/my-music/node_modules/eslint ]; then
+  ln -s apps/my-music/node_modules node_modules
 fi
+if [ ! -d node_modules/eslint ]; then
+  echo "跳过前端检查: 没有 node_modules (apps/my-music 里 npm ci 后再跑)" >&2
+  exit $rc
+fi
+node node_modules/eslint/bin/eslint.js app/home/static \
+  && node node_modules/stylelint/bin/stylelint.mjs 'app/home/static/css/*.css' \
+  && node node_modules/html-validate/bin/html-validate.mjs 'app/home/static/*.html' \
+  || rc=1
 
 exit $rc
