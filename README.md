@@ -37,6 +37,11 @@
 中间件) + 三个以 git submodule 挂在 `apps/` 下的独立应用。单点登录,
 同一枚会话 cookie 全站通行。
 
+<p align="center">
+<img src="docs/screenshot-login.png" width="300" alt="登录页 · My Home (演示数据)">
+<img src="docs/screenshot-setup.png" width="300" alt="首启引导 · My Home (演示数据)">
+</p>
+
 | 应用 | 子仓 | 地址 (组合部署) | 独立部署 |
 |---|---|---|---|
 | 🚗 My Tesla | `apps/my-tesla` | `/tesla/charging` (根路径 302 进 `/music`) | [kinopico-zhang/my-tesla](https://github.com/kinopico-zhang/my-tesla) |
