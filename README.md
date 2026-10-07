@@ -12,7 +12,7 @@
 
 ![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
-![pytest](https://img.shields.io/badge/pytest-55%20passed-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-62%20passed-0A9EDC?logo=pytest&logoColor=white)
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-d71f00?logo=sqlalchemy&logoColor=white)
@@ -119,9 +119,10 @@ cp .env.example .env    # 填 AUTH_PASS (首启种管理员) + 高德 Key
 .venv/bin/python -m pytest tests -q             # 后端 (共享层 + 装配接线)
 ```
 
-门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest
-(真实 ORM + SQLite 临时库) · ESLint / stylelint / html-validate (共享层
-前端)。CI 在 GitHub Actions 三平台跑同一套门禁。
+门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 62 例
+(真实 ORM + SQLite 临时库; 含 e2e 冒烟: 起真 uvicorn 打真 HTTP —— 登录 →
+三应用页 + 账号管理页 → 静态资源) · ESLint / stylelint / html-validate
+(共享层前端)。CI 在 GitHub Actions 三平台跑同一套门禁。
 
 组合仓的测试只覆盖共享层与装配接线; 三个应用的深度测试在各自仓里
 (`apps/*/tests`, 各自的 CI 也各自跑)。前端门禁同理只管共享层页面。
