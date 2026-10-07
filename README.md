@@ -12,7 +12,7 @@
 
 ![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
-![pytest](https://img.shields.io/badge/pytest-62%20passed-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-75%20passed-0A9EDC?logo=pytest&logoColor=white)
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-d71f00?logo=sqlalchemy&logoColor=white)
@@ -53,6 +53,7 @@
 ## ✨ 亮点
 
 - 🔐 **共享账号层** — 登录 / 注册 / 账号管理 + 会话中间件, 一枚 cookie 全站通行
+- 🧭 **首启引导** — 空库首启 `/setup` 三步走: 管理员 → 数据源 → 地图 Key, 全程可跳过
 - 🛡️ **登录防爆破** — 单 IP 连续失败 5 次锁定 60 秒; 「退出」轮换会话密钥
 - 💌 **邀请注册** — 链接一次性、限时
 - 🔗 **旧地址兼容** — 账号体系还在 `/tesla` 下的老书签 / 邀请链接自动 302/307 搬家
@@ -66,7 +67,7 @@ git clone --recursive git@github.com:kinopico-zhang/my-home.git
 cd my-home
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env    # 填 AUTH_PASS (首启种管理员) + 高德 Key
+cp .env.example .env    # 可全留空, 首启走 /setup 引导
 ./run.sh                # http://IP:8500 起明文服务
 ```
 
@@ -74,9 +75,10 @@ cp .env.example .env    # 填 AUTH_PASS (首启种管理员) + 高德 Key
 证书则 8500 走 HTTPS、`HTTP_PORT` (默认 8501) 并行开一个明文口给局域网
 直连, `HTTP=1 ./run.sh` 可随时强制明文。
 
-首次启动会用 `AUTH_PASS` 种管理员 `admin` (已有账号库不受影响);
-足迹地图需要高德开放平台 Key (`AMAP_KEY` + `AMAP_SECURITY_CODE`,
-个人开发者免费)。
+首次启动账号库为空时打开 `/setup` 引导页: 注册第一个管理员, 顺路配置
+TeslaMate 数据源与高德地图 Key (个人开发者免费), 全部可跳过、之后在
+设置页随时补配。`.env` 里的 `AUTH_PASS` 是旧口径种子 (只在空库时生效),
+设了就不再进引导。
 
 生产部署在 WSL 里以 systemd 用户服务常驻, 对外经 NAS `ssh -R` 反向隧道
 (`deploy/local/` 里是隧道 / 证书续期重载脚本)。
@@ -95,7 +97,7 @@ cp .env.example .env    # 填 AUTH_PASS (首启种管理员) + 高德 Key
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `AUTH_PASS` (`AUTH_USER`) | 空 (`admin`) | 首启种子管理员 (只在空账号库时种) |
+| `AUTH_PASS` (`AUTH_USER`) | 空 (`admin`) | 旧口径首启种子 (不设则走 `/setup` 引导; 只在空账号库时种) |
 | `AMAP_KEY` / `AMAP_SECURITY_CODE` | 空 | 高德 Web端 JS API (My Tesla 足迹地图用) |
 | `TMDB_*` | docker 定位 | TeslaMate PostgreSQL (My Tesla; 未在设置页填时回落) |
 | `MYTESLA_MUSIC_DIR` | `/share/Media/Music` | 曲库根目录 (My Music 首扫) |
@@ -119,9 +121,10 @@ cp .env.example .env    # 填 AUTH_PASS (首启种管理员) + 高德 Key
 .venv/bin/python -m pytest tests -q             # 后端 (共享层 + 装配接线)
 ```
 
-门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 62 例
+门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 75 例
 (真实 ORM + SQLite 临时库; 含 e2e 冒烟: 起真 uvicorn 打真 HTTP —— 登录 →
-三应用页 + 账号管理页 → 静态资源) · ESLint / stylelint / html-validate
+三应用页 + 账号管理页 → 静态资源, 以及空库首启引导全流程) · ESLint /
+stylelint / html-validate
 (共享层前端)。CI 在 GitHub Actions 三平台跑同一套门禁。
 
 组合仓的测试只覆盖共享层与装配接线; 三个应用的深度测试在各自仓里

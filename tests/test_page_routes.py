@@ -75,7 +75,7 @@ def test_cache_control_headers(auth):
     # 带版本参数 (?v=N) 的静态资源: 版本号一改 URL 就换, 同 URL 内容永不
     # 回头 (三个应用的门禁都钉着 HTML 里的版本串) → immutable 长缓存,
     # 重开页面不再整排 304 校验; 参数名要精确是 v
-    assert auth.get("/static/login.js?v=1").headers["cache-control"] \
+    assert auth.get("/static/login.js?v=3").headers["cache-control"] \
         == "public, max-age=31536000, immutable"
     assert auth.get("/static/login.js?x=1").headers["cache-control"] == "no-cache"
 

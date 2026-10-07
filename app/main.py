@@ -134,7 +134,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         with database.users_session_factory()() as users:  # pylint: disable=not-callable
             account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
     else:
-        print("AUTH_PASS 未设置: 首启不种管理员 —— 在 .env 里设 AUTH_PASS 后重启",
+        print("AUTH_PASS 未设置: 首启无管理员时, 打开 /setup 引导注册",
               file=sys.stderr)
     # My Money: 记账库建表 + 旧库补列 + 类别树
     bookkeeping_store.init_engine()

@@ -19,6 +19,8 @@ _PUBLIC_PATHS = frozenset((
     "/music/sw.js",
     "/api/login", "/api/logout",
     "/api/register", "/api/invite-status",
+    # 首启引导: 真开口的判据 (无管理员) 在页面/接口内部自验, 中间件不碰库
+    "/setup", "/api/setup-status", "/api/setup-admin",
     "/bookkeeping/api/logout", "/music/api/logout"))
 _STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/",
                     "/music/static/")
