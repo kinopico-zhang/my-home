@@ -95,27 +95,6 @@ tesla_settings = importlib.import_module("mytesla.app.tesla.routers.settings")
 tesla_changelog = importlib.import_module("mytesla.app.tesla.routers.changelog")
 
 
-def _migrate_own_db() -> None:
-    """create_all 只建新表不改旧表: 已有生产库要补的列写在这里 (幂等)。
-    与 my-tesla 子仓 standalone main.py 里那份是同一配方 —— 自有库在
-    两边都要能开 (组合部署 / 单仓部署共用同一个 data/mytesla.db)。"""
-    with tesla_database.own_engine().begin() as conn:
-        cols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(app_settings)")}
-        if "amap_style" not in cols:   # v: 高德地图样式 (设置页可换, 三页地图共用)
-            conn.exec_driver_sql(
-                "ALTER TABLE app_settings ADD COLUMN amap_style TEXT NOT NULL DEFAULT ''")
-        if "map_provider" not in cols:  # v: 地图服务商 (高德/OSM, 设置页切换)
-            conn.exec_driver_sql(
-                "ALTER TABLE app_settings ADD COLUMN map_provider TEXT NOT NULL DEFAULT ''")
-        if "amap_web_key" not in cols:  # v: 高德 Web 服务 key (足迹道路拟合)
-            conn.exec_driver_sql(
-                "ALTER TABLE app_settings ADD COLUMN amap_web_key TEXT NOT NULL DEFAULT ''")
-        rcols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(drive_roads)")}
-        if "gaps" not in rcols:  # v: 推断层顶点区间 (可能走过, 虚线渲染)
-            conn.exec_driver_sql(
-                "ALTER TABLE drive_roads ADD COLUMN gaps VARCHAR NOT NULL DEFAULT '[]'")
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """启动时建齐四套引擎 + 后台预热, 关闭时全部释放。
@@ -143,10 +122,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     bookkeeping_store.seed_default_categories()
     # My Music: 曲库索引装配 (扫描全手动, 1.8.83)
     music_service.start_service()
-    # My Tesla: 自有库建表 + 补列, 再读设置定 TeslaMate 连接
+    # My Tesla: 自有库建表 + 补列 (配方单一来源: my-tesla 子仓的 database 包,
+    # 组合部署 / 单仓部署共用同一个 data/mytesla.db), 再读设置定 TeslaMate 连接
     tesla_database.init_own_engine()
     tesla_own_models.OwnBase.metadata.create_all(tesla_database.own_engine())
-    _migrate_own_db()
+    tesla_database.migrate_own_db()
     with tesla_database.own_session_factory()() as own:  # pylint: disable=not-callable
         url = tesla_settings_store.engine_url(own)
     tesla_database.init_engine(url)
