@@ -24,9 +24,10 @@ else
 fi
 
 # 静态检查: app 严检; tests 是 pytest 仪式代码 (fixture 形参/保护访问/
-# 模块内导入), 单独放宽这几类 —— 4.0 没有 per-path-ignores, 只好两次调用
+# 模块内导入), 单独放宽这几类 —— 4.0 没有 per-path-ignores, 只好两次调用;
+# C0302 行帽同放宽 (引导/门这类场景清单成组长大, 与 my-tesla 同口径)
 .venv/bin/python -m pylint app || rc=1
-.venv/bin/python -m pylint tests --disable=W0613,W0212,R0801,C0415 || rc=1
+.venv/bin/python -m pylint tests --disable=W0613,W0212,R0801,C0415,C0302 || rc=1
 .venv/bin/python -m mypy || rc=1
 
 .venv/bin/python -m pytest tests -q || rc=1

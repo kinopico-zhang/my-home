@@ -12,7 +12,7 @@
 
 ![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
-![pytest](https://img.shields.io/badge/pytest-75%20passed-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-78%20passed-0A9EDC?logo=pytest&logoColor=white)
 
 ![ESLint](https://img.shields.io/badge/ESLint-passing-4B32C3?logo=eslint&logoColor=white)
 ![stylelint](https://img.shields.io/badge/stylelint-passing-263238?logo=stylelint&logoColor=white)
@@ -45,7 +45,7 @@
 ## ✨ 亮点
 
 - 🔐 **共享账号层** — 登录 / 注册 / 账号管理 + 会话中间件, 一枚 cookie 全站通行
-- 🧭 **首启引导** — 空库首启 `/setup` 三步走: 管理员 → 数据源 → 地图 Key, 全程可跳过
+- 🧭 **首启引导** — 空库首启 `/setup` 三步走: 管理员 → 数据源 → 地图 Key, 三步配齐才放行进应用
 - 🛡️ **登录防爆破** — 单 IP 连续失败 5 次锁定 60 秒; 「退出」轮换会话密钥
 - 💌 **邀请注册** — 链接一次性、限时
 - 🔗 **旧地址兼容** — 账号体系还在 `/tesla` 下的老书签 / 邀请链接自动 302/307 搬家
@@ -68,8 +68,9 @@ cp .env.example .env    # 可全留空, 首启走 /setup 引导
 直连, `HTTP=1 ./run.sh` 可随时强制明文。
 
 首次启动账号库为空时打开 `/setup` 引导页: 注册第一个管理员, 顺路配置
-TeslaMate 数据源与高德地图 Key (个人开发者免费), 全部可跳过、之后在
-设置页随时补配。`.env` 里的 `AUTH_PASS` 是旧口径种子 (只在空库时生效),
+TeslaMate 数据源与高德地图 Key (个人开发者免费)。三步配齐才能进 Tesla
+应用, 一步不能跳; 中途关掉, 下次打开从缺的那步接着配; 之后想改, 设置页
+随时改。`.env` 里的 `AUTH_PASS` 是旧口径种子 (只在空库时生效),
 设了就不再进引导。
 
 生产部署在 WSL 里以 systemd 用户服务常驻, 对外经 NAS `ssh -R` 反向隧道

@@ -114,9 +114,16 @@ def test_wrong_password_rejected(client):  # pylint: disable=redefined-outer-nam
 
 
 def test_login_session_and_all_apps(client):  # pylint: disable=redefined-outer-name
-    """登录一次 cookie 全站通行: 三个应用页 + /api/me。"""
+    """登录一次 cookie 全站通行: 三个应用页 + /api/me。
+
+    引导没走完 (还差高德 Key) 时 Tesla 应用页被应用门拦回 /setup ——
+    另两个应用不依赖数据源照常可用; 补上 Key (引导最后一步) 后全放行。"""
     r = client.post("/api/login", json={"user": E2E_USER, "password": E2E_PASS})
     assert r.status_code == 200, r.text[:200]
+    gate = client.get("/tesla", follow_redirects=False)
+    assert (gate.status_code, gate.headers["location"]) == (302, "/setup")
+    assert client.post("/tesla/api/settings",
+                       json={"amap_key": "e2e-amap-key"}).status_code == 200
     for path in APP_PATHS:
         r = client.get(path)
         assert r.status_code == 200, path

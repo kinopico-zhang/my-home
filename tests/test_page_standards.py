@@ -81,7 +81,7 @@ def test_tesla_shell_remembers_last_view(auth):
     # 登录成功去哪: 逻辑在 login.js —— 应用内的登录页回该应用 (或 next 参数
     # 带来的原地址, 只认本应用 scope), 根登录页回上次停留页 (白名单正则,
     # 站外/坏值回落 My Music —— 门厅撤了, 默认进音乐), 不再写死充电页
-    login_html = auth.get("/static/login.js?v=3").text
+    login_html = auth.get("/static/login.js?v=4").text
     assert 'localStorage.getItem("mytesla-last-page")' in login_html
     assert ("/^\\/(tesla\\/(charging|stats|chargemap|map|trips|groups|live|settings"
             "|changelog))(\\?|$)/.test(last)") in login_html
