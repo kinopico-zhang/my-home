@@ -151,7 +151,7 @@ git add apps/my-tesla && git commit           # 组合仓钉住新指针
 
 | 仓 | 说明 |
 |---|---|
-| [My Tesla](https://github.com/kinopico-zhang/my-tesla) | TeslaMate 行车数据展示 |
+| [My Tesla](https://github.com/kinopico-zhang/my-tesla) | TeslaMate 可视化工具 |
 | [My Money](https://github.com/kinopico-zhang/my-money) | 家庭记账 (离线 LWW 同步) |
 | [My Music](https://github.com/kinopico-zhang/my-music) | NAS 曲库听歌 (Service Worker 离线) |
 | [ddns](https://github.com/kinopico-zhang/ddns) | 家宽 DDNS (DuckDNS, timer 报 IP) |
