@@ -186,6 +186,7 @@ def test_setup_page_standards(  # pylint: disable=redefined-outer-name
     assert "[hidden] { display: none !important; }" in css
     assert "touch-action: manipulation" in css
     assert "touch-action: pan-y" in css
+    assert "align-items: flex-start" in css   # 三张步页顶端对齐, 切步不跳版
 
 
 def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
@@ -200,6 +201,8 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert "btn-plain" not in html
     assert re.search(r'id="tm-host"[^>]*required', html)
     assert re.search(r'id="amap-key"[^>]*required', html)
+    # 第三步是收尾步: 按钮写明存完即进应用 (2026-10-09 用户口径)
+    assert "保存并进入应用" in html
     js = client.get("/static/setup.js?v=2").text
     assert '"/api/setup-admin"' in js
     assert '"/tesla/api/settings"' in js

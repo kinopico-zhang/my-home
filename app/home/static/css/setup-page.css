@@ -1,4 +1,6 @@
-/* setup-page — 首启引导页样式 (register 页为底 + 步骤条/提示/完成)。 */
+/* setup-page — 首启引导页样式 (register 页为底 + 步骤条/提示/完成)。
+   与子仓同名文件 2026-10-09 起品牌分家: 两仓同款「卡片顶端对齐」,
+   图标底色各走各的 (本仓蓝绿渐变, my-tesla 仓 Tesla 红)。 */
 :root {
   color-scheme: dark;
   --bg: #000;
@@ -18,8 +20,11 @@ body {
   background: var(--bg); color: var(--ink-1);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
                "Helvetica Neue", system-ui, sans-serif;
-  font-size: 15px; display: flex; align-items: center; justify-content: center;
-  padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+  font-size: 15px; display: flex; align-items: flex-start; justify-content: center;
+  /* 顶端对齐 (2026-10-09): 三张步页高矮不一, 垂直居中会让卡片随步骤上下
+     跳; 顶对齐后图标/标题/步骤条钉在同一高度, 矮屏溢出也改为向下可滚
+     (居中溢出会裁掉顶上且滚不回来) */
+  padding: max(env(safe-area-inset-top), 6vh) 24px env(safe-area-inset-bottom);
 }
 .card {
   width: 100%; max-width: 340px;
