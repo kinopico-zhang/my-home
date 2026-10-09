@@ -16,6 +16,7 @@ import importlib.util
 import os
 import sys
 import threading
+import time
 import types
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -95,6 +96,41 @@ tesla_settings = importlib.import_module("mytesla.app.tesla.routers.settings")
 tesla_changelog = importlib.import_module("mytesla.app.tesla.routers.changelog")
 
 
+def _start_tesla_threads() -> None:
+    """My Tesla 的后台预热与 worker: 引擎工厂现取现用。
+
+    (2026-10-09 起由 _watch_tesla_config 决定开动时机 —— 真首启数据源
+    没配时这些线程没有可用的引擎, 起了也是对着占位主机空转; 且设置保存
+    热换引擎后旧工厂不跟手, 要起就起在换完之后。)"""
+    # 后台预热轨迹缓存 (全量下采样 ~15s, 不阻塞启动)
+    threading.Thread(target=tesla_tracks_cache.warm,
+                     args=(tesla_database.session_factory(),), daemon=True).start()
+    # 足迹拟合 + 地点命名两个高德 worker (同把 Web 服务 key, 先睡错峰; 没配空转)
+    for wk in (tesla_roads_worker, tesla_places_worker):
+        threading.Thread(target=wk.start, args=(
+            tesla_database.session_factory(), tesla_database.own_session_factory()),
+            daemon=True).start()
+
+
+def _watch_tesla_config() -> None:
+    """Tesla 后台线程开动时机: 数据源已配 (设置行/env/docker 任一) 立即;
+    真首启未配则 5s 一查自有库, 向导第二步存好即开 (免重启, 现取工厂)。"""
+    def tesla_ready() -> bool:
+        with tesla_database.own_session_factory()() as own:  # pylint: disable=not-callable
+            return "teslamate" not in tesla_settings_store.wizard_missing(own)
+
+    if tesla_ready():
+        _start_tesla_threads()
+        return
+
+    def wait_then_start() -> None:
+        while not tesla_ready():
+            time.sleep(5)
+        _start_tesla_threads()
+
+    threading.Thread(target=wait_then_start, daemon=True).start()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """启动时建齐四套引擎 + 后台预热, 关闭时全部释放。
@@ -130,14 +166,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     with tesla_database.own_session_factory()() as own:  # pylint: disable=not-callable
         url = tesla_settings_store.engine_url(own)
     tesla_database.init_engine(url)
-    # 后台预热轨迹缓存 (全量下采样 ~15s, 不阻塞启动)
-    threading.Thread(target=tesla_tracks_cache.warm,
-                     args=(tesla_database.session_factory(),), daemon=True).start()
-    # 足迹拟合 + 地点命名两个高德 worker (同把 Web 服务 key, 先睡错峰; 没配空转)
-    for wk in (tesla_roads_worker, tesla_places_worker):
-        threading.Thread(target=wk.start, args=(
-            tesla_database.session_factory(), tesla_database.own_session_factory()),
-            daemon=True).start()
+    # Tesla 后台预热/worker: 数据源可用即起, 真首启未配则等向导存好
+    _watch_tesla_config()
     yield
     tesla_database.dispose_engine()
     tesla_database.dispose_own_engine()

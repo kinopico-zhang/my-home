@@ -12,7 +12,7 @@
 
 ![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
-![pytest](https://img.shields.io/badge/pytest-78%20passed-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-80%20passed-0A9EDC?logo=pytest&logoColor=white)
 
 ![ESLint](https://img.shields.io/badge/ESLint-passing-4B32C3?logo=eslint&logoColor=white)
 ![stylelint](https://img.shields.io/badge/stylelint-passing-263238?logo=stylelint&logoColor=white)
@@ -68,7 +68,8 @@ cp .env.example .env    # 可全留空, 首启走 /setup 引导
 直连, `HTTP=1 ./run.sh` 可随时强制明文。
 
 首次启动账号库为空时打开 `/setup` 引导页: 注册第一个管理员, 顺路配置
-TeslaMate 数据源与高德地图 Key (个人开发者免费)。三步配齐才能进 Tesla
+TeslaMate 数据源与高德地图 Key (个人开发者免费; TeslaMate 五个连接参数
+去哪儿抄, 见 My Tesla 仓库 README 的「准备」一节)。三步配齐才能进 Tesla
 应用, 一步不能跳; 中途关掉, 下次打开从缺的那步接着配; 之后想改, 设置页
 随时改。`.env` 里的 `AUTH_PASS` 是旧口径种子 (只在空库时生效),
 设了就不再进引导。
@@ -114,7 +115,7 @@ TeslaMate 数据源与高德地图 Key (个人开发者免费)。三步配齐才
 .venv/bin/python -m pytest tests -q             # 后端 (共享层 + 装配接线)
 ```
 
-门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 75 例
+门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 80 例
 (真实 ORM + SQLite 临时库; 含 e2e 冒烟: 起真 uvicorn 打真 HTTP —— 登录 →
 三应用页 + 账号管理页 → 静态资源, 以及空库首启引导全流程) · ESLint /
 stylelint / html-validate
