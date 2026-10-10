@@ -33,10 +33,11 @@ def firstboot(usersdb):
 
 @pytest.fixture()
 def no_amap():
-    """撤掉 conftest 种的高德 Key, 回到「地图步没配」口径。"""
+    """撤掉 conftest 种的高德两把 Key, 回到「地图步没配」口径。"""
     with tesla_database.own_session_factory()() as own:  # pylint: disable=not-callable
         row = own.get(tesla_models.AppSetting, 1)
         row.amap_key = ""
+        row.amap_web_key = ""
         own.commit()
 
 
@@ -82,7 +83,9 @@ def test_setup_status_lists_config_gaps(  # pylint: disable=redefined-outer-name
         own.commit()
     d = auth.get("/api/setup-status").json()
     assert d == {"needed": True, "missing": ["amap"]}
-    r = auth.post("/tesla/api/settings", json={"amap_key": "abcd1234efgh5678"})
+    r = auth.post("/tesla/api/settings",
+                  json={"amap_key": "abcd1234efgh5678",
+                        "amap_web_key": "wxyz9876abcd5432"})
     assert r.status_code == 200
     assert auth.get("/api/setup-status").json() == {"needed": False, "missing": []}
 
@@ -163,7 +166,8 @@ def test_tesla_shell_gated_until_wizard_done(  # pylint: disable=redefined-outer
     r = auth.get("/tesla", follow_redirects=False)
     assert (r.status_code, r.headers["location"]) == (302, "/setup")
     assert auth.post("/tesla/api/settings",
-                     json={"amap_key": "abcd1234efgh5678"}).status_code == 200
+                     json={"amap_key": "abcd1234efgh5678",
+                           "amap_web_key": "wxyz9876abcd5432"}).status_code == 200
     r = auth.get("/tesla", follow_redirects=False)
     assert r.status_code == 200
     assert "html" in r.headers["content-type"]
@@ -203,19 +207,27 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert re.search(r'id="amap-key"[^>]*required', html)
     # 第三步是收尾步: 按钮写明存完即进应用 (2026-10-09 用户口径)
     assert "保存并进入应用" in html
-    # 第三步两把高德 Key (2026-10-09, 与子仓同批): 地图 Key 必填, Web
-    # 服务 Key (道路拟合) 同场收、可留空后补; 顶部「首次使用」副标题同日
-    # 退役 (步骤条已说明流程, 页头不重复)
+    # 第三步两把高德 Key 都必填 (2026-10-10 口径, 与子仓同批): Web 服务
+    # Key 是足迹道路拟合要用的, 不再可留空 —— 地图 Key 走 required,
+    # Web 服务 Key 由 setup.js 校验 (中途续走已有现值的可留空=保持,
+    # HTML required 会误拦)
     assert '<label for="amap-key">地图 Key</label>' in html
     assert '<label for="amap-web">Web 服务 Key</label>' in html
     web_input = re.search(r'<input id="amap-web"[^>]*>', html)
     assert web_input and "required" not in web_input.group(0)
     assert "三步配齐才能进入" not in html
-    js = client.get("/static/setup.js?v=3").text
+    # 两步的提示段 2026-10-10 撤 (用户点名「设置界面上的说明去掉」, 指导
+    # 集中到 README) —— 数据源/地图步骤只留表单
+    for gone in ("POSTGRES_PASSWORD", "docker-compose.yml", "高德开放平台",
+                 "个人开发者免费", "可留空"):
+        assert gone not in html, gone
+    js = client.get("/static/setup.js?v=4").text
     assert '"/api/setup-admin"' in js
     assert '"/tesla/api/settings"' in js
     assert 'amap_web_key: v("amap-web")' in js   # Web 服务 Key 随同提交
     assert "web_key_masked" in js                # 预填时给现值掩码
+    assert "webKeySet" in js                     # 必填校验: 已有现值可留空=保持
+    assert "Web 服务 Key 必填" in js
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js
