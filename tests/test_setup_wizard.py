@@ -221,13 +221,14 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     for gone in ("POSTGRES_PASSWORD", "docker-compose.yml", "高德开放平台",
                  "个人开发者免费", "可留空"):
         assert gone not in html, gone
-    js = client.get("/static/setup.js?v=4").text
+    js = client.get("/static/setup.js?v=5").text
     assert '"/api/setup-admin"' in js
     assert '"/tesla/api/settings"' in js
     assert 'amap_web_key: v("amap-web")' in js   # Web 服务 Key 随同提交
     assert "web_key_masked" in js                # 预填时给现值掩码
     assert "webKeySet" in js                     # 必填校验: 已有现值可留空=保持
     assert "Web 服务 Key 必填" in js
+    assert '"/tesla/map/api/roads/tick"' in js   # 存好 Key 立即踢 worker 开跑构造
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js

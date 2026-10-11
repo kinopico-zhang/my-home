@@ -163,7 +163,12 @@ if (forms[2]) {
           amap_web_key: v("amap-web"),
         }),
       });
-      if (r.ok) { advance(2); return; }
+      if (r.ok) {
+        /* Web 服务 key 存好立即踢一脚后台 worker: 历史道路开始构造,
+           不用等空转轮 (60s); 足迹地图会盖「正在构造数据」蒙版报进度 */
+        fetch("/tesla/map/api/roads/tick").catch(() => {});
+        advance(2); return;
+      }
       const d = await r.json().catch(() => null);
       fail(forms[2], (d && d.detail) || `保存失败 (HTTP ${r.status})`);
     } catch (_e) {
