@@ -46,6 +46,7 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .steps li {
   font-size: 12px; color: var(--ink-3); padding: 3px 10px;
   border-radius: 999px; border: 1px solid var(--hairline);
+  cursor: pointer;   /* 步骤条可点: 任意跳步回改 (setup.js 挂) */
 }
 .steps li.active { color: #fff; background: #3987e5; border-color: #3987e5; }
 .steps li.done { color: #1fa349; border-color: rgba(31,163,73,.55); }
@@ -77,8 +78,8 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 }
 .btn:active { transform: scale(.98); opacity: .85; }
 .btn[disabled] { opacity: .5; }
-/* 第三步按钮行: 上一步 (次级) 与保存并进入应用 (主) 并排 —— 上一步不
-   提交, 主操作的宽度吃剩余全部 */
+/* 数据源/地图两步的按钮行: 「测试」(次级) 与主按钮并排 —— 主按钮测通才
+   解锁 (setup-gates.js 的闸), 测试钮宽度按内容, 主操作吃剩余全部 */
 .btn-row { display: flex; gap: 10px; margin-top: 14px; }
 .btn-row .btn { flex: 1; width: auto; margin-top: 0; }
 .btn.ghost {
@@ -89,6 +90,8 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .err {
   font-size: 13px; color: #ff6961; margin-top: 12px; min-height: 18px;
 }
+/* 测试通过的正字 (setup-gates.js 的 pass): 同一条 .err 换绿 */
+.err.ok { color: #1fa349; }
 .done { padding: 20px 0 8px; }
 .done-icon { font-size: 40px; margin-bottom: 10px; }
 .done p { font-size: 14px; color: var(--ink-2); }

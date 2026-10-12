@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=1">
 <link rel="manifest" href="/static/manifest.json">
   <title>初始化 · My Home</title>
-<link rel="stylesheet" href="/static/css/setup-page.css?v=6">
+<link rel="stylesheet" href="/static/css/setup-page.css?v=7">
 </head>
 <body data-done="/music">
 <script src="/static/no-zoom.js?v=2"></script>
@@ -81,14 +81,21 @@
       <input id="tm-name" type="text" autocapitalize="off" autocorrect="off"
              placeholder="teslamate">
     </div>
-    <button class="btn" type="submit">保存并连接</button>
+    <!-- 测试闸 (setup-gates.js): 「测试连接」拿框里候选实测 (空字段回落
+         现值), 通了「下一步」才解锁; 输入一改作废重测 -->
+    <div class="btn-row">
+      <button type="button" class="btn ghost" id="tm-test">测试连接</button>
+      <button class="btn" type="submit" disabled>下一步</button>
+    </div>
     <div class="err"></div>
   </form>
   <form id="form3" hidden>
     <div class="field">
       <label for="amap-key">地图 Key</label>
+      <!-- required 退役: 测试闸管必填 (没 Key 测不过), 空框回落现值的续走
+           不再被迫重填明文 (2026-10-12 口径) -->
       <input id="amap-key" type="text" autocapitalize="off" autocorrect="off"
-             placeholder="未设置" required>
+             placeholder="未设置">
     </div>
     <div class="field">
       <label for="amap-code">安全码</label>
@@ -100,11 +107,11 @@
       <input id="amap-web" type="text" autocapitalize="off" autocorrect="off"
              placeholder="未设置">
     </div>
-    <!-- 上一步: 回数据源步改配置 (管理员步一次性建号不给回); 主次两档
-         按钮并排, 主操作仍是保存进应用 -->
+    <!-- 测试闸 (setup-gates.js): 两把 Key 都真测 —— Web 服务 Key 服务端
+         逆地理, 地图 Key iframe 探针, 全过「进入应用」才解锁 -->
     <div class="btn-row">
-      <button type="button" class="btn ghost" id="back2">上一步</button>
-      <button class="btn" type="submit">保存并进入应用</button>
+      <button type="button" class="btn ghost" id="amap-test">测试</button>
+      <button class="btn" type="submit" disabled>进入应用</button>
     </div>
     <div class="err"></div>
   </form>
@@ -113,6 +120,8 @@
     <p>初始化完成, 正在进入…</p>
   </div>
 </div>
-<script src="/static/setup.js?v=6"></script>
+<script src="/tesla/static/js/tesla-map-adapter.js?v=14"></script>
+<script src="/static/setup.js?v=7"></script>
+<script src="/static/setup-gates.js?v=1"></script>
 </body>
 </html>

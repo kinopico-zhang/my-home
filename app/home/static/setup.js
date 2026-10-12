@@ -3,9 +3,10 @@
 // My Tesla) 顺路配 TeslaMate 与高德两把 Key, 一步变体 (My Money / My Music)
 // 建完即完成。起步步数由 /api/setup-status 的 missing 决定 —— 中途退出
 // 的续走 (管理员已在, 从缺口步接着); 完成跳转读 body 的 data-done;
-// 步骤按 DOM 现状收集, 同一份脚本服务两种页面。各步参数先校验再保存
-// (端口数字 / Key 32 位 / Web 服务 Key 服务端实测), 填错当场拦不进下一
-// 步; 第三步有「上一步」回数据源改配置 (管理员步一次性建号, 不给回)。
+// 步骤按 DOM 现状收集, 同一份脚本服务两种页面。步骤条三项可点, 任意跳
+// 步回改; 数据源/地图两步的「测试闸」(测通了主按钮才解锁) 在
+// setup-gates.js, 一步变体不加载那半边。
+/* exported pass, webKeySet */
 "use strict";
 const card = document.getElementById("card");
 const doneUrl = document.body.dataset.done || "/";
@@ -13,10 +14,19 @@ const forms = ["form1", "form2", "form3"]
   .map(id => document.getElementById(id)).filter(Boolean);
 
 const fail = (form, msg) => {
-  form.querySelector(".err").textContent = msg;
+  const err = form.querySelector(".err");
+  err.textContent = msg;
+  err.classList.remove("ok");
   card.classList.remove("shake");
   void card.offsetWidth;
   card.classList.add("shake");
+};
+
+// 测试通过的正字: 与 fail 同一条 .err, 换个颜色说话 (绿色见 css .ok)
+const pass = (form, msg) => {
+  const err = form.querySelector(".err");
+  err.textContent = msg;
+  err.classList.add("ok");
 };
 
 const showStep = index => {
@@ -31,6 +41,13 @@ const showStep = index => {
   const first = forms[index] && forms[index].querySelector("input");
   if (first) first.focus();
 };
+
+// 步骤条可点: 任意跳步回改 (跳步不会骗过门 —— 每步的真伪由各步的测试/
+// 保存把门, 缺步漏配由应用门兜底弹回引导)
+const stepsEl = document.getElementById("steps");
+if (stepsEl) Array.from(stepsEl.children).forEach((li, i) => {
+  if (forms[i]) li.addEventListener("click", () => showStep(i));
+});
 
 const finish = () => {
   forms.forEach(form => { form.hidden = true; });
@@ -58,7 +75,9 @@ document.getElementById("eye").addEventListener("click", () => {
   document.getElementById("eye-slash").style.display = show ? "" : "none";
 });
 
-// 第一步: 建立第一个管理员 (409 = 别的设备已完成初始化, 去登录页)
+// 第一步: 建立第一个管理员。409 = 已建过 —— 步骤条可回跳后再提交就是
+// 「这步早已完成」, 直接进下一步 (不再是别的设备抢跑, 无会话的续走会
+// 在后面各步被登录拦下, 不用这里赶人)
 forms[0].addEventListener("submit", async e => {
   e.preventDefault();
   const btn = forms[0].querySelector(".btn");
@@ -78,7 +97,7 @@ forms[0].addEventListener("submit", async e => {
       }),
     });
     if (r.ok) { advance(0); return; }
-    if (r.status === 409) { location.replace("/login"); return; }
+    if (r.status === 409) { advance(0); return; }
     const d = await r.json().catch(() => null);
     fail(forms[0], (d && d.detail) || `创建失败 (HTTP ${r.status})`);
   } catch (_e) {
@@ -104,8 +123,8 @@ async function prefillSettings() {
     };
     fill("tm-host", t.host); fill("tm-port", t.port);
     fill("tm-user", t.user); fill("tm-name", t.name);
-    const pass = document.getElementById("tm-pass");
-    if (pass) pass.placeholder = t.password_set ? "已设置, 留空保持" : "未设置";
+    const tmPass = document.getElementById("tm-pass");
+    if (tmPass) tmPass.placeholder = t.password_set ? "已设置, 留空保持" : "未设置";
     const a = d.amap || {};
     webKeySet = !!a.web_key_masked;
     const key = document.getElementById("amap-key");
@@ -115,104 +134,6 @@ async function prefillSettings() {
     const web = document.getElementById("amap-web");
     if (web) web.placeholder = a.web_key_masked ? `现值 ${a.web_key_masked}, 留空保持` : "未设置";
   } catch (_e) { /* 拉不到现值不挡流程, 空表单照填 */ }
-}
-
-// 第二步 (有则存在): TeslaMate 连接, 保存自动验证 (失败服务端已回滚可重试)
-if (forms[1]) {
-  forms[1].addEventListener("submit", async e => {
-    e.preventDefault();
-    const btn = forms[1].querySelector(".btn");
-    const v = id => document.getElementById(id).value.trim();
-    // 端口填了就得是 1~65535 的数字 —— 字母混进去后端连库报错是一长串
-    // 连接串报错, 关在前面报得清楚 (留空 = 默认 5432, 不拦)
-    const port = v("tm-port");
-    if (port && (!/^\d+$/.test(port) || +port < 1 || +port > 65535)) {
-      fail(forms[1], "端口请填 1~65535 的数字");
-      return;
-    }
-    btn.disabled = true;
-    try {
-      const r = await fetch("/tesla/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tmdb_host: v("tm-host"), tmdb_port: v("tm-port"),
-          tmdb_user: v("tm-user"), tmdb_password: v("tm-pass"),
-          tmdb_name: v("tm-name"),
-        }),
-      });
-      if (r.ok) { advance(1); return; }
-      const d = await r.json().catch(() => null);
-      fail(forms[1], (d && d.detail) || `保存失败 (HTTP ${r.status})`);
-    } catch (_e) {
-      fail(forms[1], "网络错误, 请重试");
-    }
-    btn.disabled = false;
-  });
-}
-
-// 第三步 (有则存在): 高德两把 Key + 安全码 —— Web 服务 Key 必填 (足迹
-// 道路拟合要用), 已有现值时留空=保持; 其余留空=保持现值。填了新值先过
-// 格式 (高德 Key/安全码一律 32 位字母数字) 再实测 Web 服务 Key 真伪,
-// 不过不保存不进下一步 (与设置页「测试」同一端点)
-if (forms[2]) {
-  forms[2].addEventListener("submit", async e => {
-    e.preventDefault();
-    const btn = forms[2].querySelector(".btn");
-    const v = id => document.getElementById(id).value.trim();
-    if (!v("amap-web") && !webKeySet) {
-      fail(forms[2], "Web 服务 Key 必填: 足迹道路拟合要用");
-      return;
-    }
-    const keyRE = /^[0-9a-zA-Z]{32}$/;
-    for (const [id, lb] of [["amap-key", "地图 Key"], ["amap-code", "安全码"],
-                            ["amap-web", "Web 服务 Key"]]) {
-      if (v(id) && !keyRE.test(v(id))) {
-        fail(forms[2], lb + " 应为 32 位字母数字");
-        return;
-      }
-    }
-    btn.disabled = true;
-    try {
-      if (v("amap-web")) {
-        const t = await fetch("/tesla/map/api/web-key-test", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key: v("amap-web") }),
-        });
-        const td = await t.json().catch(() => null);
-        if (!t.ok || !td || !td.ok) {
-          fail(forms[2], "Web 服务 Key 实测不通过: " +
-               ((td && td.detail) || `HTTP ${t.status}`));
-          btn.disabled = false;
-          return;
-        }
-      }
-      const r = await fetch("/tesla/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amap_key: v("amap-key"), amap_security_code: v("amap-code"),
-          amap_web_key: v("amap-web"),
-        }),
-      });
-      if (r.ok) {
-        /* Web 服务 key 存好立即踢一脚后台 worker: 历史道路开始构造,
-           不用等空转轮 (60s); 足迹地图会盖「正在构造数据」蒙版报进度 */
-        fetch("/tesla/map/api/roads/tick").catch(() => {});
-        advance(2); return;
-      }
-      const d = await r.json().catch(() => null);
-      fail(forms[2], (d && d.detail) || `保存失败 (HTTP ${r.status})`);
-    } catch (_e) {
-      fail(forms[2], "网络错误, 请重试");
-    }
-    btn.disabled = false;
-  });
-  // 上一步: 回数据源步改配置 (重存即实测); 管理员步不给回 —— 建号是
-  // 一次性的, 回去重复提交只会 409
-  const back = document.getElementById("back2");
-  if (back) back.addEventListener("click", () => showStep(1));
 }
 
 // 起步步数: 管理员没建 → 从头; 建过 (中途退出的续走) → 从第一个缺口步

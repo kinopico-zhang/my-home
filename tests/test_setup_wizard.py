@@ -195,8 +195,10 @@ def test_setup_page_standards(  # pylint: disable=redefined-outer-name
 
 def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
         firstboot, client):
-    """三步版接线: 三张表单 + 完成跳转 data-done + setup.js 的接口指向;
-    不允许跳过 (无跳过钮, 关键字段必填), 起步步数跟着缺口走。"""
+    """三步版接线: 三张表单 + 完成跳转 data-done + 脚本接口指向; 不允许
+    跳过 (无跳过钮), 起步步数跟着缺口走。步骤条三项可点任意跳步回改,
+    数据源/地图两步的测试闸 (测通才解锁主按钮) 在 setup-gates.js
+    (2026-10-12 用户口径「要测试, 测试好之后才能下一步」)。"""
     html = client.get("/setup").text
     assert 'data-done="/music"' in html
     for fid in ("form1", "form2", "form3"):
@@ -204,49 +206,60 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert "skip" not in html          # 不允许跳过: 跳过钮整链退役
     assert "btn-plain" not in html
     assert re.search(r'id="tm-host"[^>]*required', html)
-    assert re.search(r'id="amap-key"[^>]*required', html)
-    # 第三步是收尾步: 按钮写明存完即进应用 (2026-10-09 用户口径)
-    assert "保存并进入应用" in html
-    # 上一步 (2026-10-12 用户实报「没有办法回到上一步」): 只有第三步有,
-    # 回数据源步改配置; 管理员步一次性建号, 回去重复提交只会 409 不给回
-    assert ('<button type="button" class="btn ghost" id="back2">上一步'
-            "</button>") in html
-    assert 'class="btn-row"' in html
-    # 名称下限补齐 (placeholder 一直写着 2~20, 原来只钉了上限)
+    # 名称下限 (placeholder 一直写着 2~20, 原来只钉了上限)
     assert re.search(r'id="su-name"[^>]*minlength="2"', html)
-    # 第三步两把高德 Key 都必填 (2026-10-10 口径, 与子仓同批): Web 服务
-    # Key 是足迹道路拟合要用的, 不再可留空 —— 地图 Key 走 required,
-    # Web 服务 Key 由 setup.js 校验 (中途续走已有现值的可留空=保持,
-    # HTML required 会误拦)
+    # 第三步是收尾步: 按钮写明存完即进应用 (2026-10-09 用户口径)
+    assert "进入应用" in html
+    # 两把高德 Key 的必填都交给测试闸 (2026-10-12 口径): 没 Key 测不过,
+    # required 退役 —— 续走空框回落现值, 不再被迫重填明文
     assert '<label for="amap-key">地图 Key</label>' in html
     assert '<label for="amap-web">Web 服务 Key</label>' in html
-    web_input = re.search(r'<input id="amap-web"[^>]*>', html)
-    assert web_input and "required" not in web_input.group(0)
+    for rid in ("amap-key", "amap-web"):
+        m = re.search(rf'<input id="{rid}"[^>]*>', html)
+        assert m and "required" not in m.group(0), rid
+    # 测试闸按钮行: 次级「测试」+ 锁着起步的主按钮 (测通才解锁)
+    assert ('<button type="button" class="btn ghost" id="tm-test">测试连接'
+            "</button>") in html
+    assert ('<button type="button" class="btn ghost" id="amap-test">测试'
+            "</button>") in html
+    assert html.count('<button class="btn" type="submit" disabled>') == 2
+    assert "back2" not in html          # 「上一步」方案 (同日早版) 整链退役
     assert "三步配齐才能进入" not in html
     # 两步的提示段 2026-10-10 撤 (用户点名「设置界面上的说明去掉」, 指导
     # 集中到 README) —— 数据源/地图步骤只留表单
     for gone in ("POSTGRES_PASSWORD", "docker-compose.yml", "高德开放平台",
                  "个人开发者免费", "可留空"):
         assert gone not in html, gone
-    js = client.get("/static/setup.js?v=6").text
+    # 地图 Key 探针住适配层 (与设置页同一支): 引导页也挂上
+    assert '<script src="/tesla/static/js/tesla-map-adapter.js?v=' in html
+    js = client.get("/static/setup.js?v=7").text
     assert '"/api/setup-admin"' in js
-    assert '"/tesla/api/settings"' in js
-    assert 'amap_web_key: v("amap-web")' in js   # Web 服务 Key 随同提交
     assert "web_key_masked" in js                # 预填时给现值掩码
-    assert "webKeySet" in js                     # 必填校验: 已有现值可留空=保持
-    assert "Web 服务 Key 必填" in js
-    assert '"/tesla/map/api/roads/tick"' in js   # 存好 Key 立即踢 worker 开跑构造
-    # 填错当场拦不进下一步 (2026-10-12 用户实报「不会校验参数」): 端口
-    # 数字、Key 32 位格式、Web 服务 Key 服务端实测真伪 (与设置页「测试」
-    # 同一端点, 测不过不保存), 上一步回数据源步
-    assert "1~65535" in js
-    assert "32 位字母数字" in js
-    assert '"/tesla/map/api/web-key-test"' in js
-    assert "Web 服务 Key 实测不通过" in js
-    assert 'document.getElementById("back2")' in js
+    # 步骤条可点 + 409 = 管理员步早已完成直接进下一步 (步骤可回跳后,
+    # 不再是「别的设备抢跑」赶去登录页)
+    assert 'li.addEventListener("click", () => showStep(i))' in js
+    assert "if (r.status === 409) { advance(0); return; }" in js
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js
+    gates = client.get("/static/setup-gates.js?v=1").text
+    assert '"/tesla/api/settings/test"' in gates     # 数据源候选实测端点
+    assert '"/tesla/api/settings"' in gates          # 主按钮 = 保存 + 前进
+    assert 'amap_web_key: v("amap-web")' in gates    # Web 服务 Key 随同提交
+    assert "webKeySet" in gates                      # 已有现值可留空=保持
+    assert '"/tesla/map/api/web-key-test"' in gates  # Web Key 服务端逆地理
+    assert "/tesla/map/api/config" in gates          # 地图 Key 空框回落现值
+    assert "mapLib.probeKey" in gates                # iframe 探针 (适配层)
+    assert '"/tesla/map/api/roads/tick"' in gates    # 存好 Key 踢 worker 开跑
+    # 闸: 输入一改作废重测, 主按钮锁着起步, 测通才开
+    assert "next2.disabled = true;" in gates
+    assert "next2.disabled = false;" in gates
+    assert "next3.disabled = true;" in gates
+    assert "next3.disabled = false;" in gates
+    # 填错当场拦: 端口数字 / Key 32 位 / 测不过整句人话
+    assert "1~65535" in gates
+    assert "32 位字母数字" in gates
+    assert "测试未通过" in gates
 
 
 def test_login_js_probes_setup(client):
