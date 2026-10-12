@@ -3,7 +3,9 @@
 // My Tesla) 顺路配 TeslaMate 与高德两把 Key, 一步变体 (My Money / My Music)
 // 建完即完成。起步步数由 /api/setup-status 的 missing 决定 —— 中途退出
 // 的续走 (管理员已在, 从缺口步接着); 完成跳转读 body 的 data-done;
-// 步骤按 DOM 现状收集, 同一份脚本服务两种页面。
+// 步骤按 DOM 现状收集, 同一份脚本服务两种页面。各步参数先校验再保存
+// (端口数字 / Key 32 位 / Web 服务 Key 服务端实测), 填错当场拦不进下一
+// 步; 第三步有「上一步」回数据源改配置 (管理员步一次性建号, 不给回)。
 "use strict";
 const card = document.getElementById("card");
 const doneUrl = document.body.dataset.done || "/";
@@ -120,9 +122,16 @@ if (forms[1]) {
   forms[1].addEventListener("submit", async e => {
     e.preventDefault();
     const btn = forms[1].querySelector(".btn");
+    const v = id => document.getElementById(id).value.trim();
+    // 端口填了就得是 1~65535 的数字 —— 字母混进去后端连库报错是一长串
+    // 连接串报错, 关在前面报得清楚 (留空 = 默认 5432, 不拦)
+    const port = v("tm-port");
+    if (port && (!/^\d+$/.test(port) || +port < 1 || +port > 65535)) {
+      fail(forms[1], "端口请填 1~65535 的数字");
+      return;
+    }
     btn.disabled = true;
     try {
-      const v = id => document.getElementById(id).value.trim();
       const r = await fetch("/tesla/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,7 +152,9 @@ if (forms[1]) {
 }
 
 // 第三步 (有则存在): 高德两把 Key + 安全码 —— Web 服务 Key 必填 (足迹
-// 道路拟合要用), 已有现值时留空=保持; 其余留空=保持现值
+// 道路拟合要用), 已有现值时留空=保持; 其余留空=保持现值。填了新值先过
+// 格式 (高德 Key/安全码一律 32 位字母数字) 再实测 Web 服务 Key 真伪,
+// 不过不保存不进下一步 (与设置页「测试」同一端点)
 if (forms[2]) {
   forms[2].addEventListener("submit", async e => {
     e.preventDefault();
@@ -153,8 +164,30 @@ if (forms[2]) {
       fail(forms[2], "Web 服务 Key 必填: 足迹道路拟合要用");
       return;
     }
+    const keyRE = /^[0-9a-zA-Z]{32}$/;
+    for (const [id, lb] of [["amap-key", "地图 Key"], ["amap-code", "安全码"],
+                            ["amap-web", "Web 服务 Key"]]) {
+      if (v(id) && !keyRE.test(v(id))) {
+        fail(forms[2], lb + " 应为 32 位字母数字");
+        return;
+      }
+    }
     btn.disabled = true;
     try {
+      if (v("amap-web")) {
+        const t = await fetch("/tesla/map/api/web-key-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: v("amap-web") }),
+        });
+        const td = await t.json().catch(() => null);
+        if (!t.ok || !td || !td.ok) {
+          fail(forms[2], "Web 服务 Key 实测不通过: " +
+               ((td && td.detail) || `HTTP ${t.status}`));
+          btn.disabled = false;
+          return;
+        }
+      }
       const r = await fetch("/tesla/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,6 +209,10 @@ if (forms[2]) {
     }
     btn.disabled = false;
   });
+  // 上一步: 回数据源步改配置 (重存即实测); 管理员步不给回 —— 建号是
+  // 一次性的, 回去重复提交只会 409
+  const back = document.getElementById("back2");
+  if (back) back.addEventListener("click", () => showStep(1));
 }
 
 // 起步步数: 管理员没建 → 从头; 建过 (中途退出的续走) → 从第一个缺口步

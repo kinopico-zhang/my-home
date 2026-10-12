@@ -77,6 +77,15 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 }
 .btn:active { transform: scale(.98); opacity: .85; }
 .btn[disabled] { opacity: .5; }
+/* 第三步按钮行: 上一步 (次级) 与保存并进入应用 (主) 并排 —— 上一步不
+   提交, 主操作的宽度吃剩余全部 */
+.btn-row { display: flex; gap: 10px; margin-top: 14px; }
+.btn-row .btn { flex: 1; width: auto; margin-top: 0; }
+.btn.ghost {
+  flex: none; width: auto; margin-top: 0; padding: 13px 20px;
+  background: none; border: 1px solid var(--hairline);
+  color: var(--ink-2); font-weight: 500;
+}
 .err {
   font-size: 13px; color: #ff6961; margin-top: 12px; min-height: 18px;
 }

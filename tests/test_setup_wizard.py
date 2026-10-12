@@ -207,6 +207,13 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert re.search(r'id="amap-key"[^>]*required', html)
     # 第三步是收尾步: 按钮写明存完即进应用 (2026-10-09 用户口径)
     assert "保存并进入应用" in html
+    # 上一步 (2026-10-12 用户实报「没有办法回到上一步」): 只有第三步有,
+    # 回数据源步改配置; 管理员步一次性建号, 回去重复提交只会 409 不给回
+    assert ('<button type="button" class="btn ghost" id="back2">上一步'
+            "</button>") in html
+    assert 'class="btn-row"' in html
+    # 名称下限补齐 (placeholder 一直写着 2~20, 原来只钉了上限)
+    assert re.search(r'id="su-name"[^>]*minlength="2"', html)
     # 第三步两把高德 Key 都必填 (2026-10-10 口径, 与子仓同批): Web 服务
     # Key 是足迹道路拟合要用的, 不再可留空 —— 地图 Key 走 required,
     # Web 服务 Key 由 setup.js 校验 (中途续走已有现值的可留空=保持,
@@ -221,7 +228,7 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     for gone in ("POSTGRES_PASSWORD", "docker-compose.yml", "高德开放平台",
                  "个人开发者免费", "可留空"):
         assert gone not in html, gone
-    js = client.get("/static/setup.js?v=5").text
+    js = client.get("/static/setup.js?v=6").text
     assert '"/api/setup-admin"' in js
     assert '"/tesla/api/settings"' in js
     assert 'amap_web_key: v("amap-web")' in js   # Web 服务 Key 随同提交
@@ -229,6 +236,14 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert "webKeySet" in js                     # 必填校验: 已有现值可留空=保持
     assert "Web 服务 Key 必填" in js
     assert '"/tesla/map/api/roads/tick"' in js   # 存好 Key 立即踢 worker 开跑构造
+    # 填错当场拦不进下一步 (2026-10-12 用户实报「不会校验参数」): 端口
+    # 数字、Key 32 位格式、Web 服务 Key 服务端实测真伪 (与设置页「测试」
+    # 同一端点, 测不过不保存), 上一步回数据源步
+    assert "1~65535" in js
+    assert "32 位字母数字" in js
+    assert '"/tesla/map/api/web-key-test"' in js
+    assert "Web 服务 Key 实测不通过" in js
+    assert 'document.getElementById("back2")' in js
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js

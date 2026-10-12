@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=1">
 <link rel="manifest" href="/static/manifest.json">
   <title>初始化 · My Home</title>
-<link rel="stylesheet" href="/static/css/setup-page.css?v=5">
+<link rel="stylesheet" href="/static/css/setup-page.css?v=6">
 </head>
 <body data-done="/music">
 <script src="/static/no-zoom.js?v=2"></script>
@@ -29,8 +29,8 @@
     <div class="field">
       <label for="su-name">名称</label>
       <input id="su-name" name="name" type="text" autocapitalize="off"
-             autocorrect="off" autocomplete="nickname" maxlength="20"
-             placeholder="2~20 个字符" required>
+             autocorrect="off" autocomplete="nickname" minlength="2"
+             maxlength="20" placeholder="2~20 个字符" required>
     </div>
     <div class="field">
       <label for="su-pass">密码</label>
@@ -100,7 +100,12 @@
       <input id="amap-web" type="text" autocapitalize="off" autocorrect="off"
              placeholder="未设置">
     </div>
-    <button class="btn" type="submit">保存并进入应用</button>
+    <!-- 上一步: 回数据源步改配置 (管理员步一次性建号不给回); 主次两档
+         按钮并排, 主操作仍是保存进应用 -->
+    <div class="btn-row">
+      <button type="button" class="btn ghost" id="back2">上一步</button>
+      <button class="btn" type="submit">保存并进入应用</button>
+    </div>
     <div class="err"></div>
   </form>
   <div class="done" id="done" hidden>
@@ -108,6 +113,6 @@
     <p>初始化完成, 正在进入…</p>
   </div>
 </div>
-<script src="/static/setup.js?v=5"></script>
+<script src="/static/setup.js?v=6"></script>
 </body>
 </html>
