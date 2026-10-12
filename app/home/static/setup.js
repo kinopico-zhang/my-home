@@ -6,7 +6,7 @@
 // 步骤按 DOM 现状收集, 同一份脚本服务两种页面。步骤条三项可点, 任意跳
 // 步回改; 数据源/地图两步的「测试闸」(测通了主按钮才解锁) 在
 // setup-gates.js, 一步变体不加载那半边。
-/* exported pass, webKeySet */
+/* exported pass, webKeySet, showStep, tmPassSet */
 "use strict";
 const card = document.getElementById("card");
 const doneUrl = document.body.dataset.done || "/";
@@ -109,6 +109,10 @@ forms[0].addEventListener("submit", async e => {
 // 第三步校验用: Web 服务 Key 必填 (足迹道路拟合要用), 已有现值 (掩码
 // 回显过) 时留空=保持 —— 预填时更新
 let webKeySet = false;
+// 数据源步校验用 (setup-gates 的快拦): 数据库密码还没存过时必填, 存过
+// 才许留空=保持 —— 预填时更新。不拦的话空密码回落现值, 服务端只回一串
+// 长连接报错, 没头没脑 (2026-10-12 向导验证实测)
+let tmPassSet = false;
 
 // 进入数据源步骤时拉现值: 输入框预填 (掩码/密码只给 placeholder, 留空=保持)
 async function prefillSettings() {
@@ -125,6 +129,7 @@ async function prefillSettings() {
     fill("tm-user", t.user); fill("tm-name", t.name);
     const tmPass = document.getElementById("tm-pass");
     if (tmPass) tmPass.placeholder = t.password_set ? "已设置, 留空保持" : "未设置";
+    tmPassSet = !!t.password_set;   // setup-gates 快拦用 (没存过密码不许空着测)
     const a = d.amap || {};
     webKeySet = !!a.web_key_masked;
     const key = document.getElementById("amap-key");

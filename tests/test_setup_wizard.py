@@ -232,9 +232,10 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
         assert gone not in html, gone
     # 地图 Key 探针住适配层 (与设置页同一支): 引导页也挂上
     assert '<script src="/tesla/static/js/tesla-map-adapter.js?v=' in html
-    js = client.get("/static/setup.js?v=7").text
+    js = client.get("/static/setup.js?v=8").text
     assert '"/api/setup-admin"' in js
     assert "web_key_masked" in js                # 预填时给现值掩码
+    assert "tmPassSet" in js                     # 密码快拦状态 (没存过不许空着测)
     # 步骤条可点 + 409 = 管理员步早已完成直接进下一步 (步骤可回跳后,
     # 不再是「别的设备抢跑」赶去登录页)
     assert 'li.addEventListener("click", () => showStep(i))' in js
@@ -242,7 +243,7 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js
-    gates = client.get("/static/setup-gates.js?v=1").text
+    gates = client.get("/static/setup-gates.js?v=2").text
     assert '"/tesla/api/settings/test"' in gates     # 数据源候选实测端点
     assert '"/tesla/api/settings"' in gates          # 主按钮 = 保存 + 前进
     assert 'amap_web_key: v("amap-web")' in gates    # Web 服务 Key 随同提交
@@ -260,6 +261,14 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert "1~65535" in gates
     assert "32 位字母数字" in gates
     assert "测试未通过" in gates
+    # 密码快拦 (2026-10-12 向导验证实测: 预填密码空 + 留空回落 = 一串连接
+    # 报错) + 401 统一去处 (没建管理员跳步进来测/存全 401, 只剩「HTTP 401」
+    # 没头没脑): 没管理员回第一步, 已建过 (会话丢) 去登录页续走
+    assert "数据库密码还没填" in gates
+    assert 'if (r.status === 401) { await noSession(forms[1]); return; }' in gates
+    assert 'if (r.status === 401) { await noSession(forms[2]); return; }' in gates
+    assert "请先完成第一步「建立管理员」" in gates
+    assert '"/login?next=/setup"' in gates
 
 
 def test_login_js_probes_setup(client):

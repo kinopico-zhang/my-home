@@ -3,14 +3,35 @@
 // 锁, 输入一改作废重测 (与设置页「只有测试正常才能保存」同一口径, 2026-
 // 10-12 用户点名「要测试, 测试好之后才能下一步」)。
 //   数据源: 候选送 /tesla/api/settings/test 服务端实测 (空字段回落现值),
-//           不落库不换引擎;
+//           不落库不换引擎; 密码还没存过时空着就拦 (空密码回落现值只会
+//           换来一串没头没脑的连接报错, 2026-10-12 向导验证实测);
 //   地图:   Web 服务 Key 走服务端逆地理 (设置页同一端点), 地图 Key 走
 //           适配层 iframe 探针 (空框回落现值, config 端点明文拿), 两把
 //           都过才算过。
+//   401 (没会话) 统一去处: 步骤条能跳步, 没建管理员就点进 2/3 步的访客
+//   没有会话, 测试/保存全 401 —— 不点破就只剩一句「HTTP 401」。管理员
+//   还没建 → 提示后送回第一步 (建号即登录); 已建过 (会话丢了) → 登录后
+//   回来续走。
 // 主按钮 = 保存 + 前进: 保存后端还会再实测一遍 TeslaMate (连不上整体回
 // 滚可重试); 存败时候选没变 (闸还开着), 改完直接重试或重测。
-/* global forms, fail, pass, webKeySet, advance, mapLib */
+/* global forms, fail, pass, webKeySet, tmPassSet, advance, showStep, mapLib */
 "use strict";
+
+// 401 的去处 (现查 setup-status 分流, 该端点本就免登录)
+const noSession = async form => {
+  let noAdmin = true;
+  try {
+    const r = await fetch("/api/setup-status", { cache: "no-store" });
+    const d = r.ok ? await r.json() : null;
+    noAdmin = !d || (d.missing || []).includes("account");
+  } catch (_e) { /* 查不到就当没建过管理员: 回第一步 */}
+  if (noAdmin) {
+    fail(form, "还没有登录会话 —— 请先完成第一步「建立管理员」(建号即登录), 再回来测");
+    showStep(0);
+  } else {
+    location.href = "/login?next=/setup";
+  }
+};
 
 // 第二步 (有则存在): TeslaMate 连接
 if (forms[1]) {
@@ -34,6 +55,12 @@ if (forms[1]) {
         fail(forms[1], "端口请填 1~65535 的数字");
         return;
       }
+      // 密码还没存过 (预填的 placeholder 是「未设置」) 就不许空着测 ——
+      // 空密码回落现值只会换来服务端一串连接报错, 当场拦下报人话
+      if (!v("tm-pass") && !tmPassSet) {
+        fail(forms[1], "数据库密码还没填 —— 密码框空着, 此前也没存过密码");
+        return;
+      }
       const r = await fetch("/tesla/api/settings/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -43,6 +70,7 @@ if (forms[1]) {
           tmdb_name: v("tm-name"),
         }),
       });
+      if (r.status === 401) { await noSession(forms[1]); return; }
       const d = await r.json().catch(() => null);
       if (!r.ok || !d || !d.ok) {
         fail(forms[1], "测试未通过: " + ((d && d.detail) || `HTTP ${r.status}`));
@@ -73,6 +101,7 @@ if (forms[1]) {
           tmdb_name: v("tm-name"),
         }),
       });
+      if (r.status === 401) { await noSession(forms[1]); return; }
       if (r.ok) { advance(1); return; }
       const d = await r.json().catch(() => null);
       fail(forms[1], (d && d.detail) || `保存失败 (HTTP ${r.status})`);
@@ -116,6 +145,7 @@ if (forms[2]) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: v("amap-web") }),
       });
+      if (r.status === 401) { await noSession(forms[2]); return; }
       const d = await r.json().catch(() => null);
       if (!r.ok || !d || !d.ok) {
         fail(forms[2], "Web 服务 Key 测试未通过: " +
@@ -164,6 +194,7 @@ if (forms[2]) {
           amap_web_key: v("amap-web"),
         }),
       });
+      if (r.status === 401) { await noSession(forms[2]); return; }
       if (r.ok) {
         /* Web 服务 key 存好立即踢一脚后台 worker: 历史道路开始构造,
            不用等空转轮 (60s); 足迹地图会盖「正在构造数据」蒙版报进度 */
