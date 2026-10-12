@@ -1,7 +1,8 @@
 // setup-gates.js — 首启引导的测试闸 (setup.js 后加载, 只有三步版页面引
 // 用): 数据源/地图两步各带「测试」钮 —— 测通了「下一步/进入应用」才解
 // 锁, 输入一改作废重测 (与设置页「只有测试正常才能保存」同一口径, 2026-
-// 10-12 用户点名「要测试, 测试好之后才能下一步」)。
+// 10-12 用户点名「要测试, 测试好之后才能下一步」); 「测试」钮本身也要
+// 必填项填全了才亮, 灰着点不动 (同日用户点名「要填写全了才亮起按钮」)。
 //   数据源: 候选送 /tesla/api/settings/test 服务端实测 (空字段回落现值),
 //           不落库不换引擎; 密码还没存过时空着就拦 (空密码回落现值只会
 //           换来一串没头没脑的连接报错, 2026-10-12 向导验证实测);
@@ -14,7 +15,9 @@
 //   回来续走。
 // 主按钮 = 保存 + 前进: 保存后端还会再实测一遍 TeslaMate (连不上整体回
 // 滚可重试); 存败时候选没变 (闸还开着), 改完直接重试或重测。
-/* global forms, fail, pass, webKeySet, tmPassSet, advance, showStep, mapLib */
+/* global forms, fail, pass, webKeySet, tmPassSet, amapKeySet,
+          advance, showStep, mapLib */
+/* exported refreshTestButtons */   // setup.js 预填完来踢一脚 (重算明暗)
 "use strict";
 
 // 401 的去处 (现查 setup-status 分流, 该端点本就免登录)
@@ -33,13 +36,39 @@ const noSession = async form => {
   }
 };
 
+// 「测试」钮的明暗: 必填项填全才亮, 缺一样就灰。口径与各步「测试」内部
+// 校验对齐 —— 数据源步要 地址/用户/库名 (+ 没存过密码时的密码), 端口
+// 留空 = 默认 5432 不算缺; 地图步要两把 Key (框里有或存过现值都算),
+// 安全码不算缺 (没绑安全码的 Key 也测得通)。进门先按现状定一遍, 输入
+// 一改、测试收尾、setup.js 预填完都会来重算 (refreshTestButtons)。
+const tmReady = () => {
+  const v = id => document.getElementById(id).value.trim();
+  return !!(v("tm-host") && v("tm-user") && v("tm-name")
+            && (v("tm-pass") || tmPassSet));
+};
+const amapReady = () => {
+  const v = id => document.getElementById(id).value.trim();
+  return !!((v("amap-key") || amapKeySet) && (v("amap-web") || webKeySet));
+};
+const refreshTestButtons = () => {
+  const t2 = document.getElementById("tm-test");
+  if (t2) t2.disabled = !tmReady();
+  const t3 = document.getElementById("amap-test");
+  if (t3) t3.disabled = !amapReady();
+};
+refreshTestButtons();   // 进门先按现状定 (没填全 = 灰)
+
 // 第二步 (有则存在): TeslaMate 连接
 if (forms[1]) {
   const next2 = forms[1].querySelector("button[type=submit]");
   let tmOk = false;                       // 测试闸: 通过才开「下一步」
   const tmLock = () => { tmOk = false; next2.disabled = true; };
+  // 输入一改: 下一步作废重测 + 测试钮按「填全没有」重定明暗
   for (const id of ["tm-host", "tm-port", "tm-user", "tm-pass", "tm-name"])
-    document.getElementById(id).addEventListener("input", tmLock);
+    document.getElementById(id).addEventListener("input", () => {
+      tmLock();
+      refreshTestButtons();
+    });
 
   document.getElementById("tm-test").addEventListener("click", async () => {
     const test = document.getElementById("tm-test");
@@ -82,7 +111,7 @@ if (forms[1]) {
     } catch (_e) {
       fail(forms[1], "测试失败: 网络错误, 请重试");
     } finally {
-      test.disabled = false;
+      refreshTestButtons();   // 按填全与否收尾 (中途清空了 = 保持灰)
     }
   });
 
@@ -118,8 +147,12 @@ if (forms[2]) {
   const next3 = forms[2].querySelector("button[type=submit]");
   let amapOk = false;                     // 两把 Key 都测过才开「进入应用」
   const amapLock = () => { amapOk = false; next3.disabled = true; };
+  // 输入一改: 进入应用作废重测 + 测试钮按「填全没有」重定明暗
   for (const id of ["amap-key", "amap-code", "amap-web"])
-    document.getElementById(id).addEventListener("input", amapLock);
+    document.getElementById(id).addEventListener("input", () => {
+      amapLock();
+      refreshTestButtons();
+    });
 
   document.getElementById("amap-test").addEventListener("click", async () => {
     const test = document.getElementById("amap-test");
@@ -176,7 +209,7 @@ if (forms[2]) {
     } catch (err) {
       fail(forms[2], "测试未通过: " + err.message);
     } finally {
-      test.disabled = false;
+      refreshTestButtons();   // 按填全与否收尾 (中途清空了 = 保持灰)
     }
   });
 

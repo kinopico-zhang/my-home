@@ -82,9 +82,10 @@
              placeholder="teslamate">
     </div>
     <!-- 测试闸 (setup-gates.js): 「测试连接」拿框里候选实测 (空字段回落
-         现值), 通了「下一步」才解锁; 输入一改作废重测 -->
+         现值), 通了「下一步」才解锁; 输入一改作废重测; 测试钮本身也是
+         灰的 —— 必填项填全 (setup-gates 按输入现算) 才亮 -->
     <div class="btn-row">
-      <button type="button" class="btn ghost" id="tm-test">测试连接</button>
+      <button type="button" class="btn ghost" id="tm-test" disabled>测试连接</button>
       <button class="btn" type="submit" disabled>下一步</button>
     </div>
     <div class="err"></div>
@@ -110,7 +111,7 @@
     <!-- 测试闸 (setup-gates.js): 两把 Key 都真测 —— Web 服务 Key 服务端
          逆地理, 地图 Key iframe 探针, 全过「进入应用」才解锁 -->
     <div class="btn-row">
-      <button type="button" class="btn ghost" id="amap-test">测试</button>
+      <button type="button" class="btn ghost" id="amap-test" disabled>测试</button>
       <button class="btn" type="submit" disabled>进入应用</button>
     </div>
     <div class="err"></div>
@@ -121,7 +122,7 @@
   </div>
 </div>
 <script src="/tesla/static/js/tesla-map-adapter.js?v=14"></script>
-<script src="/static/setup.js?v=8"></script>
-<script src="/static/setup-gates.js?v=2"></script>
+<script src="/static/setup.js?v=9"></script>
+<script src="/static/setup-gates.js?v=3"></script>
 </body>
 </html>

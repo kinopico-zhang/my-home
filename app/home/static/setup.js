@@ -4,9 +4,10 @@
 // 建完即完成。起步步数由 /api/setup-status 的 missing 决定 —— 中途退出
 // 的续走 (管理员已在, 从缺口步接着); 完成跳转读 body 的 data-done;
 // 步骤按 DOM 现状收集, 同一份脚本服务两种页面。步骤条三项可点, 任意跳
-// 步回改; 数据源/地图两步的「测试闸」(测通了主按钮才解锁) 在
-// setup-gates.js, 一步变体不加载那半边。
-/* exported pass, webKeySet, showStep, tmPassSet */
+// 步回改; 数据源/地图两步的「测试闸」(测通了主按钮才解锁, 测试钮要填全
+// 才亮) 在 setup-gates.js, 一步变体不加载那半边。
+/* exported pass, webKeySet, showStep, tmPassSet, amapKeySet */
+/* global refreshTestButtons */   // setup-gates 的; 预填完重算测试钮明暗
 "use strict";
 const card = document.getElementById("card");
 const doneUrl = document.body.dataset.done || "/";
@@ -113,6 +114,9 @@ let webKeySet = false;
 // 才许留空=保持 —— 预填时更新。不拦的话空密码回落现值, 服务端只回一串
 // 长连接报错, 没头没脑 (2026-10-12 向导验证实测)
 let tmPassSet = false;
+// 地图步测试钮点亮用 (setup-gates 的 ready3): 地图 Key 存过现值时空框
+// 也算填全 —— 预填时更新 (与 webKeySet 同款)
+let amapKeySet = false;
 
 // 进入数据源步骤时拉现值: 输入框预填 (掩码/密码只给 placeholder, 留空=保持)
 async function prefillSettings() {
@@ -132,6 +136,7 @@ async function prefillSettings() {
     tmPassSet = !!t.password_set;   // setup-gates 快拦用 (没存过密码不许空着测)
     const a = d.amap || {};
     webKeySet = !!a.web_key_masked;
+    amapKeySet = !!a.key_masked;   // setup-gates 测试钮点亮用 (存过现值空框也算填全)
     const key = document.getElementById("amap-key");
     if (key) key.placeholder = a.key_masked ? `现值 ${a.key_masked}, 留空保持` : "未设置";
     const code = document.getElementById("amap-code");
@@ -139,6 +144,8 @@ async function prefillSettings() {
     const web = document.getElementById("amap-web");
     if (web) web.placeholder = a.web_key_masked ? `现值 ${a.web_key_masked}, 留空保持` : "未设置";
   } catch (_e) { /* 拉不到现值不挡流程, 空表单照填 */ }
+  // 预填完按「填全没有」重算测试钮明暗 (拉挂了也算一遍: 空表单 → 保持灰)
+  if (typeof refreshTestButtons === "function") refreshTestButtons();
 }
 
 // 起步步数: 管理员没建 → 从头; 建过 (中途退出的续走) → 从第一个缺口步
