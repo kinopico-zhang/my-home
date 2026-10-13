@@ -70,7 +70,8 @@ refreshTestButtons();   // 进门先按现状定 (没填全 = 灰)
 
 // 第二页 (有则存在): TeslaMate 连接
 if (forms[1]) {
-  const next2 = forms[1].querySelector("button[type=submit]");
+  // 「下一步」住常驻底栏 (挪出了表单, 靠 form 属性回绑提交), 按 id 直取
+  const next2 = document.getElementById("next2");
   let tmOk = false;                       // 测试闸: 通过才开「下一步」
   const tmLock = () => { tmOk = false; next2.disabled = true; };
   // 「上一步」退回管理员页: 表单值原样留着, 没动就仍是测过的口径
@@ -170,7 +171,7 @@ if (forms[1]) {
 // 第三页 (有则存在): 高德两把 Key + 安全码 —— Web 服务 Key 必填 (足迹
 // 道路拟合要用), 已有现值时留空=保持; 其余留空=保持现值
 if (forms[2]) {
-  const next3 = forms[2].querySelector("button[type=submit]");
+  const next3 = document.getElementById("next3");   // 同 next2: 住底栏
   let amapOk = false;                     // 两把 Key 都测过才开「下一步」
   const amapLock = () => { amapOk = false; next3.disabled = true; };
   // 「上一步」退回数据源页改值: 改了要重测才能再往下 (没动闸保持开着)

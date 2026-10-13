@@ -16,9 +16,10 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=1">
 <link rel="manifest" href="/static/manifest.json">
   <title>初始化 · My Home</title>
-<link rel="stylesheet" href="/static/css/setup-page.css?v=9">
+<link rel="stylesheet" href="/static/css/setup-page.css?v=10">
 </head>
-<body data-done="/music">
+<body data-done="/tesla?view=live">   <!-- 进应用直落状态页: ?view= 优先于壳
+     的 lastView 回放, 不然会回到上次停留过的页面 (2026-10-13 口径) -->
 <script src="/static/no-zoom.js?v=2"></script>
 <div class="card" id="card">
   <div class="icon">⚡</div>
@@ -59,8 +60,8 @@
     </div>
     <!-- 下一步 (setup.js): 三个框填全才亮, 点击走原生校验 (required/
          minlength 的气泡) 后建号前进; 管理员已建 (续走回看 / 409) 时表单
-         转 noValidate 空框直进 —— 建号是首启唯一入口, 已建过没有可改的值 -->
-    <button type="submit" class="btn" id="next1" disabled>下一步</button>
+         转 noValidate 空框直进 —— 建号是首启唯一入口, 已建过没有可改的值。
+         按钮本体住常驻底栏 (页面底部 .dock), 靠 form 属性回绑本表单 -->
     <div class="err"></div>
   </form>
   <form id="form2" hidden>
@@ -90,13 +91,9 @@
     <!-- 测试闸 (setup-gates.js): 「测试连接」拿框里候选实测 (空字段回落
          现值), 通了「下一步」才解锁; 输入一改作废重测; 测试钮本身也是
          灰的 —— 必填项填全 (setup-gates 按输入现算) 才亮。「上一步」退
-         回管理员页, 表单值原样留着 —— 没动就仍是测过的口径, 动了才要
-         重测 (2026-10-13 四页线性版) -->
+         回管理员页 (钮住底栏), 表单值原样留着 —— 没动就仍是测过的口
+         径, 动了才要重测 (2026-10-13 四页线性版) -->
     <button type="button" class="btn ghost solo" id="tm-test" disabled>测试连接</button>
-    <div class="btn-row">
-      <button type="button" class="btn ghost" id="back2">上一步</button>
-      <button class="btn" type="submit" disabled>下一步</button>
-    </div>
     <div class="err"></div>
   </form>
   <form id="form3" hidden>
@@ -113,33 +110,40 @@
              placeholder="未设置">
     </div>
     <div class="field">
-      <label for="amap-web">Web 服务 Key</label>
+      <label for="amap-web">Web Key</label>
       <input id="amap-web" type="text" autocapitalize="off" autocorrect="off"
              placeholder="未设置">
     </div>
-    <!-- 测试闸 (setup-gates.js): 两把 Key 都真测 —— Web 服务 Key 服务端
+    <!-- 测试闸 (setup-gates.js): 两把 Key 都真测 —— Web Key 服务端
          逆地理, 地图 Key iframe 探针, 全过「下一步」才解锁; 测试钮本身
          也是灰的 —— 两把 Key 填全 (框里或存过现值) 才亮。「上一步」退
-         回数据源页改值, 改了要重测才能再往下 -->
+         回数据源页改值 (钮住底栏), 改了要重测才能再往下 -->
     <button type="button" class="btn ghost solo" id="amap-test" disabled>测试</button>
-    <div class="btn-row">
-      <button type="button" class="btn ghost" id="back3">上一步</button>
-      <button class="btn" type="submit" disabled>下一步</button>
-    </div>
     <div class="err"></div>
   </form>
   <!-- 第四页 (完成): 前三页一路「下一步」真存过来, 进门先把所填汇总过
        目一遍 (setup.js 现拉, 敏感信息只给掩码/****), 确认后「进入应用」
-       显式跳转, 不再自动跳 (2026-10-13 口径) -->
+       显式跳转 (直落状态页), 不再自动跳 (2026-10-13 口径) -->
   <div class="done" id="done" hidden>
-    <div class="done-icon">✅</div>
     <p>所有设置已完成</p>
     <dl class="done-summary" id="done-summary" hidden></dl>
-    <button type="button" class="btn" id="enter">进入应用</button>
   </div>
 </div>
+<!-- 常驻底栏 (2026-10-13 用户口径: 下一步/上一步/进入应用钉在屏幕底部,
+     与上面的内容分离 —— 表单再长自己滚, 按钮恒在手边)。挪出卡片是刻
+     意的: 卡片的 .shake 报错动画带 transform, 变换中的祖先会把 fixed
+     子件改锚 (底栏会跟着卡片抖); 按钮靠 form 属性回绑各自表单, 提交语
+     义照旧。data-pages = 哪几页可见 (setup.js 的 showStep 切页时翻) -->
+<div class="dock" id="dock">
+  <button type="submit" class="btn" id="next1" form="form1" hidden data-pages="0" disabled>下一步</button>
+  <button type="button" class="btn ghost" id="back2" form="form2" hidden data-pages="1">上一步</button>
+  <button type="submit" class="btn" id="next2" form="form2" hidden data-pages="1" disabled>下一步</button>
+  <button type="button" class="btn ghost" id="back3" form="form3" hidden data-pages="2">上一步</button>
+  <button type="submit" class="btn" id="next3" form="form3" hidden data-pages="2" disabled>下一步</button>
+  <button type="button" class="btn" id="enter" hidden data-pages="3">进入应用</button>
+</div>
 <script src="/tesla/static/js/tesla-map-adapter.js?v=14"></script>
-<script src="/static/setup.js?v=11"></script>
-<script src="/static/setup-gates.js?v=5"></script>
+<script src="/static/setup.js?v=12"></script>
+<script src="/static/setup-gates.js?v=6"></script>
 </body>
 </html>

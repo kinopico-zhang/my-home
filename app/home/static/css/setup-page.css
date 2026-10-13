@@ -23,8 +23,10 @@ body {
   font-size: 15px; display: flex; align-items: flex-start; justify-content: center;
   /* 顶端对齐 (2026-10-09): 四张步页高矮不一, 垂直居中会让卡片随步骤上下
      跳; 顶对齐后图标/标题/步骤条钉在同一高度, 矮屏溢出也改为向下可滚
-     (居中溢出会裁掉顶上且滚不回来) */
-  padding: max(env(safe-area-inset-top), 6vh) 24px env(safe-area-inset-bottom);
+     (居中溢出会裁掉顶上且滚不回来)。底部给常驻底栏让位 (2026-10-13),
+     内容滚到底也不钻到底栏底下 */
+  padding: max(env(safe-area-inset-top), 6vh) 24px
+           calc(92px + env(safe-area-inset-bottom));
 }
 .card {
   width: 100%; max-width: 340px;
@@ -57,7 +59,7 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
   padding: 12px 14px; margin-bottom: 10px; text-align: left;
 }
 .field label {
-  font-size: 13px; color: var(--ink-2); flex: none; width: 6.5em;   /* 容「Web 服务 Key」 */
+  font-size: 13px; color: var(--ink-2); flex: none; width: 4.5em;   /* 容「地图 Key」 */
 }
 .field input {
   flex: 1; min-width: 0; border: 0; outline: 0; background: none;
@@ -79,11 +81,20 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 }
 .btn:active { transform: scale(.98); opacity: .85; }
 .btn[disabled] { opacity: .5; }
-/* 数据源/地图两页的按钮布局 (2026-10-13 四页线性版): 「测试」独占一行
-   (全宽 ghost) 放最顺手处 —— 它是解锁下一步的前置动作; 导航行
-   [上一步|下一步] 在其下, 两枚等宽 */
-.btn-row { display: flex; gap: 10px; margin-top: 14px; }
-.btn-row .btn { flex: 1; width: auto; margin-top: 0; }
+/* 常驻底栏 (2026-10-13 用户口径: 下一步/上一步/进入应用钉在屏幕底部,
+   与上面的内容分离 —— 表单再长自己滚, 按钮恒在手边): 玻璃浮条与卡片
+   同宽居中, 悬在安全区上方; 哪几枚可见由 setup.js 的 showStep 按
+   data-pages 翻 (不在场的表单整页 hidden, 按钮藏进底栏不吃布局) */
+.dock {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: calc(100% - 48px); max-width: 340px;
+  display: flex; gap: 10px; padding: 10px;
+  background: rgba(28,28,30,.82);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border: 1px solid var(--hairline); border-radius: 16px;
+}
+.dock .btn { flex: 1; width: auto; margin-top: 0; }
 .btn.ghost {
   flex: none; width: auto; margin-top: 0; padding: 13px 20px;
   background: none; border: 1px solid var(--hairline);
@@ -106,7 +117,6 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 /* 测试通过的正字 (setup-gates.js 的 pass): 同一条 .err 换绿 */
 .err.ok { color: #1fa349; }
 .done { padding: 20px 0 8px; }
-.done-icon { font-size: 40px; margin-bottom: 10px; }
 .done p { font-size: 14px; color: var(--ink-2); }
 /* 完成页汇总 (2026-10-13): 三页所填过目单 —— dt 左 dd 右, 长值可折行 */
 .done-summary { margin-top: 16px; text-align: left; }

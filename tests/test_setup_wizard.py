@@ -196,12 +196,14 @@ def test_setup_page_standards(  # pylint: disable=redefined-outer-name
 def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
         firstboot, client):
     """四页线性接线 (2026-10-13 用户口径: 只有上一步/下一步, 步骤条不可
-    点, 末页把所填汇总过目后显式进应用): 三张表单页 + 完成面板, 无跳过
-    钮, 起步页数跟着缺口走。数据源/地图两页的测试闸 (测通才解锁下一步,
-    测试钮要必填项填全才亮) 在 setup-gates.js; 回上页改值不重置闸 —— 只有
-    真改输入才作废重测。"""
+    点, 末页把所填汇总过目后显式进应用; 导航钮住常驻底栏与内容分离):
+    三张表单页 + 完成面板, 无跳过钮, 起步页数跟着缺口走。数据源/地图两
+    页的测试闸 (测通才解锁下一步, 测试钮要必填项填全才亮) 在
+    setup-gates.js; 回上页改值不重置闸 —— 只有真改输入才作废重测。"""
     html = client.get("/setup").text
-    assert 'data-done="/music"' in html
+    # 进应用直落状态页 (2026-10-13 口径): ?view=live 优先于壳的 lastView
+    # 回放 —— 不带参数会回到上次停留过的页面 (此前指 /music)
+    assert 'data-done="/tesla?view=live"' in html
     for fid in ("form1", "form2", "form3"):
         assert f'id="{fid}"' in html
     assert "skip" not in html          # 不允许跳过: 跳过钮整链退役
@@ -212,26 +214,21 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     # 步骤条四项只展示进度, 点击跳步接线退役 (css 手型一并撤)
     assert "<li>管理员</li><li>数据源</li><li>地图</li><li>完成</li>" in html
     # 两把高德 Key 的必填都交给测试闸 (2026-10-12 口径): 没 Key 测不过,
-    # required 退役 —— 续走空框回落现值, 不再被迫重填明文
+    # required 退役 —— 续走空框回落现值, 不再被迫重填明文。Web Key 标签
+    # 用短名 (2026-10-13 用户点名: 全称太长, label 会折行)
     assert '<label for="amap-key">地图 Key</label>' in html
-    assert '<label for="amap-web">Web 服务 Key</label>' in html
+    assert '<label for="amap-web">Web Key</label>' in html
     for rid in ("amap-key", "amap-web"):
         m = re.search(rf'<input id="{rid}"[^>]*>', html)
         assert m and "required" not in m.group(0), rid
-    # 只有上一步/下一步: 页1 无上一步 (没有更前), 页2/3 各带 back2/back3;
-    # 测试钮独占一行 (全宽 ghost), 导航行 [上一步|下一步] 在其下
+    # 测试钮独占一行 (全宽 ghost, 住在表单内容里); 导航钮 (下一步/上一
+    # 步/进入应用) 住常驻底栏, 钉与接线在 test_setup_dock_bar
     assert ('<button type="button" class="btn ghost solo" id="tm-test" disabled>'
             "测试连接</button>") in html
     assert ('<button type="button" class="btn ghost solo" id="amap-test" disabled>'
             "测试</button>") in html
-    assert ('<button type="submit" class="btn" id="next1" disabled>下一步'
-            "</button>") in html
-    assert 'id="back2"' in html and 'id="back3"' in html
-    assert html.count(">上一步</button>") == 2
-    assert html.count('<button class="btn" type="submit" disabled>') == 2
     # 末页 (完成面板): 所有设置已完成 + 所填汇总过目 (敏感信息只给掩码/
     # ****, setup.js 进门现拉) + 显式「进入应用」(自动跳转退役)
-    assert '<button type="button" class="btn" id="enter">进入应用</button>' in html
     assert "所有设置已完成" in html
     assert '<dl class="done-summary" id="done-summary" hidden></dl>' in html
     css = (STATIC_DIR / "css" / "setup-page.css").read_text(encoding="utf-8")
@@ -248,6 +245,41 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert '<script src="/tesla/static/js/tesla-map-adapter.js?v=' in html
 
 
+def test_setup_dock_bar(  # pylint: disable=redefined-outer-name
+        firstboot, client):
+    """常驻底栏 (2026-10-13 用户口径: 下一步/上一步/进入应用钉在屏幕底部,
+    与上面的内容分离 —— 表单再长自己滚, 按钮恒在手边)。按钮挪出卡片是躲
+    .shake 报错动画的 transform 改锚 (变换中的祖先会把 fixed 子件连锚带
+    偏, 底栏会跟着卡片抖), 靠 form 属性回绑各自表单, 提交语义照旧;
+    data-pages = 哪页可见, setup.js 的 showStep 切页时翻 (一步变体没有
+    底栏, dock 查空即跳过)。完成页的大对勾图标同批退役 (用户点名太丑)。"""
+    html = client.get("/setup").text
+    assert '<div class="dock" id="dock">' in html
+    assert ('<button type="submit" class="btn" id="next1" form="form1"'
+            ' hidden data-pages="0" disabled>下一步</button>') in html
+    assert html.count('data-pages="1"') == 2     # 页2: 上一步 + 下一步
+    assert html.count('data-pages="2"') == 2     # 页3: 上一步 + 下一步
+    assert ('<button type="button" class="btn" id="enter" hidden'
+            ' data-pages="3">进入应用</button>') in html
+    assert html.count(">上一步</button>") == 2
+    assert html.count(">下一步</button>") == 3   # 页1/2/3 各一枚 (住底栏)
+    assert '<div class="done-icon">✅</div>' not in html
+    css = (STATIC_DIR / "css" / "setup-page.css").read_text(encoding="utf-8")
+    assert ".dock {" in css and "position: fixed" in css   # 玻璃浮条钉底部
+    assert ".dock .btn { flex: 1; width: auto; margin-top: 0; }" in css
+    assert "calc(92px + env(safe-area-inset-bottom))" in css   # 正文让位
+    assert ".btn-row" not in css and ".done-icon" not in css   # 旧规则整条退役
+    js = client.get("/static/setup.js?v=12").text
+    assert 'document.getElementById("dock")' in js
+    assert 'b.dataset.pages.split(" ").includes(String(index))' in js
+    assert 'const next1 = document.getElementById("next1");' in js
+    assert 'forms[0].querySelector' not in js
+    gates = client.get("/static/setup-gates.js?v=6").text
+    assert 'const next2 = document.getElementById("next2");' in gates
+    assert 'const next3 = document.getElementById("next3");' in gates
+    assert "querySelector" not in gates
+
+
 def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
         firstboot, client):
     """两份脚本的接线钉 (与 test_setup_page_wiring 拆开): setup.js 管页序/
@@ -255,7 +287,7 @@ def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
     试钮状态机: 填全才亮, 测进行中灰着转圈, 飞行中改输入结果作废) —— 桩
     住真连端点的行为验证另有 playwright 探针 (存好即测过: 成功分支也解
     锁, 回页不逼重测)。"""
-    js = client.get("/static/setup.js?v=11").text
+    js = client.get("/static/setup.js?v=12").text
     assert '"/api/setup-admin"' in js
     assert "web_key_masked" in js                # 占位提示给现值掩码
     assert "tmPassSet" in js                     # 密码快拦状态 (没存过不许空着测)
@@ -281,7 +313,8 @@ def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
     # 己填; 占位提示与「留空=保持」的标志照旧
     assert 'fill("tm-host", t.host)' not in js
     assert "key_masked ? `现值" in js
-    gates = client.get("/static/setup-gates.js?v=5").text
+    assert 'row(map, "Web Key"' in js            # 汇总行短名 (label 不折行)
+    gates = client.get("/static/setup-gates.js?v=6").text
     assert '"/tesla/api/settings/test"' in gates     # 数据源候选实测端点
     assert '"/tesla/api/settings"' in gates          # 主按钮 = 保存 + 前进
     assert 'amap_web_key: v("amap-web")' in gates    # Web 服务 Key 随同提交
@@ -299,7 +332,8 @@ def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
     # 不逼着重测 (探针实抓过反例: 飞行锁在成功分支漏解, 回页就卡死)
     assert "if (r.ok) { next2.disabled = false; advance(1); return; }" in gates
     assert "next3.disabled = false;          // 同 next2: 存好即测过, 闸保持开" in gates
-    # 闸: 输入一改作废重测, 主按钮锁着起步, 测通才开
+    # 闸: 输入一改作废重测, 主按钮锁着起步, 测通才开 (下一步住底栏, 取法
+    # 在 test_setup_dock_bar)
     assert "next2.disabled = true;" in gates
     assert "next2.disabled = false;" in gates
     assert "next3.disabled = true;" in gates

@@ -2,11 +2,14 @@
 // 用户口径): 只有「上一步/下一步」, 步骤条只展示进度不可点。第一页建管理
 // 员 (注册即登录, 后续接口都带会话); 第二/三页配 TeslaMate 与高德两把
 // Key (一步变体 My Money / My Music 建完即完成); 第四页把三页所填汇成
-// 一张过目单 (敏感信息只给掩码/****), 看准了「进入应用」显式跳转。起步
-// 页数由 /api/setup-status 的 missing 决定 —— 中途退出的续走 (管理员已
-// (管理员已在, 从缺口页接着); 完成跳转读 body 的 data-done; 页面按 DOM
-// 现状收集, 同一份脚本服务两种页面。第二/三页的「测试闸」(测通了下一
-// 步才解锁, 测试钮要填全才亮) 在 setup-gates.js, 一步变体不加载那半边。
+// 一张过目单 (敏感信息只给掩码/****), 看准了「进入应用」显式跳转 (直落
+// 状态页)。起步页数由 /api/setup-status 的 missing 决定 —— 中途退出的续
+// 走 (管理员已在, 从缺口页接着); 完成跳转读 body 的 data-done; 页面按
+// DOM 现状收集, 同一份脚本服务两种页面。导航钮住常驻底栏 (2026-10-13
+// 用户口径: 钉在屏幕底部与内容分离), showStep 按各钮的 data-pages 翻
+// 显隐 —— 一步变体没有底栏, dock 查空即跳过。第二/三页的「测试闸」(测
+// 通了下一步才解锁, 测试钮要填全才亮) 在 setup-gates.js, 一步变体不加
+// 载那半边。
 /* exported pass, webKeySet, showStep, tmPassSet, amapKeySet */
 /* global refreshTestButtons */   // setup-gates 的; 预填完重算测试钮明暗
 "use strict";
@@ -15,6 +18,7 @@ const doneUrl = document.body.dataset.done || "/";
 const forms = ["form1", "form2", "form3"]
   .map(id => document.getElementById(id)).filter(Boolean);
 const donePage = document.getElementById("done");
+const dock = document.getElementById("dock");   // 常驻底栏 (无则一步变体)
 
 const fail = (form, msg) => {
   const err = form.querySelector(".err");
@@ -33,10 +37,15 @@ const pass = (form, msg) => {
 };
 
 // 展示第 index 页: 0..forms.length-1 是表单页, forms.length = 完成面板
-// (第四页)。步骤条只跟着换 active/done, 不接线点击 —— 跳步退役
+// (第四页)。步骤条只跟着换 active/done, 不接线点击 —— 跳步退役; 底栏的
+// 导航钮按各钮的 data-pages 翻显隐 (哪页亮哪几枚)
 const showStep = index => {
   forms.forEach((form, i) => { form.hidden = i !== index; });
   if (donePage) donePage.hidden = index !== forms.length;
+  if (dock) {
+    for (const b of dock.querySelectorAll("button[data-pages]"))
+      b.hidden = !b.dataset.pages.split(" ").includes(String(index));
+  }
   const steps = document.getElementById("steps");
   if (steps) {
     Array.from(steps.children).forEach((li, i) => {
@@ -77,7 +86,7 @@ document.getElementById("eye").addEventListener("click", () => {
 // 回看 / 409 = 这页早已完成) 时表单转 noValidate + 输入框锁死, 空框直进
 // 不重交 —— 建号是首启唯一入口, 已建过没有可改的值
 let accountDone = false;
-const next1 = forms[0].querySelector("#next1");
+const next1 = document.getElementById("next1");   // 住底栏, 不在表单里
 const markAccountDone = () => {
   accountDone = true;
   forms[0].noValidate = true;   // 回看直进: 原生 required 不再拦空框
@@ -99,13 +108,12 @@ for (const id of ["su-name", "su-pass", "su-pass2"])
 forms[0].addEventListener("submit", async e => {
   e.preventDefault();
   if (accountDone) { advance(0); return; }
-  const btn = forms[0].querySelector(".btn");
   const password = document.getElementById("su-pass").value;
   if (password !== document.getElementById("su-pass2").value) {
     fail(forms[0], "两次输入的密码不一致");
     return;
   }
-  btn.disabled = true;
+  next1.disabled = true;    // 建号飞行中锁钮 (钮住底栏, 按 id 直取)
   try {
     const r = await fetch("/api/setup-admin", {
       method: "POST",
@@ -122,7 +130,7 @@ forms[0].addEventListener("submit", async e => {
   } catch (_e) {
     fail(forms[0], "网络错误, 请重试");
   }
-  btn.disabled = false;
+  next1.disabled = false;
 });
 
 // 第三页 (地图) 校验用: Web 服务 Key 必填 (足迹道路拟合要用), 已有现值
@@ -210,7 +218,7 @@ async function fillDoneSummary() {
   const map = group("地图");
   row(map, "地图 Key", a.key_masked || "未设置");
   row(map, "安全码", a.security_code_masked || "未设置");
-  row(map, "Web 服务 Key", a.web_key_masked || "未设置");
+  row(map, "Web Key", a.web_key_masked || "未设置");
   dl.hidden = false;
 }
 
