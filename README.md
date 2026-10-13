@@ -12,7 +12,7 @@
 
 ![pylint](https://img.shields.io/badge/pylint-10.00%2F10-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-2A6DB2)
-![pytest](https://img.shields.io/badge/pytest-80%20passed-0A9EDC?logo=pytest&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-82%20passed-0A9EDC?logo=pytest&logoColor=white)
 
 ![ESLint](https://img.shields.io/badge/ESLint-passing-4B32C3?logo=eslint&logoColor=white)
 ![stylelint](https://img.shields.io/badge/stylelint-passing-263238?logo=stylelint&logoColor=white)
@@ -26,7 +26,7 @@
 
 <p align="center">
 <img src="docs/screenshot-login.png" width="300" alt="登录页 · My Home (演示数据)">
-<img src="docs/screenshot-setup.png" width="300" alt="首启引导 · My Home (演示数据)">
+<img src="docs/screenshot-setup.png?v=2" width="300" alt="首启引导 · My Home (演示数据)">
 </p>
 
 | 应用 | 子仓 | 地址 (组合部署) | 独立部署 |
@@ -115,7 +115,7 @@ TeslaMate 数据源与高德地图 Key (个人开发者免费; TeslaMate 五个�
 .venv/bin/python -m pytest tests -q             # 后端 (共享层 + 装配接线)
 ```
 
-门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 80 例
+门禁全绿才算过: pylint 10.00/10 (app 严检) · mypy 严格模式 · pytest 82 例
 (真实 ORM + SQLite 临时库; 含 e2e 冒烟: 起真 uvicorn 打真 HTTP —— 登录 →
 三应用页 + 账号管理页 → 静态资源, 以及空库首启引导全流程) · ESLint /
 stylelint / html-validate
