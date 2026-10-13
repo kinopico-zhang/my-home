@@ -2,10 +2,11 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<!-- 首启引导页: 三步 (管理员/TeslaMate/高德 Key) 配齐之前是唯一入口,
-     不允许跳过 —— Tesla 应用的门 (/tesla) 会把人送回来; 中途退出下次从
-     缺口步接着走 (起步步数由 setup.js 查 /api/setup-status 决定)。页面
-     本身免登录, 建管理员即种会话 cookie -->
+<!-- 首启引导页: 四页 (管理员/数据源/地图/完成) 配齐之前是唯一入口,
+     不允许跳过 —— 线性前进, 只有「上一步/下一步」(步骤条只展示进度,
+     不可点; 2026-10-13 口径); Tesla 应用的门 (/tesla) 会把人送回来;
+     中途退出下次从缺口页接着走 (起步页数由 setup.js 查 /api/setup-status
+     决定)。页面本身免登录, 建管理员即种会话 cookie -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,15 +16,17 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=1">
 <link rel="manifest" href="/static/manifest.json">
   <title>初始化 · My Home</title>
-<link rel="stylesheet" href="/static/css/setup-page.css?v=7">
+<link rel="stylesheet" href="/static/css/setup-page.css?v=8">
 </head>
 <body data-done="/music">
 <script src="/static/no-zoom.js?v=2"></script>
 <div class="card" id="card">
   <div class="icon">⚡</div>
   <h1>My Home</h1>
+  <!-- 步骤条只展示进度 (active=当前, done=已过), 不可点 —— 跳步退役,
+       想回改走「上一步」一页页退 (2026-10-13 四页线性版) -->
   <ol class="steps" id="steps">
-    <li>管理员</li><li>数据源</li><li>地图</li>
+    <li>管理员</li><li>数据源</li><li>地图</li><li>完成</li>
   </ol>
   <form id="form1" hidden autocomplete="on">
     <div class="field">
@@ -54,7 +57,10 @@
       <input id="su-pass2" name="confirm-password" type="password"
              autocomplete="new-password" minlength="6" maxlength="64" required>
     </div>
-    <button class="btn" type="submit">建立管理员</button>
+    <!-- 下一步 (setup.js): 三个框填全才亮, 点击走原生校验 (required/
+         minlength 的气泡) 后建号前进; 管理员已建 (续走回看 / 409) 时表单
+         转 noValidate 空框直进 —— 建号是首启唯一入口, 已建过没有可改的值 -->
+    <button type="submit" class="btn" id="next1" disabled>下一步</button>
     <div class="err"></div>
   </form>
   <form id="form2" hidden>
@@ -83,9 +89,12 @@
     </div>
     <!-- 测试闸 (setup-gates.js): 「测试连接」拿框里候选实测 (空字段回落
          现值), 通了「下一步」才解锁; 输入一改作废重测; 测试钮本身也是
-         灰的 —— 必填项填全 (setup-gates 按输入现算) 才亮 -->
+         灰的 —— 必填项填全 (setup-gates 按输入现算) 才亮。「上一步」退
+         回管理员页, 表单值原样留着 —— 没动就仍是测过的口径, 动了才要
+         重测 (2026-10-13 四页线性版) -->
+    <button type="button" class="btn ghost solo" id="tm-test" disabled>测试连接</button>
     <div class="btn-row">
-      <button type="button" class="btn ghost" id="tm-test" disabled>测试连接</button>
+      <button type="button" class="btn ghost" id="back2">上一步</button>
       <button class="btn" type="submit" disabled>下一步</button>
     </div>
     <div class="err"></div>
@@ -109,20 +118,26 @@
              placeholder="未设置">
     </div>
     <!-- 测试闸 (setup-gates.js): 两把 Key 都真测 —— Web 服务 Key 服务端
-         逆地理, 地图 Key iframe 探针, 全过「进入应用」才解锁 -->
+         逆地理, 地图 Key iframe 探针, 全过「下一步」才解锁; 测试钮本身
+         也是灰的 —— 两把 Key 填全 (框里或存过现值) 才亮。「上一步」退
+         回数据源页改值, 改了要重测才能再往下 -->
+    <button type="button" class="btn ghost solo" id="amap-test" disabled>测试</button>
     <div class="btn-row">
-      <button type="button" class="btn ghost" id="amap-test" disabled>测试</button>
-      <button class="btn" type="submit" disabled>进入应用</button>
+      <button type="button" class="btn ghost" id="back3">上一步</button>
+      <button class="btn" type="submit" disabled>下一步</button>
     </div>
     <div class="err"></div>
   </form>
+  <!-- 第四页 (完成): 前三页一路「下一步」真存过来, 这里只确认收尾,
+       进应用不再自动跳 (2026-10-13 口径: 显式按钮) -->
   <div class="done" id="done" hidden>
     <div class="done-icon">✅</div>
-    <p>初始化完成, 正在进入…</p>
+    <p>所有设置已完成</p>
+    <button type="button" class="btn" id="enter">进入应用</button>
   </div>
 </div>
 <script src="/tesla/static/js/tesla-map-adapter.js?v=14"></script>
-<script src="/static/setup.js?v=9"></script>
-<script src="/static/setup-gates.js?v=3"></script>
+<script src="/static/setup.js?v=10"></script>
+<script src="/static/setup-gates.js?v=4"></script>
 </body>
 </html>

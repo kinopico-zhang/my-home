@@ -2,7 +2,7 @@
 
 test_e2e.py 验的是「已初始化」的常态; 这里验的是 env 一字不设的死路
 场景 —— 过去这个口径永远登不进 (邀请注册要管理员发邀请), 现在由 /setup
-引导救活, 且三步不许跳过: 账号建好、数据源与高德 Key 配齐之前, Tesla
+引导救活, 且四页线性不许跳过: 账号建好、数据源与高德 Key 配齐之前, Tesla
 应用门把 /tesla 一律拦回 /setup (另两个应用不依赖数据源, 照常可用)。
 流程: needed → /setup 可开 → POST 建管理员 (注册即登录) → 保存数据源
 与高德 Key → 门放行 → 窗口关闭 (再 POST 409, /setup 302)。四份数据库
@@ -108,7 +108,7 @@ def test_setup_page_renders(client):  # pylint: disable=redefined-outer-name
 
 
 def test_setup_admin_full_flow(client):  # pylint: disable=redefined-outer-name
-    """建管理员 → 三步配齐才放行 → 窗口即刻关闭。
+    """建管理员 → 缺口配齐才放行 → 窗口即刻关闭。
 
     cookie 过 /api/me 与设置接口; 引导没走完 (还差高德 Key) 时 Tesla 应用
     页被应用门 302 回 /setup (另两个应用不依赖数据源, 照常可用), 仿照引导

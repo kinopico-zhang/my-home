@@ -67,7 +67,7 @@ def isolate(tmp_path, monkeypatch):
     tesla_models.Base.metadata.create_all(tesla_database.engine())
     tesla_database.init_own_engine(f"sqlite:///{tmp_path / 'mytesla.db'}")
     tesla_models.OwnBase.metadata.create_all(tesla_database.own_engine())
-    # 首启引导完成口径: 高德两把 Key 是三步之一, 都种上让「已初始化」成立
+    # 首启引导完成口径: 高德两把 Key 是引导缺口之一, 都种上让「已初始化」成立
     # (否则打 /tesla 的页面测试全被应用门 302 去 /setup; TeslaMate 连接
     # 同理由下面的 TMDB_HOST env 顶上)。要「没配」口径的用例自己清。
     with tesla_database.own_session_factory()() as own:  # pylint: disable=not-callable

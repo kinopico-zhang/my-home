@@ -1,9 +1,9 @@
-"""首启引导 (/setup) 的接口与页面门: 三步配齐之前是唯一入口, 不允许跳过。
+"""首启引导 (/setup) 的接口与页面门: 配齐之前是唯一入口, 不允许跳过。
 
 isolate autouse 种了管理员 + 高德 Key (已初始化口径), 这里用 firstboot 把
 账号库清空、no_amap/no_teslamate 把配置撤掉, 拼出各缺口口径 (空库 + 无
-env 的死路正是引导页要救的场景)。组合仓是三步版页面 (管理员 → 数据源 →
-地图), 数据源/地图的保存走既有 /tesla/api/settings (tesla 仓已深测),
+env 的死路正是引导页要救的场景)。组合仓是四页版页面 (管理员 → 数据源 →
+地图 → 完成), 数据源/地图的保存走既有 /tesla/api/settings (tesla 仓已深测),
 这里测引导层的接线、缺口清单与应用门 (/tesla 的 302 —— 缺口判定走
 mytesla 前缀的 setup_gate, 组合仓自己的变体)。"""
 import re
@@ -190,16 +190,16 @@ def test_setup_page_standards(  # pylint: disable=redefined-outer-name
     assert "[hidden] { display: none !important; }" in css
     assert "touch-action: manipulation" in css
     assert "touch-action: pan-y" in css
-    assert "align-items: flex-start" in css   # 三张步页顶端对齐, 切步不跳版
+    assert "align-items: flex-start" in css   # 四张步页顶端对齐, 切步不跳版
 
 
 def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
         firstboot, client):
-    """三步版接线: 三张表单 + 完成跳转 data-done + 脚本接口指向; 不允许
-    跳过 (无跳过钮), 起步步数跟着缺口走。步骤条三项可点任意跳步回改,
-    数据源/地图两步的测试闸 (测通才解锁主按钮) 在 setup-gates.js
-    (2026-10-12 用户口径「要测试, 测试好之后才能下一步」; 同日再点名
-    「测试」钮也要必填项填全才亮, 灰着点不动)。"""
+    """四页线性接线 (2026-10-13 用户口径: 只有上一步/下一步, 步骤条不可
+    点, 末页确认后显式进应用): 三张表单页 + 完成面板, 无跳过钮, 起步页数
+    跟着缺口走。数据源/地图两页的测试闸 (测通才解锁下一步, 测试钮要必填
+    项填全才亮) 在 setup-gates.js; 回上页改值不重置闸 —— 只有真改输入才
+    作废重测。"""
     html = client.get("/setup").text
     assert 'data-done="/music"' in html
     for fid in ("form1", "form2", "form3"):
@@ -209,8 +209,8 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert re.search(r'id="tm-host"[^>]*required', html)
     # 名称下限 (placeholder 一直写着 2~20, 原来只钉了上限)
     assert re.search(r'id="su-name"[^>]*minlength="2"', html)
-    # 第三步是收尾步: 按钮写明存完即进应用 (2026-10-09 用户口径)
-    assert "进入应用" in html
+    # 步骤条四项只展示进度, 点击跳步接线退役 (css 手型一并撤)
+    assert "<li>管理员</li><li>数据源</li><li>地图</li><li>完成</li>" in html
     # 两把高德 Key 的必填都交给测试闸 (2026-10-12 口径): 没 Key 测不过,
     # required 退役 —— 续走空框回落现值, 不再被迫重填明文
     assert '<label for="amap-key">地图 Key</label>' in html
@@ -218,35 +218,55 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     for rid in ("amap-key", "amap-web"):
         m = re.search(rf'<input id="{rid}"[^>]*>', html)
         assert m and "required" not in m.group(0), rid
-    # 测试闸按钮行: 次级「测试」+ 锁着起步的主按钮 (测通才解锁); 测试钮
-    # 自己也是灰的起步 —— 必填项填全 (setup-gates 现算) 才亮
-    assert ('<button type="button" class="btn ghost" id="tm-test" disabled>'
+    # 只有上一步/下一步: 页1 无上一步 (没有更前), 页2/3 各带 back2/back3;
+    # 测试钮独占一行 (全宽 ghost), 导航行 [上一步|下一步] 在其下
+    assert ('<button type="button" class="btn ghost solo" id="tm-test" disabled>'
             "测试连接</button>") in html
-    assert ('<button type="button" class="btn ghost" id="amap-test" disabled>'
+    assert ('<button type="button" class="btn ghost solo" id="amap-test" disabled>'
             "测试</button>") in html
+    assert ('<button type="submit" class="btn" id="next1" disabled>下一步'
+            "</button>") in html
+    assert 'id="back2"' in html and 'id="back3"' in html
+    assert html.count(">上一步</button>") == 2
     assert html.count('<button class="btn" type="submit" disabled>') == 2
-    assert "back2" not in html          # 「上一步」方案 (同日早版) 整链退役
-    assert "三步配齐才能进入" not in html
-    # 两步的提示段 2026-10-10 撤 (用户点名「设置界面上的说明去掉」, 指导
-    # 集中到 README) —— 数据源/地图步骤只留表单
+    # 末页 (完成面板): 所有设置已完成 + 显式「进入应用」(自动跳转退役)
+    assert '<button type="button" class="btn" id="enter">进入应用</button>' in html
+    assert "所有设置已完成" in html
+    css = (STATIC_DIR / "css" / "setup-page.css").read_text(encoding="utf-8")
+    assert "步骤条可点" not in css            # 跳步退役, 手型注释一并撤
+    assert ".btn.ghost.solo { width: 100%; margin-top: 14px; }" in css
+    # 两页的提示段 2026-10-10 撤 (用户点名「设置界面上的说明去掉」, 指导
+    # 集中到 README) —— 数据源/地图页只留表单
     for gone in ("POSTGRES_PASSWORD", "docker-compose.yml", "高德开放平台",
                  "个人开发者免费", "可留空"):
         assert gone not in html, gone
     # 地图 Key 探针住适配层 (与设置页同一支): 引导页也挂上
     assert '<script src="/tesla/static/js/tesla-map-adapter.js?v=' in html
-    js = client.get("/static/setup.js?v=9").text
+
+
+def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
+        firstboot, client):
+    """两份脚本的接线钉 (与 test_setup_page_wiring 拆开): setup.js 管页序/
+    线性导航/建号, setup-gates.js 管两页测试闸与上一步 —— 桩住真连端点的
+    行为验证另有 playwright 探针 (存好即测过: 成功分支也解锁, 回页不逼重测)。"""
+    js = client.get("/static/setup.js?v=10").text
     assert '"/api/setup-admin"' in js
     assert "web_key_masked" in js                # 预填时给现值掩码
     assert "tmPassSet" in js                     # 密码快拦状态 (没存过不许空着测)
     assert "amapKeySet" in js                    # 地图 Key 现值状态 (测试钮点亮用)
-    # 步骤条可点 + 409 = 管理员步早已完成直接进下一步 (步骤可回跳后,
-    # 不再是「别的设备抢跑」赶去登录页)
-    assert 'li.addEventListener("click", () => showStep(i))' in js
-    assert "if (r.status === 409) { advance(0); return; }" in js
+    # 线性版: 跳步接线退役, 自动跳转退役; 页1 闸 = 三框填全 (管理员已建则
+    # noValidate + 锁框直进), 409 = 管理员步早已完成直接进下一页
+    assert "li.addEventListener" not in js
+    assert "setTimeout" not in js
+    assert "location.replace(doneUrl)" in js       # 末页「进入应用」显式跳
+    assert "noValidate" in js and "markAccountDone" in js
+    assert "requestSubmit" not in js               # 真 submit 钮, 无需手动代交
+    assert "next1Ready" in js
+    assert "if (r.status === 409) { markAccountDone(); advance(0); return; }" in js
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js
-    gates = client.get("/static/setup-gates.js?v=3").text
+    gates = client.get("/static/setup-gates.js?v=4").text
     assert '"/tesla/api/settings/test"' in gates     # 数据源候选实测端点
     assert '"/tesla/api/settings"' in gates          # 主按钮 = 保存 + 前进
     assert 'amap_web_key: v("amap-web")' in gates    # Web 服务 Key 随同提交
@@ -255,6 +275,15 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert "/tesla/map/api/config" in gates          # 地图 Key 空框回落现值
     assert "mapLib.probeKey" in gates                # iframe 探针 (适配层)
     assert '"/tesla/map/api/roads/tick"' in gates    # 存好 Key 踢 worker 开跑
+    # 上一步: 只退页不重置闸 (改值才作废重测, 输入监听在下面)
+    assert ('document.getElementById("back2").addEventListener'
+            '("click", () => showStep(0));') in gates
+    assert ('document.getElementById("back3").addEventListener'
+            '("click", () => showStep(1));') in gates
+    # 存好即测过: 保存成功分支也解锁 —— 上一步退回本页闸保持开着,
+    # 不逼着重测 (探针实抓过反例: 飞行锁在成功分支漏解, 回页就卡死)
+    assert "if (r.ok) { next2.disabled = false; advance(1); return; }" in gates
+    assert "next3.disabled = false;          // 同 next2: 存好即测过, 闸保持开" in gates
     # 闸: 输入一改作废重测, 主按钮锁着起步, 测通才开
     assert "next2.disabled = true;" in gates
     assert "next2.disabled = false;" in gates
@@ -265,12 +294,12 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert "32 位字母数字" in gates
     assert "测试未通过" in gates
     # 密码快拦 (2026-10-12 向导验证实测: 预填密码空 + 留空回落 = 一串连接
-    # 报错) + 401 统一去处 (没建管理员跳步进来测/存全 401, 只剩「HTTP 401」
-    # 没头没脑): 没管理员回第一步, 已建过 (会话丢) 去登录页续走
+    # 报错) + 401 统一去处 (续走会话丢了, 测试/保存全 401, 只剩「HTTP 401」
+    # 没头没脑): 没管理员回第一页, 已建过 (会话丢) 去登录页续走
     assert "数据库密码还没填" in gates
     assert 'if (r.status === 401) { await noSession(forms[1]); return; }' in gates
     assert 'if (r.status === 401) { await noSession(forms[2]); return; }' in gates
-    assert "请先完成第一步「建立管理员」" in gates
+    assert "请先完成「管理员」页" in gates
     assert '"/login?next=/setup"' in gates
     # 测试钮明暗 (2026-10-12 用户点名「要填写全了才亮起按钮」): 数据源要
     # 地址/用户/库名 (+ 没存过密码时的密码), 地图要两把 Key (框里或现值);

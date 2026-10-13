@@ -3,8 +3,8 @@
 2026-10-09 前这里就是死路: 组合仓 lifespan 与单仓共用同一条建引擎链,
 build_db_url 定位不到库主机直接 RuntimeError (单测的 conftest 一直种着
 TMDB_HOST 把病盖住)。现在引擎落 .invalid 占位主机 (懒连接), /setup 照常
-服务, 引导缺口三步俱全; 依赖数据源的 Tesla 后台预热/worker 挂起等配置。
-本模块只验「起得来 + 门诚实」, 三步走完的完整流程在 test_e2e_setup。
+服务, 引导缺口三项俱全; 依赖数据源的 Tesla 后台预热/worker 挂起等配置。
+本模块只验「起得来 + 门诚实」, 引导走完的完整流程在 test_e2e_setup。
 数据文件照旧落 pytest 临时目录, 不碰真实库与生产缓存。
 """
 import os
@@ -85,7 +85,7 @@ def _tail(log) -> str:
 
 
 def test_noenv_boot_setup_status(server):  # pylint: disable=redefined-outer-name
-    """无 env 起得来 (lifespan 不再被定位不到库主机炸死), 引导缺口三步
+    """无 env 起得来 (lifespan 不再被定位不到库主机炸死), 引导缺口三项
     俱全 —— 数据源不再由 env 顶着, 首启要的就是这个口径。"""
     r = httpx.get(server + "/api/setup-status", timeout=10.0)
     assert r.status_code == 200, r.text[:200]

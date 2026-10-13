@@ -21,7 +21,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
                "Helvetica Neue", system-ui, sans-serif;
   font-size: 15px; display: flex; align-items: flex-start; justify-content: center;
-  /* 顶端对齐 (2026-10-09): 三张步页高矮不一, 垂直居中会让卡片随步骤上下
+  /* 顶端对齐 (2026-10-09): 四张步页高矮不一, 垂直居中会让卡片随步骤上下
      跳; 顶对齐后图标/标题/步骤条钉在同一高度, 矮屏溢出也改为向下可滚
      (居中溢出会裁掉顶上且滚不回来) */
   padding: max(env(safe-area-inset-top), 6vh) 24px env(safe-area-inset-bottom);
@@ -46,7 +46,8 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .steps li {
   font-size: 12px; color: var(--ink-3); padding: 3px 10px;
   border-radius: 999px; border: 1px solid var(--hairline);
-  cursor: pointer;   /* 步骤条可点: 任意跳步回改 (setup.js 挂) */
+  /* 只展示进度, 不可点 (2026-10-13 四页线性版: 跳步退役, 回改走「上一
+     步」) —— 不设 cursor, 手型就是「能点」的暗示 */
 }
 .steps li.active { color: #fff; background: #3987e5; border-color: #3987e5; }
 .steps li.done { color: #1fa349; border-color: rgba(31,163,73,.55); }
@@ -78,8 +79,9 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 }
 .btn:active { transform: scale(.98); opacity: .85; }
 .btn[disabled] { opacity: .5; }
-/* 数据源/地图两步的按钮行: 「测试」(次级) 与主按钮并排 —— 主按钮测通才
-   解锁 (setup-gates.js 的闸), 测试钮宽度按内容, 主操作吃剩余全部 */
+/* 数据源/地图两页的按钮布局 (2026-10-13 四页线性版): 「测试」独占一行
+   (全宽 ghost) 放最顺手处 —— 它是解锁下一步的前置动作; 导航行
+   [上一步|下一步] 在其下, 两枚等宽 */
 .btn-row { display: flex; gap: 10px; margin-top: 14px; }
 .btn-row .btn { flex: 1; width: auto; margin-top: 0; }
 .btn.ghost {
@@ -87,6 +89,7 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
   background: none; border: 1px solid var(--hairline);
   color: var(--ink-2); font-weight: 500;
 }
+.btn.ghost.solo { width: 100%; margin-top: 14px; }
 .err {
   font-size: 13px; color: #ff6961; margin-top: 12px; min-height: 18px;
 }

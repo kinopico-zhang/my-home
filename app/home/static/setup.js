@@ -1,11 +1,12 @@
-// setup.js — 首启引导: 三步全走完才能进应用, 不允许跳过。第一步建管理
-// 员 (注册即登录, 后续接口都带会话); 带数据源/地图步骤的部署 (My Home /
-// My Tesla) 顺路配 TeslaMate 与高德两把 Key, 一步变体 (My Money / My Music)
-// 建完即完成。起步步数由 /api/setup-status 的 missing 决定 —— 中途退出
-// 的续走 (管理员已在, 从缺口步接着); 完成跳转读 body 的 data-done;
-// 步骤按 DOM 现状收集, 同一份脚本服务两种页面。步骤条三项可点, 任意跳
-// 步回改; 数据源/地图两步的「测试闸」(测通了主按钮才解锁, 测试钮要填全
-// 才亮) 在 setup-gates.js, 一步变体不加载那半边。
+// setup.js — 首启引导: 四页全走完才能进应用, 线性前进不许跳 (2026-10-13
+// 用户口径): 只有「上一步/下一步」, 步骤条只展示进度不可点。第一页建管理
+// 员 (注册即登录, 后续接口都带会话); 第二/三页配 TeslaMate 与高德两把
+// Key (一步变体 My Money / My Music 建完即完成); 第四页完成面板确认收
+// 尾, 「进入应用」显式跳转。起步页数由 /api/setup-status 的 missing 决
+// 定 —— 中途退出的续走 (管理员已在, 从缺口页接着); 完成跳转读 body 的
+// data-done; 页面按 DOM 现状收集, 同一份脚本服务两种页面。第二/三页的
+// 「测试闸」(测通了下一步才解锁, 测试钮要填全才亮) 在 setup-gates.js,
+// 一步变体不加载那半边。
 /* exported pass, webKeySet, showStep, tmPassSet, amapKeySet */
 /* global refreshTestButtons */   // setup-gates 的; 预填完重算测试钮明暗
 "use strict";
@@ -13,6 +14,7 @@ const card = document.getElementById("card");
 const doneUrl = document.body.dataset.done || "/";
 const forms = ["form1", "form2", "form3"]
   .map(id => document.getElementById(id)).filter(Boolean);
+const donePage = document.getElementById("done");
 
 const fail = (form, msg) => {
   const err = form.querySelector(".err");
@@ -30,8 +32,11 @@ const pass = (form, msg) => {
   err.classList.add("ok");
 };
 
+// 展示第 index 页: 0..forms.length-1 是表单页, forms.length = 完成面板
+// (第四页)。步骤条只跟着换 active/done, 不接线点击 —— 跳步退役
 const showStep = index => {
   forms.forEach((form, i) => { form.hidden = i !== index; });
+  if (donePage) donePage.hidden = index !== forms.length;
   const steps = document.getElementById("steps");
   if (steps) {
     Array.from(steps.children).forEach((li, i) => {
@@ -43,26 +48,15 @@ const showStep = index => {
   if (first) first.focus();
 };
 
-// 步骤条可点: 任意跳步回改 (跳步不会骗过门 —— 每步的真伪由各步的测试/
-// 保存把门, 缺步漏配由应用门兜底弹回引导)
-const stepsEl = document.getElementById("steps");
-if (stepsEl) Array.from(stepsEl.children).forEach((li, i) => {
-  if (forms[i]) li.addEventListener("click", () => showStep(i));
-});
-
-const finish = () => {
-  forms.forEach(form => { form.hidden = true; });
-  const steps = document.getElementById("steps");
-  if (steps) Array.from(steps.children).forEach(li => li.classList.add("done"));
-  document.getElementById("done").hidden = false;
-  setTimeout(() => location.replace(doneUrl), 1200);
-};
-
 const advance = index => {
-  if (index + 1 >= forms.length) { finish(); return; }
-  showStep(index + 1);
+  showStep(Math.min(index + 1, forms.length));
   if (index + 1 === 1) prefillSettings();
 };
+
+// 第四页「进入应用」: 前三页一路真存过来, 这里只跳转 (读 data-done)
+if (donePage) document.getElementById("enter").addEventListener("click", () => {
+  location.replace(doneUrl);
+});
 
 // 查看密码: 明文 ↔ 密文, 图标同步切换 (SVG 的显隐必须动 style.display,
 // hidden 属性对 SVG 不生效)
@@ -76,11 +70,33 @@ document.getElementById("eye").addEventListener("click", () => {
   document.getElementById("eye-slash").style.display = show ? "" : "none";
 });
 
-// 第一步: 建立第一个管理员。409 = 已建过 —— 步骤条可回跳后再提交就是
-// 「这步早已完成」, 直接进下一步 (不再是别的设备抢跑, 无会话的续走会
-// 在后面各步被登录拦下, 不用这里赶人)
+// 第一页: 建立第一个管理员。下一步 (真提交钮) = 三个框填全才亮, 点击走
+// 表单原生校验 (required/minlength 的气泡) 后建号前进。管理员已建 (续走
+// 回看 / 409 = 这页早已完成) 时表单转 noValidate + 输入框锁死, 空框直进
+// 不重交 —— 建号是首启唯一入口, 已建过没有可改的值
+let accountDone = false;
+const next1 = forms[0].querySelector("#next1");
+const markAccountDone = () => {
+  accountDone = true;
+  forms[0].noValidate = true;   // 回看直进: 原生 required 不再拦空框
+  next1.disabled = false;
+  for (const id of ["su-name", "su-pass", "su-pass2"])
+    document.getElementById(id).disabled = true;   // 此页锁死, 没有可改的值
+};
+const next1Ready = () => {
+  if (accountDone) return true;
+  const v = id => document.getElementById(id).value.trim();
+  return !!(v("su-name") && v("su-pass") && v("su-pass2"));
+};
+for (const id of ["su-name", "su-pass", "su-pass2"])
+  document.getElementById(id).addEventListener("input", () => {
+    if (!accountDone) next1.disabled = !next1Ready();
+  });
+
+// 点击/回车都落这里: 建号 (200) 或早已建过 (409) 都前进
 forms[0].addEventListener("submit", async e => {
   e.preventDefault();
+  if (accountDone) { advance(0); return; }
   const btn = forms[0].querySelector(".btn");
   const password = document.getElementById("su-pass").value;
   if (password !== document.getElementById("su-pass2").value) {
@@ -97,8 +113,8 @@ forms[0].addEventListener("submit", async e => {
         password,
       }),
     });
-    if (r.ok) { advance(0); return; }
-    if (r.status === 409) { advance(0); return; }
+    if (r.ok) { markAccountDone(); advance(0); return; }
+    if (r.status === 409) { markAccountDone(); advance(0); return; }
     const d = await r.json().catch(() => null);
     fail(forms[0], (d && d.detail) || `创建失败 (HTTP ${r.status})`);
   } catch (_e) {
@@ -107,14 +123,14 @@ forms[0].addEventListener("submit", async e => {
   btn.disabled = false;
 });
 
-// 第三步校验用: Web 服务 Key 必填 (足迹道路拟合要用), 已有现值 (掩码
-// 回显过) 时留空=保持 —— 预填时更新
+// 第三页 (地图) 校验用: Web 服务 Key 必填 (足迹道路拟合要用), 已有现值
+// (掩码回显过) 时留空=保持 —— 预填时更新
 let webKeySet = false;
-// 数据源步校验用 (setup-gates 的快拦): 数据库密码还没存过时必填, 存过
+// 数据源页校验用 (setup-gates 的快拦): 数据库密码还没存过时必填, 存过
 // 才许留空=保持 —— 预填时更新。不拦的话空密码回落现值, 服务端只回一串
 // 长连接报错, 没头没脑 (2026-10-12 向导验证实测)
 let tmPassSet = false;
-// 地图步测试钮点亮用 (setup-gates 的 ready3): 地图 Key 存过现值时空框
+// 地图页测试钮点亮用 (setup-gates 的 ready3): 地图 Key 存过现值时空框
 // 也算填全 —— 预填时更新 (与 webKeySet 同款)
 let amapKeySet = false;
 
@@ -148,18 +164,20 @@ async function prefillSettings() {
   if (typeof refreshTestButtons === "function") refreshTestButtons();
 }
 
-// 起步步数: 管理员没建 → 从头; 建过 (中途退出的续走) → 从第一个缺口步
-// 接着 (服务端只对「管理员在 + 有会话」的访客放行续走, 缺口步的表单一定
-// 在场)。查不到状态就从第一步走 —— 保存接口会给出真实的缺口。
+// 起步页数: 管理员没建 → 从头; 建过 (中途退出的续走) → 从第一个缺口页
+// 接着 (服务端只对「管理员在 + 有会话」的访客放行续走, 缺口页的表单一定
+// 在场)。查不到状态就从第一页走 —— 保存接口会给出真实的缺口。
 (async () => {
   let start = 0;
   try {
     const r = await fetch("/api/setup-status", { cache: "no-store" });
     const d = r.ok ? await r.json() : null;
     const missing = (d && d.missing) || [];
-    if (!missing.includes("account"))
+    if (!missing.includes("account")) {
+      markAccountDone();       // 续走: 管理员页只作回看
       start = missing.includes("teslamate") ? 1 : 2;
-  } catch (_e) { /* 网络坏掉: 从第一步走 */ }
+    }
+  } catch (_e) { /* 网络坏掉: 从第一页走 */ }
   showStep(Math.min(start, forms.length - 1));
   if (start >= 1) prefillSettings();
 })();
