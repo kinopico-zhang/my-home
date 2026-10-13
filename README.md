@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏠 My Home
+# My Home
 
 **家庭自用 Web 应用组合仓** — 共享账号单点登录 + 三个 submodule 应用
 
@@ -42,7 +42,7 @@
 `.session_secret` —— 会话 cookie 是无状态 HMAC 签名, 跨端口、跨实例都认
 (HTTP 直连同样可用, cookie 不带 secure 标记)。
 
-## ✨ 亮点
+## 亮点
 
 - 🔐 **共享账号层** — 登录 / 注册 / 账号管理 + 会话中间件, 一枚 cookie 全站通行
 - 🧭 **首启引导** — 空库首启 `/setup` 四页走: 管理员 → 数据源 → 地图 → 完成, 配齐才放行进应用
@@ -52,7 +52,7 @@
 - 🧩 **合成包装载** — 子仓包名都叫 `app`, 装载时造合成顶级前缀, 相对导入自洽
 - 🔌 **HTTPS 可选** — 有证书双端口 (8500 TLS + 8501 明文), 没证书单明文直接用
 
-## 🚀 快速开始
+## 快速开始
 
 ```sh
 git clone --recursive git@github.com:kinopico-zhang/my-home.git
@@ -77,7 +77,7 @@ TeslaMate 数据源与高德地图 Key (个人开发者免费; TeslaMate 五个�
 生产部署在 WSL 里以 systemd 用户服务常驻, 对外经 NAS `ssh -R` 反向隧道
 (`deploy/local/` 里是隧道 / 证书续期重载脚本)。
 
-## 🔐 鉴权
+## 鉴权
 
 - 所有页面与 API 需要登录 (cookie 会话, 默认 90 天); 各应用 scope 内
   自带登录页 (会话过期 302 不越出 scope, 全屏 App 不弹回浏览器)
@@ -85,7 +85,7 @@ TeslaMate 数据源与高德地图 Key (个人开发者免费; TeslaMate 五个�
 - 账号管理 `/accounts` 仅管理员; 邀请注册链接一次性、限时
 - 旧地址兼容: 账号体系还在 `/tesla` 下的老书签/邀请链接自动 302/307 搬家
 
-## ⚙️ 环境变量
+## 环境变量
 
 完整清单见 [.env.example](.env.example), 常用项:
 
@@ -99,7 +99,7 @@ TeslaMate 数据源与高德地图 Key (个人开发者免费; TeslaMate 五个�
 | `MYHOME_USERS_DB` / `MYHOME_SECRET_FILE` | `data/users.db` / `.session_secret` | 共享账号库与密钥 |
 | `MYTESLA_MUSIC_DB` / `MYTESLA_BOOKKEEPING_DB` / `MYTESLA_DB` | `data/*.db` | 三应用数据 / 自产库 |
 
-## 🧩 装载方式
+## 装载方式
 
 子仓的包名都叫 `app`, 与本仓自己的 `app` 并存: `app/main.py` 装载时给
 每个子仓造一个合成顶级前缀 (`mymusic` / `mymoney` / `mytesla`), import
@@ -108,7 +108,7 @@ TeslaMate 数据源与高德地图 Key (个人开发者免费; TeslaMate 五个�
 子仓配置全走环境变量 (库文件路径等), 装载前 `_env_defaults()` 把默认值
 指到本仓 `data/` —— 想改路径就在 `.env` 里设同名变量覆盖。
 
-## 🧪 测试与质量门禁
+## 测试与质量门禁
 
 ```sh
 ./run_tests.sh                                  # 全部 (含容器里的前端门禁)
@@ -124,7 +124,7 @@ stylelint / html-validate
 组合仓的测试只覆盖共享层与装配接线; 三个应用的深度测试在各自仓里
 (`apps/*/tests`, 各自的 CI 也各自跑)。前端门禁同理只管共享层页面。
 
-## 📁 结构
+## 结构
 
 ```
 app/main.py       组合装配: 合成包装载 + 四套引擎 + 路由/挂载
@@ -142,14 +142,14 @@ deploy/local/     WSL 部署脚本 (NAS 反向隧道 / 证书续期重载 / Tesl
 [kinopico-zhang/ddns](https://github.com/kinopico-zhang/ddns)
 (独立 timer 每 5 分钟报 IP, 不再挂本仓 deploy/)。
 
-## 🔄 子仓更新
+## 子仓更新
 
 ```sh
 git submodule update --remote apps/my-tesla   # 拉子仓最新 main
 git add apps/my-tesla && git commit           # 组合仓钉住新指针
 ```
 
-## 🔗 相关项目
+## 相关项目
 
 | 仓 | 说明 |
 |---|---|
@@ -158,6 +158,6 @@ git add apps/my-tesla && git commit           # 组合仓钉住新指针
 | [My Music](https://github.com/kinopico-zhang/my-music) | NAS 曲库听歌 (Service Worker 离线) |
 | [ddns](https://github.com/kinopico-zhang/ddns) | 家宽 DDNS (DuckDNS, timer 报 IP) |
 
-## 📄 许可证
+## 许可证
 
 [MIT](./LICENSE) © 2026 kinopico (三个子仓各自带同款 MIT)
