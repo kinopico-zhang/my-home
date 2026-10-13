@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=1">
 <link rel="manifest" href="/static/manifest.json">
   <title>初始化 · My Home</title>
-<link rel="stylesheet" href="/static/css/setup-page.css?v=8">
+<link rel="stylesheet" href="/static/css/setup-page.css?v=9">
 </head>
 <body data-done="/music">
 <script src="/static/no-zoom.js?v=2"></script>
@@ -128,16 +128,18 @@
     </div>
     <div class="err"></div>
   </form>
-  <!-- 第四页 (完成): 前三页一路「下一步」真存过来, 这里只确认收尾,
-       进应用不再自动跳 (2026-10-13 口径: 显式按钮) -->
+  <!-- 第四页 (完成): 前三页一路「下一步」真存过来, 进门先把所填汇总过
+       目一遍 (setup.js 现拉, 敏感信息只给掩码/****), 确认后「进入应用」
+       显式跳转, 不再自动跳 (2026-10-13 口径) -->
   <div class="done" id="done" hidden>
     <div class="done-icon">✅</div>
     <p>所有设置已完成</p>
+    <dl class="done-summary" id="done-summary" hidden></dl>
     <button type="button" class="btn" id="enter">进入应用</button>
   </div>
 </div>
 <script src="/tesla/static/js/tesla-map-adapter.js?v=14"></script>
-<script src="/static/setup.js?v=10"></script>
-<script src="/static/setup-gates.js?v=4"></script>
+<script src="/static/setup.js?v=11"></script>
+<script src="/static/setup-gates.js?v=5"></script>
 </body>
 </html>

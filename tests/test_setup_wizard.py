@@ -196,10 +196,10 @@ def test_setup_page_standards(  # pylint: disable=redefined-outer-name
 def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
         firstboot, client):
     """四页线性接线 (2026-10-13 用户口径: 只有上一步/下一步, 步骤条不可
-    点, 末页确认后显式进应用): 三张表单页 + 完成面板, 无跳过钮, 起步页数
-    跟着缺口走。数据源/地图两页的测试闸 (测通才解锁下一步, 测试钮要必填
-    项填全才亮) 在 setup-gates.js; 回上页改值不重置闸 —— 只有真改输入才
-    作废重测。"""
+    点, 末页把所填汇总过目后显式进应用): 三张表单页 + 完成面板, 无跳过
+    钮, 起步页数跟着缺口走。数据源/地图两页的测试闸 (测通才解锁下一步,
+    测试钮要必填项填全才亮) 在 setup-gates.js; 回上页改值不重置闸 —— 只有
+    真改输入才作废重测。"""
     html = client.get("/setup").text
     assert 'data-done="/music"' in html
     for fid in ("form1", "form2", "form3"):
@@ -229,12 +229,16 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
     assert 'id="back2"' in html and 'id="back3"' in html
     assert html.count(">上一步</button>") == 2
     assert html.count('<button class="btn" type="submit" disabled>') == 2
-    # 末页 (完成面板): 所有设置已完成 + 显式「进入应用」(自动跳转退役)
+    # 末页 (完成面板): 所有设置已完成 + 所填汇总过目 (敏感信息只给掩码/
+    # ****, setup.js 进门现拉) + 显式「进入应用」(自动跳转退役)
     assert '<button type="button" class="btn" id="enter">进入应用</button>' in html
     assert "所有设置已完成" in html
+    assert '<dl class="done-summary" id="done-summary" hidden></dl>' in html
     css = (STATIC_DIR / "css" / "setup-page.css").read_text(encoding="utf-8")
     assert "步骤条可点" not in css            # 跳步退役, 手型注释一并撤
     assert ".btn.ghost.solo { width: 100%; margin-top: 14px; }" in css
+    assert ".btn.testing::before" in css      # 测试中转圈动效 (不像假死)
+    assert ".done-summary { margin-top: 16px; text-align: left; }" in css
     # 两页的提示段 2026-10-10 撤 (用户点名「设置界面上的说明去掉」, 指导
     # 集中到 README) —— 数据源/地图页只留表单
     for gone in ("POSTGRES_PASSWORD", "docker-compose.yml", "高德开放平台",
@@ -247,11 +251,13 @@ def test_setup_page_wiring(  # pylint: disable=redefined-outer-name
 def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
         firstboot, client):
     """两份脚本的接线钉 (与 test_setup_page_wiring 拆开): setup.js 管页序/
-    线性导航/建号, setup-gates.js 管两页测试闸与上一步 —— 桩住真连端点的
-    行为验证另有 playwright 探针 (存好即测过: 成功分支也解锁, 回页不逼重测)。"""
-    js = client.get("/static/setup.js?v=10").text
+    线性导航/建号/完成页汇总, setup-gates.js 管两页测试闸与上一步 (含测
+    试钮状态机: 填全才亮, 测进行中灰着转圈, 飞行中改输入结果作废) —— 桩
+    住真连端点的行为验证另有 playwright 探针 (存好即测过: 成功分支也解
+    锁, 回页不逼重测)。"""
+    js = client.get("/static/setup.js?v=11").text
     assert '"/api/setup-admin"' in js
-    assert "web_key_masked" in js                # 预填时给现值掩码
+    assert "web_key_masked" in js                # 占位提示给现值掩码
     assert "tmPassSet" in js                     # 密码快拦状态 (没存过不许空着测)
     assert "amapKeySet" in js                    # 地图 Key 现值状态 (测试钮点亮用)
     # 线性版: 跳步接线退役, 自动跳转退役; 页1 闸 = 三框填全 (管理员已建则
@@ -266,7 +272,16 @@ def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
     assert 'data-done' in js and "dataset.done" in js
     assert ".skip" not in js and "setup-status" in js
     assert 'missing.includes("account")' in js
-    gates = client.get("/static/setup-gates.js?v=4").text
+    # 完成页汇总 (fillDoneSummary): 三页所填过目, 密码一律 ****, Key 走设
+    # 置端点半遮掩码 —— 完整值不外泄
+    assert "async function fillDoneSummary() {" in js
+    assert "if (index + 1 === forms.length) fillDoneSummary();" in js
+    assert '"/api/me"' in js and '"****"' in js
+    # 预填值退役 (2026-10-13): env/docker 现值每处部署都不一样, 框留白自
+    # 己填; 占位提示与「留空=保持」的标志照旧
+    assert 'fill("tm-host", t.host)' not in js
+    assert "key_masked ? `现值" in js
+    gates = client.get("/static/setup-gates.js?v=5").text
     assert '"/tesla/api/settings/test"' in gates     # 数据源候选实测端点
     assert '"/tesla/api/settings"' in gates          # 主按钮 = 保存 + 前进
     assert 'amap_web_key: v("amap-web")' in gates    # Web 服务 Key 随同提交
@@ -309,6 +324,18 @@ def test_setup_wizard_scripts(  # pylint: disable=redefined-outer-name
     assert "const refreshTestButtons = () => {" in gates
     assert "refreshTestButtons();   // 进门先按现状定" in gates
     assert 'if (typeof refreshTestButtons === "function") refreshTestButtons();' in js
+    # 测试钮状态机 (2026-10-13 二轮): 填全才亮 → 测进行中灰着转圈 (飞行
+    # 锁, 中途改输入也不许重新点亮) → 收尾恢复; 飞行中改输入 = 结果作废
+    assert ("let tmTesting = false;" in gates
+            and "let amapTesting = false;" in gates)
+    assert "if (t2) t2.disabled = tmTesting || !tmReady();" in gates
+    assert "if (t3) t3.disabled = amapTesting || !amapReady();" in gates
+    assert 'test.textContent = "测试中…";' in gates
+    assert ('classList.add("testing")' in gates
+            and 'classList.remove("testing")' in gates)
+    assert "tmEdits += 1;" in gates and "amapEdits += 1;" in gates
+    assert ("if (tmEdits !== mark) return;" in gates
+            and "if (amapEdits !== mark) return;" in gates)
 
 
 def test_login_js_probes_setup(client):

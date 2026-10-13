@@ -90,6 +90,16 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
   color: var(--ink-2); font-weight: 500;
 }
 .btn.ghost.solo { width: 100%; margin-top: 14px; }
+/* 测试进行中 (setup-gates.js 加 .testing): 转圈 + 「测试中…」, 灰着也
+   看得出在跑, 不像假死 (2026-10-13 口径) */
+.btn.testing { opacity: .7; }
+.btn.testing::before {
+  content: ""; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--ink-3); border-top-color: var(--ink-2);
+  display: inline-block; vertical-align: -2px; margin-right: 8px;
+  animation: testing-spin .8s linear infinite;
+}
+@keyframes testing-spin { to { transform: rotate(360deg); } }
 .err {
   font-size: 13px; color: #ff6961; margin-top: 12px; min-height: 18px;
 }
@@ -98,6 +108,15 @@ h1 { font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
 .done { padding: 20px 0 8px; }
 .done-icon { font-size: 40px; margin-bottom: 10px; }
 .done p { font-size: 14px; color: var(--ink-2); }
+/* 完成页汇总 (2026-10-13): 三页所填过目单 —— dt 左 dd 右, 长值可折行 */
+.done-summary { margin-top: 16px; text-align: left; }
+.ds-group + .ds-group {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline);
+}
+.ds-title { font-size: 12px; color: var(--ink-3); }
+.ds-row { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; }
+.ds-row dt { flex: none; font-size: 13px; color: var(--ink-2); }
+.ds-row dd { font-size: 13px; text-align: right; word-break: break-all; }
 .shake { animation: shake .35s; }
 @keyframes shake {
   20% { transform: translateX(-8px); } 40% { transform: translateX(7px); }

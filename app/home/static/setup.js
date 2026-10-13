@@ -1,12 +1,12 @@
 // setup.js — 首启引导: 四页全走完才能进应用, 线性前进不许跳 (2026-10-13
 // 用户口径): 只有「上一步/下一步」, 步骤条只展示进度不可点。第一页建管理
 // 员 (注册即登录, 后续接口都带会话); 第二/三页配 TeslaMate 与高德两把
-// Key (一步变体 My Money / My Music 建完即完成); 第四页完成面板确认收
-// 尾, 「进入应用」显式跳转。起步页数由 /api/setup-status 的 missing 决
-// 定 —— 中途退出的续走 (管理员已在, 从缺口页接着); 完成跳转读 body 的
-// data-done; 页面按 DOM 现状收集, 同一份脚本服务两种页面。第二/三页的
-// 「测试闸」(测通了下一步才解锁, 测试钮要填全才亮) 在 setup-gates.js,
-// 一步变体不加载那半边。
+// Key (一步变体 My Money / My Music 建完即完成); 第四页把三页所填汇成
+// 一张过目单 (敏感信息只给掩码/****), 看准了「进入应用」显式跳转。起步
+// 页数由 /api/setup-status 的 missing 决定 —— 中途退出的续走 (管理员已
+// (管理员已在, 从缺口页接着); 完成跳转读 body 的 data-done; 页面按 DOM
+// 现状收集, 同一份脚本服务两种页面。第二/三页的「测试闸」(测通了下一
+// 步才解锁, 测试钮要填全才亮) 在 setup-gates.js, 一步变体不加载那半边。
 /* exported pass, webKeySet, showStep, tmPassSet, amapKeySet */
 /* global refreshTestButtons */   // setup-gates 的; 预填完重算测试钮明暗
 "use strict";
@@ -51,9 +51,11 @@ const showStep = index => {
 const advance = index => {
   showStep(Math.min(index + 1, forms.length));
   if (index + 1 === 1) prefillSettings();
+  if (index + 1 === forms.length) fillDoneSummary();
 };
 
-// 第四页「进入应用」: 前三页一路真存过来, 这里只跳转 (读 data-done)
+// 第四页「进入应用」: 前三页一路真存过来, 汇总过目完 (fillDoneSummary),
+// 这里只跳转 (读 data-done)
 if (donePage) document.getElementById("enter").addEventListener("click", () => {
   location.replace(doneUrl);
 });
@@ -134,19 +136,15 @@ let tmPassSet = false;
 // 也算填全 —— 预填时更新 (与 webKeySet 同款)
 let amapKeySet = false;
 
-// 进入数据源步骤时拉现值: 输入框预填 (掩码/密码只给 placeholder, 留空=保持)
+// 进入数据源步骤时拉现值 —— 只为占位提示与「留空=保持」的标志, 不预
+// 填值 (2026-10-13 用户点名退役: 预填的地址来自 env / docker 定位, 每
+// 处部署都不一样, 看着像权威值其实是猜的 —— 框留白, 用户自己填)
 async function prefillSettings() {
   try {
     const r = await fetch("/tesla/api/settings", { cache: "no-store" });
     if (!r.ok) return;
     const d = await r.json();
     const t = d.tmdb || {};
-    const fill = (id, value) => {
-      const el = document.getElementById(id);
-      if (el) el.value = value || "";
-    };
-    fill("tm-host", t.host); fill("tm-port", t.port);
-    fill("tm-user", t.user); fill("tm-name", t.name);
     const tmPass = document.getElementById("tm-pass");
     if (tmPass) tmPass.placeholder = t.password_set ? "已设置, 留空保持" : "未设置";
     tmPassSet = !!t.password_set;   // setup-gates 快拦用 (没存过密码不许空着测)
@@ -162,6 +160,58 @@ async function prefillSettings() {
   } catch (_e) { /* 拉不到现值不挡流程, 空表单照填 */ }
   // 预填完按「填全没有」重算测试钮明暗 (拉挂了也算一遍: 空表单 → 保持灰)
   if (typeof refreshTestButtons === "function") refreshTestButtons();
+}
+
+// 进完成页时填汇总: 三页所填在此过目一遍再进应用 (2026-10-13 口径)。
+// 敏感信息不回显 —— 密码一律 ****, Key/安全码走设置端点的半遮掩码
+// (ab12****yz89, 识别够了完整值不外泄); 拉不到现值就整块不露脸, 完
+// 成面板只剩标题与按钮
+async function fillDoneSummary() {
+  const dl = document.getElementById("done-summary");
+  if (!dl) return;
+  const [me, st] = await Promise.all([
+    fetch("/api/me", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null),
+    fetch("/tesla/api/settings", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null),
+  ]).catch(() => [null, null]);
+  if (!st) return;
+  const group = title => {
+    const g = document.createElement("div");
+    g.className = "ds-group";
+    const head = document.createElement("div");
+    head.className = "ds-title";
+    head.textContent = title;
+    g.append(head);
+    dl.append(g);
+    return g;
+  };
+  const row = (parent, label, value) => {
+    const r = document.createElement("div");
+    r.className = "ds-row";
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    r.append(dt, dd);
+    parent.append(r);
+  };
+  dl.replaceChildren();
+  const t = st.tmdb || {};
+  const a = st.amap || {};
+  const admin = group("管理员");
+  row(admin, "账号", (me && me.name) || "—");
+  row(admin, "密码", "****");
+  const tm = group("数据源");
+  row(tm, "地址", (t.host || "—") + (t.port ? ":" + t.port : ""));
+  row(tm, "用户", t.user || "—");
+  row(tm, "密码", t.password_set ? "****" : "未设置");
+  row(tm, "库名", t.name || "—");
+  const map = group("地图");
+  row(map, "地图 Key", a.key_masked || "未设置");
+  row(map, "安全码", a.security_code_masked || "未设置");
+  row(map, "Web 服务 Key", a.web_key_masked || "未设置");
+  dl.hidden = false;
 }
 
 // 起步页数: 管理员没建 → 从头; 建过 (中途退出的续走) → 从第一个缺口页

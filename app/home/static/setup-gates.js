@@ -12,6 +12,10 @@
 //   2026-10-13 四页线性版: 各页「上一步」退回改值, 表单值原样留着 ——
 //   没动就仍是测过的口径 (闸开着), 动了输入才作废重测 (输入监听在下面);
 //   测过的状态跨页保留, 只有真改值才掉。
+//   测试钮状态机 (同日二轮用户口径): 必填项填全才亮 → 测进行中灰着转
+//   圈 (「测试中…」, 飞行锁 —— 中途改输入也不许重新点亮, 不像假死) →
+//   收尾按「填全与否」恢复; 飞行中改了输入, 这轮结果作废 —— 不许拿旧
+//   候选的结果解新输入的锁。
 //   401 (没会话) 统一去处: 续走的访客会话丢了, 测试/保存全 401 —— 不点
 //   破就只剩一句「HTTP 401」。管理员还没建 → 提示后送回第一页 (建号即
 //   登录); 已建过 (会话丢了) → 登录后回来续走。
@@ -52,11 +56,15 @@ const amapReady = () => {
   const v = id => document.getElementById(id).value.trim();
   return !!((v("amap-key") || amapKeySet) && (v("amap-web") || webKeySet));
 };
+// 测试进行中 (飞行锁): 测没跑完测试钮就灰着 —— 中途改输入触发的重算不
+// 许把钮重新点亮, 收尾才恢复 (2026-10-13 口径)
+let tmTesting = false;
+let amapTesting = false;
 const refreshTestButtons = () => {
   const t2 = document.getElementById("tm-test");
-  if (t2) t2.disabled = !tmReady();
+  if (t2) t2.disabled = tmTesting || !tmReady();
   const t3 = document.getElementById("amap-test");
-  if (t3) t3.disabled = !amapReady();
+  if (t3) t3.disabled = amapTesting || !amapReady();
 };
 refreshTestButtons();   // 进门先按现状定 (没填全 = 灰)
 
@@ -67,17 +75,25 @@ if (forms[1]) {
   const tmLock = () => { tmOk = false; next2.disabled = true; };
   // 「上一步」退回管理员页: 表单值原样留着, 没动就仍是测过的口径
   document.getElementById("back2").addEventListener("click", () => showStep(0));
-  // 输入一改: 下一步作废重测 + 测试钮按「填全没有」重定明暗
+  // 输入一改: 下一步作废重测 + 测试钮按「填全没有」重定明暗 + 记一笔
+  // (测试飞行中改的, 那轮结果作废)
+  let tmEdits = 0;
   for (const id of ["tm-host", "tm-port", "tm-user", "tm-pass", "tm-name"])
     document.getElementById(id).addEventListener("input", () => {
+      tmEdits += 1;
       tmLock();
       refreshTestButtons();
     });
 
   document.getElementById("tm-test").addEventListener("click", async () => {
     const test = document.getElementById("tm-test");
+    const label = test.textContent;       // 飞行中换「测试中…」转圈, 不像假死
+    tmTesting = true;                     // 飞行锁: 测进行中不许再点
+    test.classList.add("testing");
+    test.textContent = "测试中…";
     test.disabled = true;
     tmLock();                             // 重测从锁起跑
+    const mark = tmEdits;                 // 飞行中有新改动, 这轮结果作废
     try {
       const v = id => document.getElementById(id).value.trim();
       if (!v("tm-host")) { fail(forms[1], "请先填地址"); return; }
@@ -109,13 +125,17 @@ if (forms[1]) {
         fail(forms[1], "测试未通过: " + ((d && d.detail) || `HTTP ${r.status}`));
         return;
       }
+      if (tmEdits !== mark) return;       // 中途改过输入: 作废, 闸保持锁
       tmOk = true;
       next2.disabled = false;
       pass(forms[1], "连接正常");
     } catch (_e) {
       fail(forms[1], "测试失败: 网络错误, 请重试");
     } finally {
-      refreshTestButtons();   // 按填全与否收尾 (中途清空了 = 保持灰)
+      tmTesting = false;
+      test.classList.remove("testing");
+      test.textContent = label;
+      refreshTestButtons();   // 收尾恢复: 按填全与否 (中途清空了 = 保持灰)
     }
   });
 
@@ -155,17 +175,25 @@ if (forms[2]) {
   const amapLock = () => { amapOk = false; next3.disabled = true; };
   // 「上一步」退回数据源页改值: 改了要重测才能再往下 (没动闸保持开着)
   document.getElementById("back3").addEventListener("click", () => showStep(1));
-  // 输入一改: 下一步作废重测 + 测试钮按「填全没有」重定明暗
+  // 输入一改: 下一步作废重测 + 测试钮按「填全没有」重定明暗 + 记一笔
+  // (测试飞行中改的, 那轮结果作废)
+  let amapEdits = 0;
   for (const id of ["amap-key", "amap-code", "amap-web"])
     document.getElementById(id).addEventListener("input", () => {
+      amapEdits += 1;
       amapLock();
       refreshTestButtons();
     });
 
   document.getElementById("amap-test").addEventListener("click", async () => {
     const test = document.getElementById("amap-test");
+    const label = test.textContent;       // 飞行中换「测试中…」转圈, 不像假死
+    amapTesting = true;                   // 飞行锁: 测进行中不许再点
+    test.classList.add("testing");
+    test.textContent = "测试中…";
     test.disabled = true;
     amapLock();
+    const mark = amapEdits;               // 飞行中有新改动, 这轮结果作废
     try {
       const v = id => document.getElementById(id).value.trim();
       if (!v("amap-web") && !webKeySet) {
@@ -211,13 +239,17 @@ if (forms[2]) {
       }
       if (!key) { fail(forms[2], "地图 Key 还没填"); return; }
       const verdict = await mapLib.probeKey(key, code);
+      if (amapEdits !== mark) return;     // 中途改过输入: 作废, 闸保持锁
       amapOk = true;
       next3.disabled = false;
       pass(forms[2], "地图 Key " + verdict + ", Web 服务 Key " + d.detail);
     } catch (err) {
       fail(forms[2], "测试未通过: " + err.message);
     } finally {
-      refreshTestButtons();   // 按填全与否收尾 (中途清空了 = 保持灰)
+      amapTesting = false;
+      test.classList.remove("testing");
+      test.textContent = label;
+      refreshTestButtons();   // 收尾恢复: 按填全与否 (中途清空了 = 保持灰)
     }
   });
 
