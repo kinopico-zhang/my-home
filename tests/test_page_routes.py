@@ -130,11 +130,14 @@ def test_mymusic_topbar_is_own_app(auth):
     assert 'class="nav-menu brand-menu" id="brand-menu"' not in html  # 菜单撤了
     assert 'id="logout"' not in html and 'id="stats-link"' not in html
     assert "重新扫描曲库" not in html          # 职能进设置页 (JS 渲染)
-    # 重扫在设置页本体; 退出登录随 1.8.57 账号自助进设置页的账号子模块
-    # (music-settings-account.js), 不在设置页视图 js 里
+    # 设置页分页后职能各归子模块: 重扫随曲库页 (music-settings-library.js),
+    # 退出登录随 1.8.57 账号自助的账号子模块 (music-settings-account.js),
+    # 都不在设置页视图 js 里
     account_js = auth.get("/music/static/js/music-settings-account.js").text
-    assert 'id="set-rescan"' in js
+    library_js = auth.get("/music/static/js/music-settings-library.js").text
+    assert 'id="set-rescan"' in library_js
     assert 'id="set-logout"' in account_js
+    assert 'id="set-rescan"' not in js and 'id="set-logout"' not in js
     assert '<div id="dock">' in html                    # 底部船坞三件套
     assert 'id="dock-menu"' in html and 'id="dock-search"' in html
     assert 'data-pop-nav="settings"' in html            # 设置在上弹菜单里
