@@ -1,8 +1,8 @@
 """E2E 冒烟: 起真 uvicorn 子进程打真 HTTP —— CI 三平台矩阵跑的就是这套。
 
 不走 TestClient: 完整过一遍 组合装配启动 → lifespan 建库种管理员 → 登录
-→ 三个应用页面 / 账号管理页 / 静态资源, 与 ./run.sh 生产路径同构
-(uvicorn app.main:app)。四份数据库全部落在 pytest 临时目录, 不碰仓库
+→ 四个应用页面 / 账号管理页 / 静态资源, 与 ./run.sh 生产路径同构
+(uvicorn app.main:app)。五份数据库全部落在 pytest 临时目录, 不碰仓库
 data/ 里的真实库; TeslaMate 指到必拒连的本地口 (引擎懒连接 + 预热线程
 自兜底), e2e 不依赖真实数据源。
 """
@@ -19,7 +19,7 @@ import httpx
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-APP_PATHS = ("/tesla", "/music", "/bookkeeping")    # 组合仓: 三个应用全验
+APP_PATHS = ("/tesla", "/music", "/bookkeeping", "/monitor")   # 组合仓: 四应用全验
 E2E_USER = "admin"
 E2E_PASS = "e2e-smoke-pass"
 
@@ -47,6 +47,12 @@ def server(tmp_path_factory) -> Iterator[str]:
         "MYTESLA_BOOKKEEPING_DB": f"sqlite:///{(tmp / 'bookkeeping.db').as_posix()}",
         "MYTESLA_MUSIC_DB": f"sqlite:///{(tmp / 'music.db').as_posix()}",
         "MYTESLA_MUSIC_DIR": str(tmp / "musicdir"),
+        "MYMONITOR_DB": f"sqlite:///{(tmp / 'monitor.db').as_posix()}",
+        # 采集引擎隔离: e2e 是真子进程真 lifespan, 不能碰生产 9999 口
+        # 和真 adb (生产 MuMu 挂着) —— 端口随机 + adb 指空 + 快速失败
+        "MYMONITOR_TLV_PORT": "0",
+        "MYMONITOR_FRIDA_TIMEOUT_S": "0.5",
+        "MYMONITOR_ADB": "/nonexistent-adb",
         # TeslaMate 指到必拒连的本地口: 不探 docker, 永不碰真实库
         "TMDB_HOST": "127.0.0.1", "TMDB_PORT": "1",
         "TMDB_USER": "e2e", "TMDB_PASS": "e2e", "TMDB_NAME": "e2e",
@@ -93,7 +99,7 @@ def client(server) -> Iterator[httpx.Client]:  # pylint: disable=redefined-outer
 
 
 def test_app_pages_require_login(client):  # pylint: disable=redefined-outer-name
-    """未登录进三个应用页: 一律 302 到登录页 (不越出 scope)。"""
+    """未登录进四个应用页: 一律 302 到登录页 (不越出 scope)。"""
     for path in APP_PATHS:
         r = client.get(path, follow_redirects=False)
         assert r.status_code == 302, f"{path}: {r.text[:200]}"
@@ -114,10 +120,10 @@ def test_wrong_password_rejected(client):  # pylint: disable=redefined-outer-nam
 
 
 def test_login_session_and_all_apps(client):  # pylint: disable=redefined-outer-name
-    """登录一次 cookie 全站通行: 三个应用页 + /api/me。
+    """登录一次 cookie 全站通行: 四个应用页 + /api/me。
 
     引导没走完 (还差高德 Key) 时 Tesla 应用页被应用门拦回 /setup ——
-    另两个应用不依赖数据源照常可用; 补上 Key (引导最后一步) 后全放行。"""
+    另三个应用不依赖数据源照常可用; 补上 Key (引导最后一步) 后全放行。"""
     r = client.post("/api/login", json={"user": E2E_USER, "password": E2E_PASS})
     assert r.status_code == 200, r.text[:200]
     gate = client.get("/tesla", follow_redirects=False)

@@ -14,16 +14,16 @@ _PUBLIC_PATHS = frozenset((
     "/login", "/register",
     # 各应用 scope 内的登录页 (2026-09-14 起 scope 收窄, 登录页跟进去,
     # 会话过期 302 不越出 scope, 全屏 App 不弹回 Safari 露地址栏)
-    "/tesla/login", "/music/login", "/bookkeeping/login",
+    "/tesla/login", "/music/login", "/bookkeeping/login", "/monitor/login",
     # SW 脚本: 更新检查不带 cookie, 必须 200 (无数据, 放行无妨)
-    "/music/sw.js",
+    "/music/sw.js", "/monitor/sw.js",
     "/api/login", "/api/logout",
     "/api/register", "/api/invite-status",
     # 首启引导: 真开口的判据 (无管理员) 在页面/接口内部自验, 中间件不碰库
     "/setup", "/api/setup-status", "/api/setup-admin",
-    "/bookkeeping/api/logout", "/music/api/logout"))
+    "/bookkeeping/api/logout", "/music/api/logout", "/monitor/api/logout"))
 _STATIC_PREFIXES = ("/static/", "/tesla/static/", "/bookkeeping/static/",
-                    "/music/static/")
+                    "/music/static/", "/monitor/static/")
 # 分享链接面 (My Music): uuid 即凭证, 页面/数据/流/封面全免登录,
 # 24 小时过期由各路由自己验 (中间件只管放行前缀)
 _PUBLIC_PREFIXES = ("/music/share/",)
@@ -58,6 +58,7 @@ _APP_LOGIN_ROOTS = {
     "/tesla/login": "/tesla",     # 3.0 单壳: 应用根就是页面 (旧 /tesla/charging 302 回这)
     "/music/login": "/music",
     "/bookkeeping/login": "/bookkeeping",
+    "/monitor/login": "/monitor",
 }
 
 
@@ -69,7 +70,8 @@ def _login_redirect(path: str, query: str) -> str:
     target = "/login"
     for prefix, login_path in (("/tesla", "/tesla/login"),
                                ("/music", "/music/login"),
-                               ("/bookkeeping", "/bookkeeping/login")):
+                               ("/bookkeeping", "/bookkeeping/login"),
+                               ("/monitor", "/monitor/login")):
         if path == prefix or path.startswith(prefix + "/"):
             target = login_path
             break
@@ -80,11 +82,12 @@ def _login_redirect(path: str, query: str) -> str:
 
 
 def _is_protected(path: str) -> bool:
-    """保护面: 三个应用 + 账号管理页 + 账号接口 (me / 自助改)。
+    """保护面: 四个应用 + 账号管理页 + 账号接口 (me / 自助改)。
 
     根路径 / 不在其中 —— 门厅已撤, 它是无条件 302 进 /music (见 pages.py),
     未登录会在应用 scope 里被再拦一次。"""
-    if path.startswith(("/tesla", "/bookkeeping", "/music", "/accounts")):
+    if path.startswith(("/tesla", "/bookkeeping", "/music", "/monitor",
+                        "/accounts")):
         return True
     return path == "/api/me" or path.startswith("/api/account/")
 

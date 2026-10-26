@@ -1,15 +1,15 @@
-"""My Home 组合仓装配: 共享账号层 + 三个子仓应用 (submodule)。
+"""My Home 组合仓装配: 共享账号层 + 四个子仓应用 (submodule)。
 
-三个应用 (My Tesla / My Money / My Music) 各自独立成仓挂在 apps/ 下
-(git submodule), 本仓只保留共享层 (登录/注册/账号管理 + 会话中间件)。
+四个应用 (My Tesla / My Money / My Music / My Monitor) 各自独立成仓挂在
+apps/ 下 (git submodule), 本仓只保留共享层 (登录/注册/账号管理 + 会话中间件)。
 子仓的包名都叫 app —— 与本仓自己的 app 并存: 装载时给每个子仓造一个
-合成顶级前缀 (mymusic / mymoney / mytesla), import 系统顺着前缀找到
-apps/<仓>/app, 仓内的相对导入 (from ... import x) 就都在仓内自洽,
+合成顶级前缀 (mymusic / mymoney / mytesla / mymonitor), import 系统顺着前缀
+找到 apps/<仓>/app, 仓内的相对导入 (from ... import x) 就都在仓内自洽,
 不与本仓的 app 串。
 
 数据布局: 子仓的配置全走环境变量 (MYTESLA_MUSIC_DB / MYTESLA_BOOKKEEPING_DB /
-MYTESLA_DB / MYHOME_USERS_DB / MYHOME_SECRET_FILE…), 装载前由 _env_defaults
-把默认值指到本仓 data/ 下 —— 四份库文件、一枚会话密钥, 单点登录。
+MYTESLA_DB / MYMONITOR_DB / MYHOME_USERS_DB / MYHOME_SECRET_FILE…), 装载前由
+_env_defaults 把默认值指到本仓 data/ 下 —— 五份库文件、一枚会话密钥, 单点登录。
 """
 import importlib.machinery
 import importlib.util
@@ -48,6 +48,7 @@ def _env_defaults() -> None:
         "MYTESLA_MUSIC_DB": f"sqlite:///{data / 'music.db'}",
         "MYTESLA_BOOKKEEPING_DB": f"sqlite:///{data / 'bookkeeping.db'}",
         "MYTESLA_DB": f"sqlite:///{data / 'mytesla.db'}",
+        "MYMONITOR_DB": f"sqlite:///{data / 'monitor.db'}",
         "MAP_CACHE_FILE": str(data / "tracks_cache.json"),
         # 速度直方图缓存 (2026-10-09 起共享配方会预热它, 默认也收进本仓 data/)
         "SPEED_HIST_CACHE_FILE": str(data / "speed_hist_cache.json"),
@@ -69,9 +70,10 @@ def _load_repo(prefix: str, repo_dir: str) -> types.ModuleType:
 
 
 _env_defaults()
-_load_repo("mymusic", "my-music")   # 三仓互不依赖, 装载顺序无所谓
+_load_repo("mymusic", "my-music")   # 四仓互不依赖, 装载顺序无所谓
 _load_repo("mymoney", "my-money")
 _load_repo("mytesla", "my-tesla")
+_load_repo("mymonitor", "my-monitor")
 
 # 子仓内部模块 (装载后才能引用; 相对导入在各自仓内解析)
 music_service = importlib.import_module("mymusic.app.music.service")
@@ -93,6 +95,10 @@ tesla_live = importlib.import_module("mytesla.app.tesla.routers.live")
 tesla_settings = importlib.import_module("mytesla.app.tesla.routers.settings")
 tesla_tasks = importlib.import_module("mytesla.app.tesla.routers.tasks")
 tesla_changelog = importlib.import_module("mytesla.app.tesla.routers.changelog")
+monitor_database = importlib.import_module("mymonitor.app.monitor.database")
+monitor_service = importlib.import_module("mymonitor.app.monitor.service")
+monitor_webapp = importlib.import_module("mymonitor.app.monitor.webapp")
+monitor_users_database = importlib.import_module("mymonitor.app.database")
 
 
 @asynccontextmanager
@@ -109,6 +115,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # 同一个 users.db —— 会话/账号还是一套, 不分层
     music_database.init_users_engine(config.USERS_DB_URL)
     money_database.init_users_engine(config.USERS_DB_URL)
+    monitor_users_database.init_users_engine(config.USERS_DB_URL)
     if config.AUTH_PASS:
         with database.users_session_factory()() as users:  # pylint: disable=not-callable
             account_store.ensure_admin(users, config.AUTH_USER, config.AUTH_PASS)
@@ -122,6 +129,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     bookkeeping_store.seed_default_categories()
     # My Music: 曲库索引装配 (扫描全手动, 1.8.83)
     music_service.start_service()
+    # My Monitor: 自有库建表 (设置/录像索引); 采集引擎 M2 起在 start_service
+    # 里启动 (向导配齐 + recording_enabled 才真正开录)
+    monitor_database.init_engine()
+    monitor_service.start_service()
     # My Tesla: 自有库建表 + 补列 (配方单一来源: my-tesla 子仓的 database 包,
     # 组合部署 / 单仓部署共用同一个 data/mytesla.db), 再读设置定 TeslaMate 连接
     tesla_database.init_own_engine()
@@ -134,11 +145,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # 数据源可用即起, 真首启未配则等向导第二步存好真地址再开
     tesla_background.launch_when_configured()
     yield
+    monitor_service.stop_service()
+    monitor_database.dispose_engine()
     tesla_database.dispose_engine()
     tesla_database.dispose_own_engine()
     database.dispose_users_engine()
     music_database.dispose_users_engine()
     money_database.dispose_users_engine()
+    monitor_users_database.dispose_users_engine()
     bookkeeping_store.dispose_engine()
     music_service.stop_service()
 
@@ -170,7 +184,9 @@ app.include_router(tesla_tasks.tasksapi)
 app.include_router(tesla_changelog.changelogapi)
 app.mount("/static", VersionedStaticFiles(directory=HOME_STATIC_DIR), name="home-static")
 app.mount("/tesla/static", StaticFiles(directory=tesla_config.STATIC_DIR), name="static")
-# My Money / My Music: 独立应用, 只共享账号体系 (会话 cookie + 账号库)
+# My Money / My Music / My Monitor: 独立应用, 只共享账号体系 (会话 cookie + 账号库)
 app.include_router(bookkeeping_webapp.bare_root)  # 裸地址 /bookkeeping 直出 (灭 307 一跳, 2026-10-03)
 app.mount("/bookkeeping", bookkeeping_webapp.bk_app)
 app.mount("/music", music_webapp.music_app)
+app.include_router(monitor_webapp.bare_root)      # 裸地址 /monitor 直出 (同 bookkeeping 口径)
+app.mount("/monitor", monitor_webapp.monitor_app)

@@ -1,5 +1,5 @@
-"""组合装配测试: 合成包装载, 环境默认值归一, 三应用挂载 + 全站同鉴权。
-三个子仓各自的业务测试在 apps/*/tests 里, 这里只管"拼起来"这一层。"""
+"""组合装配测试: 合成包装载, 环境默认值归一, 四应用挂载 + 全站同鉴权。
+四个子仓各自的业务测试在 apps/*/tests 里, 这里只管"拼起来"这一层。"""
 import os
 import sys
 from pathlib import Path
@@ -8,11 +8,12 @@ import app.main as m
 
 
 def test_synthetic_packages_loaded():
-    """三个子仓以合成顶级前缀装载: 各自的 app 包独立存在, 与本仓 app 不串名
-    (三仓的包名都叫 app, 靠前缀区分)。"""
+    """四个子仓以合成顶级前缀装载: 各自的 app 包独立存在, 与本仓 app 不串名
+    (四仓的包名都叫 app, 靠前缀区分)。"""
     import app  # pylint: disable=import-outside-toplevel
     for prefix, repo in (("mymusic", "my-music"), ("mymoney", "my-money"),
-                         ("mytesla", "my-tesla")):
+                         ("mytesla", "my-tesla"),
+                         ("mymonitor", "my-monitor")):
         mod = sys.modules[f"{prefix}.app"]
         assert mod.__file__ is not None, prefix   # mypy 收窄: 合成包有真实文件
         pkg_dir = Path(mod.__file__).resolve().parent
@@ -23,10 +24,11 @@ def test_synthetic_packages_loaded():
     assert m.music_webapp is sys.modules["mymusic.app.music.webapp"]
     assert m.bookkeeping_webapp is sys.modules["mymoney.app.bookkeeping.webapp"]
     assert m.tesla_charging is sys.modules["mytesla.app.tesla.routers.charging"]
+    assert m.monitor_webapp is sys.modules["mymonitor.app.monitor.webapp"]
 
 
 def test_env_defaults_point_at_home_data(monkeypatch):
-    """子仓库文件的默认值指到本仓 data/ —— 拆仓后四份库 + 会话密钥仍归
+    """子仓库文件的默认值指到本仓 data/ —— 拆仓后五份库 + 会话密钥仍归
     一处 (单点登录, 生产数据不散落到子仓目录); env 已设的用户值优先。"""
     data = m.ROOT / "data"
     expected = {
@@ -35,6 +37,7 @@ def test_env_defaults_point_at_home_data(monkeypatch):
         "MYTESLA_MUSIC_DB": f"sqlite:///{data / 'music.db'}",
         "MYTESLA_BOOKKEEPING_DB": f"sqlite:///{data / 'bookkeeping.db'}",
         "MYTESLA_DB": f"sqlite:///{data / 'mytesla.db'}",
+        "MYMONITOR_DB": f"sqlite:///{data / 'monitor.db'}",
         "MAP_CACHE_FILE": str(data / "tracks_cache.json"),
     }
     for key in expected:
@@ -48,19 +51,20 @@ def test_env_defaults_point_at_home_data(monkeypatch):
     assert os.environ["MYTESLA_DB"] == "sqlite:///custom.db"
 
 
-def test_three_apps_mounted_and_gated(client, auth):
-    """三应用都挂在组合应用下: 未登录按各自 scope 拦截, 登录后同一枚
-    cookie (根 /api/login 签发) 三个应用全通行 —— 账号体系是共享的。"""
+def test_four_apps_mounted_and_gated(client, auth):
+    """四应用都挂在组合应用下: 未登录按各自 scope 拦截, 登录后同一枚
+    cookie (根 /api/login 签发) 四个应用全通行 —— 账号体系是共享的。"""
     # auth 夹具登的是 client 这同一个实例 (夹具按名共享), 匿名视角要新建
     from fastapi.testclient import TestClient  # pylint: disable=import-outside-toplevel
     anon = TestClient(m.app)
-    for path in ("/tesla", "/bookkeeping", "/music"):
+    for path in ("/tesla", "/bookkeeping", "/music", "/monitor"):
         r = anon.get(path, follow_redirects=False)
         assert r.status_code == 302, path
         assert "/login?next=" in r.headers["location"], path
     for path, marker in (("/tesla", "My Tesla"),
                          ("/bookkeeping", "My Money"),
-                         ("/music", "My Music")):
+                         ("/music", "My Music"),
+                         ("/monitor", "My Monitor")):
         r = auth.get(path)
         assert r.status_code == 200, path
         assert marker in r.text, path
@@ -68,6 +72,8 @@ def test_three_apps_mounted_and_gated(client, auth):
     # webapp 的 bare_root 路由由本仓 include, 直出页面 — 这里钉装配线真接上了
     r = auth.get("/bookkeeping", follow_redirects=False)
     assert r.status_code == 200 and "My Money" in r.text
+    r = auth.get("/monitor", follow_redirects=False)
+    assert r.status_code == 200 and "My Monitor" in r.text
     # 主页 HTML 带 ?v= 的走一年 immutable (1.7.3 秒开批): 子仓 _page 认
     # 版本号, 本仓中间件对页面响应不设缓存头 —— 组合层不得把它盖掉
     v = auth.get("/bookkeeping/?v=1")
@@ -77,10 +83,11 @@ def test_three_apps_mounted_and_gated(client, auth):
     # 被长缓存钉一年), 子页的样式/脚本全随主页 immutable 一起装
     r = auth.get("/bookkeeping/settings", follow_redirects=False)
     assert r.status_code == 307 and r.headers["location"] == "/bookkeeping/"
-    # 静态各归各: 共享层小件挂根 /static, 三应用自己的静态在各自 scope
+    # 静态各归各: 共享层小件挂根 /static, 四应用自己的静态在各自 scope
     for asset in ("/static/menu-user.js", "/tesla/static/js/gcj02.js",
                   "/bookkeeping/static/bookkeeping-state.js",
-                  "/music/static/js/music-settings-view.js"):
+                  "/music/static/js/music-settings-view.js",
+                  "/monitor/static/js/monitor.js"):
         assert auth.get(asset).status_code == 200, asset
 
 
@@ -90,13 +97,19 @@ def test_app_engines_wired(auth):
     assert auth.get("/music/api/albums").status_code == 200
     assert auth.get("/tesla/map/api/summary").status_code == 200
     assert auth.get("/bookkeeping/changelog/api/entries").status_code == 200
+    # monitor: 状态接口打到注入的 monitor.db (未配置口径)
+    d = auth.get("/monitor/api/status").json()
+    assert d["configured"] is False
+    assert d["missing"] == ["rola", "record_path"]
 
 
 def test_submodules_registered():
-    """三个 submodule 都登记在 .gitmodules (clone --recursive 才能起)。"""
+    """四个 submodule 都登记在 .gitmodules (clone --recursive 才能起)。"""
     gitmodules = (m.ROOT / ".gitmodules").read_text(encoding="utf-8")
     for name, url in (("my-music", "git@github.com:kinopico-zhang/my-music.git"),
                       ("my-money", "git@github.com:kinopico-zhang/my-money.git"),
-                      ("my-tesla", "git@github.com:kinopico-zhang/my-tesla.git")):
+                      ("my-tesla", "git@github.com:kinopico-zhang/my-tesla.git"),
+                      ("my-monitor",
+                       "git@github.com:kinopico-zhang/my-monitor.git")):
         assert f"apps/{name}" in gitmodules, name
         assert url in gitmodules, name

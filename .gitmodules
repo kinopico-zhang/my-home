@@ -7,3 +7,6 @@
 [submodule "apps/my-tesla"]
 	path = apps/my-tesla
 	url = git@github.com:kinopico-zhang/my-tesla.git
+[submodule "apps/my-monitor"]
+	path = apps/my-monitor
+	url = git@github.com:kinopico-zhang/my-monitor.git

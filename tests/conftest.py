@@ -1,11 +1,12 @@
 """pytest 共享 fixtures: SQLite 测试库 (免真实数据库) + 全局状态隔离。
 
-组合仓口径: 共享账号库 (本仓) + 三个子仓的库 (曲库 / 记账库 / TeslaMate
-镜像 + 自有库), 引擎由 isolate 注入 —— TestClient 不触发 lifespan, 不会
-碰真实库。各应用的深度测试在它们自己的仓里 (apps/*/tests), 这里只管
-组合装配那一层的接线与回归。
+组合仓口径: 共享账号库 (本仓) + 四个子仓的库 (曲库 / 记账库 / TeslaMate
+镜像 + 自有库 / monitor 库), 引擎由 isolate 注入 —— TestClient 不触发
+lifespan, 不会碰真实库。各应用的深度测试在它们自己的仓里 (apps/*/tests),
+这里只管组合装配那一层的接线与回归。
 """
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +15,13 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+# 采集引擎隔离 (M2): 必须先于 app 导入 —— mymonitor 的 config 在 import
+# 时读 env。跑根仓测试的机器就是生产机 (MuMu/adb/9999 口都活着):
+# TLV 端口随机 (不占生产 9999), frida 探测指向不存在的 adb + 快速失败
+os.environ.setdefault("MYMONITOR_TLV_PORT", "0")
+os.environ.setdefault("MYMONITOR_FRIDA_TIMEOUT_S", "0.5")
+os.environ.setdefault("MYMONITOR_ADB", "/nonexistent-adb")
 
 # sys.path 注入必须先于 app 导入 (import 位置告警属预期, 按需豁免)
 from app import account_store, authentication, config, database  # pylint: disable=wrong-import-position
@@ -30,6 +38,11 @@ money_authentication = sys.modules["mymoney.app.authentication"]
 tesla_database = sys.modules["mytesla.app.database"]
 tesla_models = sys.modules["mytesla.app.tesla.models"]
 tesla_tracks_cache = sys.modules["mytesla.app.tesla.tracks_cache"]
+monitor_database = sys.modules["mymonitor.app.monitor.database"]
+monitor_service = sys.modules["mymonitor.app.monitor.service"]
+monitor_authentication = sys.modules["mymonitor.app.authentication"]
+monitor_config = sys.modules["mymonitor.app.config"]
+monitor_users_database = sys.modules["mymonitor.app.database"]
 
 # 测试口径的账密 (isolate 里种进账号库, auth 夹具按它登录;
 # 生产首启种管理员读 .env 的 AUTH_PASS, 测试不依赖环境)
@@ -54,6 +67,7 @@ def isolate(tmp_path, monkeypatch):
     UsersBase.metadata.create_all(database.users_engine())
     music_database.init_users_engine(f"sqlite:///{tmp_path / 'users.db'}")
     money_database.init_users_engine(f"sqlite:///{tmp_path / 'users.db'}")
+    monitor_users_database.init_users_engine(f"sqlite:///{tmp_path / 'users.db'}")
     # 记账库 (my-money 子仓): 表 + 旧库补列 + 类别树
     bookkeeping_store.init_engine(f"sqlite:///{tmp_path / 'bookkeeping.db'}")
     bookkeeping_store.create_all()
@@ -62,6 +76,10 @@ def isolate(tmp_path, monkeypatch):
     music_service.start_service(f"sqlite:///{tmp_path / 'music.db'}",
                                 tmp_path / "music-library",
                                 scan_immediately=False)
+    # monitor 库 (my-monitor 子仓): 设置/录像索引 (start_service 只建表,
+    # 采集引擎 M2 起才有)
+    monitor_database.init_engine(f"sqlite:///{tmp_path / 'monitor.db'}")
+    monitor_service.start_service()
     # TeslaMate 镜像库 + 自有库 (my-tesla 子仓)
     tesla_database.init_engine(f"sqlite:///{tmp_path / 'test.db'}")
     tesla_models.Base.metadata.create_all(tesla_database.engine())
@@ -84,9 +102,12 @@ def isolate(tmp_path, monkeypatch):
     secret_file = tmp_path / "secret"
     secret_file.write_bytes(secret)
     monkeypatch.setattr(config, "SECRET_FILE", secret_file)
+    # monitor 子仓的凭据加密密钥同源 (crypto 运行时读子仓 config 上的路径)
+    monkeypatch.setattr(monitor_config, "SECRET_FILE", secret_file)
     # 测试直接替换内部密钥持有者 (与生产同构, 走真实签名路径) —— 本仓的
     # 和两个挂载应用自带的副本都要换 (子仓路由用它们自己的那份验 cookie)
-    for auth_mod in (authentication, music_authentication, money_authentication):
+    for auth_mod in (authentication, music_authentication, money_authentication,
+                     monitor_authentication):
         monkeypatch.setattr(auth_mod, "_secret",  # pylint: disable=protected-access
                             auth_mod._SecretHolder(  # pylint: disable=protected-access
                                 hashlib.sha256(secret).digest()))
@@ -99,11 +120,14 @@ def isolate(tmp_path, monkeypatch):
     # TeslaMate 地址固定走环境变量短路: build_db_url 永不落到 docker inspect
     monkeypatch.setenv("TMDB_HOST", "127.0.0.1")
     yield
+    monitor_service.stop_service()
+    monitor_database.dispose_engine()
     tesla_database.dispose_engine()
     tesla_database.dispose_own_engine()
     database.dispose_users_engine()
     music_database.dispose_users_engine()
     money_database.dispose_users_engine()
+    monitor_users_database.dispose_users_engine()
     bookkeeping_store.dispose_engine()
     music_service.stop_service()
 

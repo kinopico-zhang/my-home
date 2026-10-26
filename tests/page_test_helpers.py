@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import app.main as m
 
 ALL_PAGES = ["/login", "/register", "/tesla", "/accounts",
-             "/bookkeeping", "/music"]
+             "/bookkeeping", "/music", "/monitor"]
 
 # 公开页: 已登录的访客会被 302 进默认应用, 断言要用匿名视角取
 PUBLIC_PAGES = ("/login", "/register")

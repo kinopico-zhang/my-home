@@ -7,3 +7,5 @@ mutagen
 zhconv
 pypinyin
 httpx
+pycryptodome
+frida

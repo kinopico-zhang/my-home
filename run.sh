@@ -28,12 +28,14 @@ fi
 
 # 有证书: HTTPS (主入口) + HTTP (局域网明文) 双开。会话 cookie 是无状态
 # HMAC 签名, 两个进程通用 (登录一次两边都认); systemd 停服务时整个组一起收。
+# 采集引擎只在主进程跑: 副本进程两边都跑 collector 会抢 9999 口, 两边都挂
+# frida 会双 attach 同一 App (流交错成废段) —— MYMONITOR_CAPTURE=0 见子仓 config
 HTTP_PORT="${HTTP_PORT:-8501}"
 $PY -m uvicorn app.main:app --host "$HOST" --port "$PORT" \
   --timeout-keep-alive 75 \
   --ssl-keyfile data/certs/privkey.pem --ssl-certfile data/certs/fullchain.pem &
 TLS_PID=$!
-$PY -m uvicorn app.main:app --host "$HOST" --port "$HTTP_PORT" \
+MYMONITOR_CAPTURE=0 $PY -m uvicorn app.main:app --host "$HOST" --port "$HTTP_PORT" \
   --timeout-keep-alive 75 &
 PLAIN_PID=$!
 trap 'kill $TLS_PID $PLAIN_PID 2>/dev/null' TERM INT

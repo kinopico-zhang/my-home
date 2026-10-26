@@ -15,7 +15,7 @@ function appRoot() {
 }
 
 const APP_TITLES = { "/tesla": "My Tesla", "/music": "My Music",
-                     "/bookkeeping": "My Money" };
+                     "/bookkeeping": "My Money", "/monitor": "My Monitor" };
 
 // 应用内的登录页换上应用自己的名字 (标题/卡片), 门厅的保持 My Home
 (function applyAppName() {

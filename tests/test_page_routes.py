@@ -94,7 +94,7 @@ def test_login_page_redirects_authed_visitor(auth, client):
 
 
 def test_accounts_page_is_home_layer(auth):
-    """账号管理页属共享层: 品牌菜单是 My Home (三应用 + 账号管理,
+    """账号管理页属共享层: 品牌菜单是 My Home (四应用 + 账号管理,
     当前项高亮), 退出收在菜单里, 刷新按钮最右。"""
     html = auth.get("/accounts").text
     assert 'class="nav-menu brand-menu" id="brand-menu"' in html
@@ -102,6 +102,7 @@ def test_accounts_page_is_home_layer(auth):
     assert '<a href="/music">My Music</a>' in html
     assert '<a href="/tesla">My Tesla</a>' in html
     assert '<a href="/bookkeeping">My Money</a>' in html
+    assert '<a href="/monitor">My Monitor</a>' in html
     assert '<a class="on" href="/accounts">账号管理</a>' in html
     assert 'class="logout-row" id="logout"' in html
 
@@ -130,14 +131,12 @@ def test_mymusic_topbar_is_own_app(auth):
     assert 'class="nav-menu brand-menu" id="brand-menu"' not in html  # 菜单撤了
     assert 'id="logout"' not in html and 'id="stats-link"' not in html
     assert "重新扫描曲库" not in html          # 职能进设置页 (JS 渲染)
-    # 设置页分页后职能各归子模块: 重扫随曲库页 (music-settings-library.js),
-    # 退出登录随 1.8.57 账号自助的账号子模块 (music-settings-account.js),
-    # 都不在设置页视图 js 里
+    # 1.8.141 设置页重整: 曲库子模块并回设置页视图 (重扫随
+    # music-settings-view.js), 退出登录仍在 1.8.57 账号自助的账号子模块
     account_js = auth.get("/music/static/js/music-settings-account.js").text
-    library_js = auth.get("/music/static/js/music-settings-library.js").text
-    assert 'id="set-rescan"' in library_js
+    assert 'id="set-rescan"' in js
     assert 'id="set-logout"' in account_js
-    assert 'id="set-rescan"' not in js and 'id="set-logout"' not in js
+    assert 'id="set-logout"' not in js
     assert '<div id="dock">' in html                    # 底部船坞三件套
     assert 'id="dock-menu"' in html and 'id="dock-search"' in html
     assert 'data-pop-nav="settings"' in html            # 设置在上弹菜单里
@@ -146,6 +145,16 @@ def test_mymusic_topbar_is_own_app(auth):
     assert 'id="refresh-btn"' not in html
     assert "/tesla/" not in html          # 独立应用: 图标/脚本/链接全自己的
     assert 'href="/music/static/manifest.json"' in html
+
+
+def test_mymonitor_page_is_own_app(auth):
+    """监控应用是独立应用: 自己的顶栏 (标题 + 设置键, 无品牌下拉), 不出现
+    任何 tesla 链接/脚本, manifest 指自己的 scope。"""
+    html = _page_with_css(auth, "/monitor")
+    assert 'class="nav-menu brand-menu" id="brand-menu"' not in html
+    assert 'id="btn-settings"' in html           # 顶栏设置键
+    assert "/tesla/" not in html          # 独立应用: 图标/脚本/链接全自己的
+    assert 'href="/monitor/static/manifest.json"' in html
 
 
 def test_accounts_not_in_app_pages(auth):

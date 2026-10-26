@@ -127,15 +127,38 @@ def test_mymusic_app_has_own_icons(auth):
     assert icons["icon-512.png"] != tesla, "两个应用不该共用图标"
 
 
+def test_mymonitor_app_has_own_icons(auth):
+    """My Monitor 是独立应用: 自己的图标 (黑底荧光绿摄像头, 不透明全出血
+    方形 —— iOS 自己圆角, 透明底会被合成纯黑), 不借任何兄弟应用的图标。"""
+    icons = _fetch_icons(auth, "/monitor/static")
+    rows = _unfilter_png(zlib.decompress(_png_idat(icons["apple-touch-icon.png"])),
+                         180, 3)
+    icon_w = icon_h = 180
+    def px(x, y):
+        return tuple(rows[y][x*3:x*3+3])
+    # 四角纯黑 (#000) 满出血; 中心区有绿色摄像头笔画 (#30D158)
+    for x, y in [(1, 1), (icon_w-2, 1), (1, icon_h-2), (icon_w-2, icon_h-2)]:
+        assert px(x, y) == (0, 0, 0), f"角({x},{y}) {px(x, y)}"
+    greens = sum(1 for yy in range(30, icon_h-30, 3)
+                 for xx in range(30, icon_w-30, 3)
+                 if px(xx, yy)[1] > 190 and px(xx, yy)[0] < 120)
+    assert greens > 40, f"绿色摄像头笔画太少: {greens}"
+    for other in ("/tesla/static", "/bookkeeping/static", "/music/static",
+                  "/static"):
+        assert icons["icon-512.png"] != auth.get(f"{other}/icon-512.png").content, \
+            f"与 {other} 不该共用图标"
+
+
 def test_myhome_app_has_own_icons(auth):
-    """共享层也有自己的图标 (黑底白房子, 不透明全出血方形), 与三个应用
-    互不共用 —— 四个主屏图标一眼可分。"""
+    """共享层也有自己的图标 (黑底白房子, 不透明全出血方形), 与四个应用
+    互不共用 —— 五个主屏图标一眼可分。"""
     icons = _fetch_icons(auth, "/static")
     mine = icons["icon-512.png"]
     assert mine != auth.get("/tesla/static/icon-512.png").content
     assert mine != auth.get("/bookkeeping/static/icon-512.png").content
-    assert mine != auth.get("/music/static/icon-512.png").content, \
-        "四个入口不该共用图标"
+    assert mine != auth.get("/music/static/icon-512.png").content
+    assert mine != auth.get("/monitor/static/icon-512.png").content, \
+        "五个入口不该共用图标"
 
 
 def test_all_pages_declare_png_and_touch_icons(auth):

@@ -27,9 +27,10 @@ def test_all_pages_have_standalone_meta(auth):
         assert ('name="apple-mobile-web-app-status-bar-style"'
                 ' content="default"' in html
                 or 'content="black-translucent"' in html), path
-        # manifest 各用各的: 门厅层一份, Tesla / 记账 / 音乐各一份
+        # manifest 各用各的: 门厅层一份, Tesla / 记账 / 音乐 / 监控各一份
         manifest = ("/bookkeeping/static/manifest.json" if path == "/bookkeeping"
                     else "/music/static/manifest.json" if path == "/music"
+                    else "/monitor/static/manifest.json" if path == "/monitor"
                     else "/static/manifest.json" if not path.startswith("/tesla")
                     else "/tesla/static/manifest.json")
         assert f'<link rel="manifest" href="{manifest}">' in html, path
@@ -100,6 +101,7 @@ def test_webapp_manifests_scoped_per_app(auth):
             ("/tesla/static/manifest.json", "My Tesla", "/tesla", "/tesla"),
             ("/bookkeeping/static/manifest.json", "My Money", "/bookkeeping", "/bookkeeping"),
             ("/music/static/manifest.json", "My Music", "/music", "/music"),
+            ("/monitor/static/manifest.json", "My Monitor", "/monitor", "/monitor"),
             ("/static/manifest.json", "My Home", "/", "/")):
         r = auth.get(url)
         assert r.status_code == 200, url
@@ -113,5 +115,7 @@ def test_webapp_manifests_scoped_per_app(auth):
     for icon in ("/tesla/static/icon-192.png", "/tesla/static/icon-512.png",
                  "/bookkeeping/static/icon-192.png",
                  "/bookkeeping/static/icon-512.png",
+                 "/monitor/static/icon-192.png",
+                 "/monitor/static/icon-512.png",
                  "/static/icon-192.png", "/static/icon-512.png"):
         assert auth.get(icon).status_code == 200, icon
